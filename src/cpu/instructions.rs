@@ -300,7 +300,7 @@ impl CPU {
     }
 
     pub fn or(&mut self, instruction: Instruction) {
-        todo!("or");
+        self.r[instruction.rd()] = self.r[instruction.rs()] | self.r[instruction.rt()];
     }
 
     pub fn xor(&mut self, instruction: Instruction) {

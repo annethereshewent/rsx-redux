@@ -5,7 +5,17 @@ pub mod registers;
 pub struct Bus {
     bios: Vec<u8>,
     bios_delay: DelayRegister,
-    ram_size: u32
+    ram_size: u32,
+    com_delay: u32,
+    exp1_base_address: u32,
+    exp2_base_address: u32,
+    exp2_enabled: bool,
+    exp1_delay: DelayRegister,
+    spu_delay: DelayRegister,
+    cdrom_delay: DelayRegister,
+    exp3_delay: DelayRegister,
+    exp2_delay: DelayRegister,
+    cache_config: u32
 }
 
 impl Bus {
@@ -13,7 +23,17 @@ impl Bus {
         Self {
             bios: Vec::new(),
             bios_delay: DelayRegister::new(),
-            ram_size: 0
+            ram_size: 0,
+            com_delay: 0,
+            exp1_base_address: 0,
+            exp2_base_address: 0,
+            exp2_enabled: true,
+            exp1_delay: DelayRegister::new(),
+            spu_delay: DelayRegister::new(),
+            cdrom_delay: DelayRegister::new(),
+            exp3_delay: DelayRegister::new(),
+            exp2_delay: DelayRegister::new(),
+            cache_config: 0
         }
     }
 
@@ -24,6 +44,7 @@ impl Bus {
     pub fn translate_address(address: u32) -> usize {
         match address >> 28 {
             0x8 | 0x9 => (address & 0xfffffff) as usize,
+            0xf => address as usize,
             _ => (address & 0x1fffffff) as usize
         }
     }
@@ -41,8 +62,23 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
-            0x1f801010 => self.bios_delay.write(value),
-            0x1f801060 => self.ram_size = value, // TODO: actually implement
+            0x1f801000 => self.exp1_base_address = value & 0xffffff | (0x1f << 24), // TODO: implement
+            0x1f801004 => {
+                self.exp2_base_address = value & 0xffffff | (0x1f << 24);
+                self.exp2_enabled = self.exp2_base_address == 0x1f802000;
+            }
+            0x1f801008 => self.exp1_delay.write(value), // TODO
+            0x1f80100c => self.exp3_delay.write(value), // TODO
+            0x1f801010 => self.bios_delay.write(value), // TODO
+            0x1f801014 => self.spu_delay.write(value), // TODO
+            0x1f801018 => self.cdrom_delay.write(value), // TODO
+            0x1f80101c => self.exp2_delay.write(value),
+            0x1f801020 => self.com_delay = value & 0xffff, // TODO: actually implement
+            0x1f801060 => self.ram_size = value, // TODO: actually implement lmao
+            0xfffe0130 => {
+                self.cache_config = value;
+                self.cache_config &= !((1 << 6) | (1 << 10));
+            }
             _ => panic!("address not implemented: 0x{:x}", address)
         }
     }

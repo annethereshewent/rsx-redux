@@ -138,7 +138,7 @@ impl CPU {
         }
 
         if upper & 0b110000 == 0b100000 {
-            return format!("{command} r{}, [r{} + 0x{:x}]", instr.rt(), instr.rt(), instr.immediate16());
+            return format!("{command} r{}, [r{} + 0x{:x}]", instr.rt(), instr.rs(), instr.immediate16());
         }
 
         todo!("coprocessor encoding");
