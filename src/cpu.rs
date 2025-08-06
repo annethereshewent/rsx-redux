@@ -33,7 +33,6 @@ bitflags! {
 
 pub struct CPU {
     r: [u32; 32],
-    shadow_r: [u32; 32],
     delayed_load: Option<(usize, u32)>,
     pc: u32,
     previous_pc: u32,
@@ -45,7 +44,8 @@ pub struct CPU {
     special_instructions: [fn(&mut CPU, Instruction); 0x40],
     cop0: COP0,
     found: HashSet<u32>,
-    debug_on: bool
+    debug_on: bool,
+    ignored_load_delay: Option<usize>
 }
 
 impl CPU {
@@ -206,7 +206,6 @@ impl CPU {
 
         Self {
             r: [0; 32],
-            shadow_r: [0; 32],
             pc: 0xbfc00000,
             previous_pc: 0xbfc00000,
             next_pc: 0xbfc00004,
@@ -218,7 +217,8 @@ impl CPU {
             delayed_load: None,
             cop0: COP0::new(),
             found: HashSet::new(),
-            debug_on: false
+            debug_on: false,
+            ignored_load_delay: None
         }
     }
 
@@ -244,6 +244,21 @@ impl CPU {
         self.bus.mem_write16(address, value);
     }
 
+    fn transfer_load(&mut self) {
+        if let Some((index, value)) = self.delayed_load {
+            if let Some(ignored_load_delay) = self.ignored_load_delay {
+                if ignored_load_delay != index {
+                    self.r[index] = value;
+                }
+            } else {
+                self.r[index] = value;
+            }
+        }
+
+        self.ignored_load_delay = None;
+        self.delayed_load = None;
+    }
+
     pub fn store32(&mut self, address: u32, value: u32) {
          if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
             // TODO: implement this but for real
@@ -254,10 +269,11 @@ impl CPU {
     }
 
     pub fn step(&mut self) {
+        self.r[0] = 0;
+
         self.handle_exceptions();
 
-        self.r[0] = 0;
-        self.shadow_r[0] = 0;
+        let should_transfer = self.delayed_load.is_some();
 
         let opcode = self.bus.mem_read32(self.pc);
 
@@ -273,14 +289,10 @@ impl CPU {
 
         self.next_pc += 4;
 
-        if let Some((register, value)) = self.delayed_load {
-            self.shadow_r[register] = value;
-
-            self.delayed_load = None;
-        }
-
         self.decode_opcode(opcode);
 
-        self.r = self.shadow_r;
+        if should_transfer {
+            self.transfer_load();
+        }
     }
 }

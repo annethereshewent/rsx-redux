@@ -82,7 +82,9 @@ impl CPU {
     }
 
     pub fn jal(&mut self, instruction: Instruction) {
-        self.shadow_r[RA_REGISTER] = self.next_pc;
+        self.r[RA_REGISTER] = self.next_pc;
+
+        self.ignored_load_delay = Some(RA_REGISTER);
 
         self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
     }
@@ -117,16 +119,20 @@ impl CPU {
         if overflow {
             todo!("raise checked add exception");
         } else {
-            self.shadow_r[instruction.rt()] = result as u32;
+            self.r[instruction.rt()] = result as u32;
+            self.ignored_load_delay = Some(instruction.rt());
         }
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn addiu(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rt()] = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+        self.r[instruction.rt()] = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn slti(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rd()] = ((self.r[instruction.rs()] as i32) < instruction.signed_immediate16()) as u32;
+        self.r[instruction.rd()] = ((self.r[instruction.rs()] as i32) < instruction.signed_immediate16()) as u32;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn sltiu(&mut self, instruction: Instruction) {
@@ -134,11 +140,13 @@ impl CPU {
     }
 
     pub fn andi(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rt()] = self.r[instruction.rs()] & instruction.immediate16();
+        self.r[instruction.rt()] = self.r[instruction.rs()] & instruction.immediate16();
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn ori(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rt()] = self.r[instruction.rs()] | instruction.immediate16();
+        self.r[instruction.rt()] = self.r[instruction.rs()] | instruction.immediate16();
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn xori(&mut self, instruction: Instruction) {
@@ -146,7 +154,8 @@ impl CPU {
     }
 
     pub fn lui(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rt()] = instruction.immediate16() << 16;
+        self.r[instruction.rt()] = instruction.immediate16() << 16;
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn cop0(&mut self, instruction: Instruction) {
@@ -158,7 +167,7 @@ impl CPU {
                 0 => {
                     let value = self.cop0.mfc0(instruction.rd());
 
-                    self.delayed_load = Some((instruction.rt(), value));
+                    self.update_load(instruction.rt(), value);
                 }
                 4 => self.cop0.mtc0(instruction.rd(), self.r[instruction.rt()]),
                 0x10 => self.cop0.rfe(),
@@ -185,8 +194,9 @@ impl CPU {
     pub fn lb(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.delayed_load = Some(
-            (instruction.rt(), self.bus.mem_read8(address) as i8 as i16 as i32 as u32)
+        self.update_load(
+            instruction.rt(),
+            self.bus.mem_read8(address) as i8 as i16 as i32 as u32
         );
     }
 
@@ -201,13 +211,13 @@ impl CPU {
     pub fn lw(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.delayed_load = Some((instruction.rt(), self.bus.mem_read32(address)));
+        self.update_load(instruction.rt(), self.bus.mem_read32(address));
     }
 
     pub fn lbu(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.delayed_load = Some((instruction.rt(), self.bus.mem_read8(address)));
+        self.update_load(instruction.rt(), self.bus.mem_read8(address));
     }
 
     pub fn lhu(&mut self, instruction: Instruction) {
@@ -277,7 +287,8 @@ impl CPU {
     }
 
     pub fn sll(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rd()] = self.r[instruction.rt()] << instruction.immediate5();
+        self.r[instruction.rd()] = self.r[instruction.rt()] << instruction.immediate5();
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn srl(&mut self, instruction: Instruction) {
@@ -309,7 +320,8 @@ impl CPU {
 
         self.next_pc = self.r[instruction.rs()];
 
-        self.shadow_r[instruction.rd()] = return_val;
+        self.r[instruction.rd()] = return_val;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn syscall(&mut self, instruction: Instruction) {
@@ -358,12 +370,14 @@ impl CPU {
         if overflow {
             todo!("raise checked add exception");
         } else {
-            self.shadow_r[instruction.rd()] = result as u32;
+            self.r[instruction.rd()] = result as u32;
+            self.ignored_load_delay = Some(instruction.rd());
         }
     }
 
     pub fn addu(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] + self.r[instruction.rt()];
+        self.r[instruction.rd()] = self.r[instruction.rs()] + self.r[instruction.rt()];
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn sub(&mut self, instruction: Instruction) {
@@ -371,15 +385,18 @@ impl CPU {
     }
 
     pub fn subu(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] - self.r[instruction.rt()];
+        self.r[instruction.rd()] = self.r[instruction.rs()] - self.r[instruction.rt()];
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn and(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] & self.r[instruction.rt()];
+        self.r[instruction.rd()] = self.r[instruction.rs()] & self.r[instruction.rt()];
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn or(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] | self.r[instruction.rt()];
+        self.r[instruction.rd()] = self.r[instruction.rs()] | self.r[instruction.rt()];
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn xor(&mut self, instruction: Instruction) {
@@ -395,6 +412,17 @@ impl CPU {
     }
 
     pub fn sltu(&mut self, instruction: Instruction) {
-        self.shadow_r[instruction.rd()] = (self.r[instruction.rs()] < self.r[instruction.rt()]) as u32;
+        self.r[instruction.rd()] = (self.r[instruction.rs()] < self.r[instruction.rt()]) as u32;
+        self.ignored_load_delay = Some(instruction.rd());
+    }
+
+    fn update_load(&mut self, index: usize, value: u32) {
+        if let Some((pending_index, pending_value)) = self.delayed_load {
+            if index != pending_index {
+                self.r[pending_index] = pending_value;
+            }
+        }
+
+        self.delayed_load = Some((index, value));
     }
 }
