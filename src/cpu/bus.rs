@@ -79,6 +79,12 @@ impl Bus {
         }
     }
 
+    pub fn mem_read16(&self, address: u32) -> u32 {
+        match address {
+            _ => todo!("(mem_read16) address: 0x{:x}", address)
+        }
+    }
+
     pub fn mem_read8(&self, address: u32) -> u32 {
         let address = Self::translate_address(address);
 

@@ -133,14 +133,14 @@ impl CPU {
     }
 
     pub fn slti(&mut self, instruction: Instruction) {
-        self.r[instruction.rd()] = ((self.r[instruction.rs()] as i32) < instruction.signed_immediate16()) as u32;
-        self.ignored_load_delay = Some(instruction.rd());
+        self.r[instruction.rt()] = ((self.r[instruction.rs()] as i32) < instruction.signed_immediate16()) as u32;
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn sltiu(&mut self, instruction: Instruction) {
         let extended_immediate = instruction.signed_immediate16() as u32;
-        self.r[instruction.rd()] = (self.r[instruction.rs()] < extended_immediate) as u32;
-        self.ignored_load_delay = Some(instruction.rd());
+        self.r[instruction.rt()] = (self.r[instruction.rs()] < extended_immediate) as u32;
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn andi(&mut self, instruction: Instruction) {
@@ -225,7 +225,9 @@ impl CPU {
     }
 
     pub fn lhu(&mut self, instruction: Instruction) {
-        todo!("lhu");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        self.update_load(instruction.rt(), self.bus.mem_read16(address));
     }
 
     pub fn lwr(&mut self, instruction: Instruction) {
@@ -383,8 +385,8 @@ impl CPU {
     pub fn divu(&mut self, instruction: Instruction) {
         self.tick(1);
 
-        let divisor = self.r[instruction.rs()];
-        let dividend = self.r[instruction.rt()];
+        let dividend = self.r[instruction.rs()];
+        let divisor = self.r[instruction.rt()];
 
         if divisor != 0 {
             self.lo = dividend / divisor;
@@ -436,7 +438,8 @@ impl CPU {
     }
 
     pub fn slt(&mut self, instruction: Instruction) {
-        todo!("slt");
+        self.r[instruction.rd()] = ((self.r[instruction.rs()] as i32) < (self.r[instruction.rt()] as i32)) as u32;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn sltu(&mut self, instruction: Instruction) {

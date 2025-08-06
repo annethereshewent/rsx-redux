@@ -274,7 +274,7 @@ impl CPU {
 
         if !self.found.contains(&self.previous_pc) {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
-            // self.found.insert(self.previous_pc);
+            self.found.insert(self.previous_pc);
         }
 
         self.next_pc += 4;
