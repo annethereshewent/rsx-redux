@@ -126,6 +126,7 @@ impl CPU {
 
         match upper {
             0x4 => match mid {
+                0 => self.r[instruction.rt()] = self.cop0.mfc0(instruction.rd()),
                 4 => self.cop0.mtc0(instruction.rd(), self.r[instruction.rt()]),
                 _ => todo!("cop0 instruction: 0x{:x}", instruction.0)
             }
@@ -324,7 +325,13 @@ impl CPU {
     }
 
     pub fn add(&mut self, instruction: Instruction) {
-        todo!("add");
+        let (result, overflow) = self.r[instruction.rs()].overflowing_add(self.r[instruction.rt()]);
+
+        if overflow {
+            todo!("raise checked add exception");
+        } else {
+            self.r[instruction.rd()] = result as u32;
+        }
     }
 
     pub fn addu(&mut self, instruction: Instruction) {
@@ -340,7 +347,7 @@ impl CPU {
     }
 
     pub fn and(&mut self, instruction: Instruction) {
-        todo!("and");
+        self.r[instruction.rd()] = self.r[instruction.rs()] & self.r[instruction.rt()];
     }
 
     pub fn or(&mut self, instruction: Instruction) {

@@ -33,6 +33,7 @@ impl COP0 {
 
     pub fn mfc0(&self, index: usize) -> u32 {
         match index {
+            0xc => self.sr.bits(),
             _ => todo!("mfc0 index: {index}")
         }
     }

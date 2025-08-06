@@ -51,7 +51,7 @@ impl Bus {
 
     pub fn translate_address(address: u32) -> usize {
         match address >> 28 {
-            0x8 | 0x9 => (address & 0xfffffff) as usize,
+            0x8 | 0xa => (address & 0xfffffff) as usize,
             0xf => address as usize,
             _ => (address & 0x1fffffff) as usize
         }
@@ -81,6 +81,10 @@ impl Bus {
     pub fn mem_write32(&mut self, address: u32, value: u32) {
         let address = Self::translate_address(address);
 
+        if address < 0xff {
+            println!("address = 0x{:x} value = 0x{:x}", address, value);
+        }
+
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u32 ) = value },
             0x1f801000 => self.exp1_base_address = value & 0xffffff | (0x1f << 24), // TODO: implement
@@ -107,6 +111,10 @@ impl Bus {
     pub fn mem_write16(&mut self, address: u32, value: u16) {
         let address = Self::translate_address(address);
 
+        if address < 0xff {
+            println!("address = 0x{:x} value = 0x{:x}", address, value);
+        }
+
         match address {
             0x1f801d80 => self.spu.main_volume_left = value,
             0x1f801d82 => self.spu.main_volume_right = value,
@@ -118,6 +126,10 @@ impl Bus {
 
     pub fn mem_write8(&mut self, address: u32, value: u8) {
          let address = Self::translate_address(address);
+
+        if address < 0xff {
+            println!("address = 0x{:x} value = 0x{:x}", address, value);
+        }
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,

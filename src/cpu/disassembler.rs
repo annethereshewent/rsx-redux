@@ -146,9 +146,10 @@ impl CPU {
 
         match upper_cop0 {
             0x4 => match mid {
-                // 0x0 => return format!("MFC0 r{}, r{}", instr.rt(), instr.rd()),
+                0x0 => return format!("MFC0 r{}, r{}", instr.rt(), instr.rd()),
                 0x4 => return format!("MTC0 r{}, r{}", instr.rt(), instr.rd()),
-                _ => todo!("cop0 disassembly: 0b{:032b}", instruction)
+                0x10 => return "RFE".to_string(),
+                _ => todo!("cop0 disassembly: 0b{:032b}, upper = 0b{:b} middle = 0b{:b}", instruction, upper_cop0, mid)
             }
             _ => todo!("cop0 disassembly: 0b{:032b}", instruction)
         }
