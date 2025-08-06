@@ -1,4 +1,4 @@
-use registers::delay_register::DelayRegister;
+use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};
 use spu::SPU;
 
 pub mod registers;
@@ -20,7 +20,9 @@ pub struct Bus {
     cache_config: u32,
     main_ram: Box<[u8]>,
     spu: SPU,
-    exp1_post: u8
+    exp1_post: u8,
+    pub interrupt_mask: InterruptRegister,
+    pub interrupt_stat: InterruptRegister
 }
 
 impl Bus {
@@ -41,7 +43,9 @@ impl Bus {
             cache_config: 0,
             main_ram: vec![0; 0x200000].into_boxed_slice(),
             spu: SPU::new(),
-            exp1_post: 0
+            exp1_post: 0,
+            interrupt_mask: InterruptRegister::from_bits_truncate(0),
+            interrupt_stat: InterruptRegister::from_bits_truncate(0)
         }
     }
 
@@ -81,10 +85,6 @@ impl Bus {
     pub fn mem_write32(&mut self, address: u32, value: u32) {
         let address = Self::translate_address(address);
 
-        if (0xb0..=0xbc).contains(&address) {
-            println!("address = 0x{:x} value = 0x{:x}", address, value);
-        }
-
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u32 ) = value },
             0x1f801000 => self.exp1_base_address = value & 0xffffff | (0x1f << 24), // TODO: implement
@@ -100,6 +100,11 @@ impl Bus {
             0x1f80101c => self.exp2_delay.write(value),
             0x1f801020 => self.com_delay = value & 0xffff, // TODO: actually implement
             0x1f801060 => self.ram_size = value, // TODO: actually implement lmao
+            0x1f801070 => {
+                let new_stat = self.interrupt_stat.bits() & value;
+                self.interrupt_stat = InterruptRegister::from_bits_truncate(new_stat);
+            }
+            0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
@@ -110,10 +115,6 @@ impl Bus {
 
     pub fn mem_write16(&mut self, address: u32, value: u16) {
         let address = Self::translate_address(address);
-
-        if (0xb0..=0xbc).contains(&address) {
-            println!("address = 0x{:x} value = 0x{:x}", address, value);
-        }
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
@@ -127,10 +128,6 @@ impl Bus {
 
     pub fn mem_write8(&mut self, address: u32, value: u8) {
         let address = Self::translate_address(address);
-
-        if (0xb0..=0xbc).contains(&address) {
-            println!("address = 0x{:x} value = 0x{:x}", address, value);
-        }
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,

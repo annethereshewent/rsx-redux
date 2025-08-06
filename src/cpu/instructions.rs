@@ -50,7 +50,31 @@ impl CPU {
     }
 
     pub fn bcondz(&mut self, instruction: Instruction) {
-        todo!("bcondz");
+        match instruction.rt() {
+            0x0 => self.bltz(instruction),
+            0x1 => self.bgez(instruction),
+            0x10 => self.bltzal(instruction),
+            0x11 => self.bgezal(instruction),
+            _ => panic!("invalid option given for BcondZ: 0x{:x}", instruction.rt())
+        }
+    }
+
+    pub fn bltz(&mut self, instruction: Instruction) {
+        if (self.r[instruction.rs()] as i32) < 0 {
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
+    }
+
+    pub fn bgez(&mut self, instruction: Instruction) {
+        todo!("bgez");
+    }
+
+    pub fn bltzal(&mut self, instruction: Instruction) {
+        todo!("bltzal");
+    }
+
+    pub fn bgezal(&mut self, instruction: Instruction) {
+        todo!("bgezal");
     }
 
     pub fn j(&mut self, instruction: Instruction) {
@@ -76,11 +100,15 @@ impl CPU {
     }
 
     pub fn blez(&mut self, instruction: Instruction) {
-        todo!("blez");
+        if self.r[instruction.rs()] as i32 <= 0 {
+           self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
     }
 
     pub fn bgtz(&mut self, instruction: Instruction) {
-        todo!("bgtz");
+        if self.r[instruction.rs()] > 0 {
+           self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
     }
 
     pub fn addi(&mut self, instruction: Instruction) {
@@ -98,7 +126,7 @@ impl CPU {
     }
 
     pub fn slti(&mut self, instruction: Instruction) {
-        todo!("slti");
+        self.shadow_r[instruction.rd()] = ((self.r[instruction.rs()] as i32) < instruction.signed_immediate16()) as u32;
     }
 
     pub fn sltiu(&mut self, instruction: Instruction) {
@@ -177,7 +205,9 @@ impl CPU {
     }
 
     pub fn lbu(&mut self, instruction: Instruction) {
-        todo!("lbu");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        self.delayed_load = Some((instruction.rt(), self.bus.mem_read8(address)));
     }
 
     pub fn lhu(&mut self, instruction: Instruction) {
@@ -275,7 +305,11 @@ impl CPU {
     }
 
     pub fn jalr(&mut self, instruction: Instruction) {
-        todo!("jalr");
+        let return_val = self.next_pc;
+
+        self.next_pc = self.r[instruction.rs()];
+
+        self.shadow_r[instruction.rd()] = return_val;
     }
 
     pub fn syscall(&mut self, instruction: Instruction) {

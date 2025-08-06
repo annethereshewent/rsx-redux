@@ -38,7 +38,13 @@ impl CPU {
                 0x2b => "SLTU",
                 _ => panic!("unknown instruction received: 0x{:x}", instruction & 0x3f)
             }
-            0x1 => "BcondZ",
+            0x1 => match instr.rt() {
+                0x0 => "BLTZ",
+                0x1 => "BGEZ",
+                0x10 => "BLTZAL",
+                0x11 => "BGEZAL",
+                _ => panic!("unknown value for BcondZ given: 0x{:x}", instr.rt())
+            },
             0x2 => "J",
             0x3 => "JAL",
             0x4 => "BEQ",

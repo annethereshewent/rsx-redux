@@ -271,10 +271,6 @@ impl CPU {
             // self.found.insert(self.previous_pc);
         }
 
-        // if self.previous_pc == 0xbfc0d9a8 {
-        //     panic!("ahhhh!!!!!!!")
-        // }
-
         self.next_pc += 4;
 
         if let Some((register, value)) = self.delayed_load {
