@@ -1,30 +1,23 @@
 use bus::Bus;
+use instructions::Instruction;
 
 pub mod bus;
 pub mod instructions;
+pub mod disassembler;
 
 pub struct CPU {
-    registers: [u32; 32],
-    shadow_registers: [u32; 32],
+    r: [u32; 32],
+    delayed_register: Option<usize>,
+    delayed_value: Option<u32>,
     pc: u32,
     previous_pc: u32,
+    next_pc: u32,
     hi: u32,
     lo: u32,
     pub bus: Bus,
-    instructions: [fn(&mut CPU, u32); 0x40],
-    special_instructions: [fn(&mut CPU, u32); 0x40]
+    instructions: [fn(&mut CPU, Instruction); 0x40],
+    special_instructions: [fn(&mut CPU, Instruction); 0x40]
 }
-/*
-  00h=SLL   08h=JR      10h=MFHI 18h=MULT  20h=ADD  28h=N/A  30h=N/A  38h=N/A
-  01h=N/A   09h=JALR    11h=MTHI 19h=MULTU 21h=ADDU 29h=N/A  31h=N/A  39h=N/A
-  02h=SRL   0Ah=N/A     12h=MFLO 1Ah=DIV   22h=SUB  2Ah=SLT  32h=N/A  3Ah=N/A
-  03h=SRA   0Bh=N/A     13h=MTLO 1Bh=DIVU  23h=SUBU 2Bh=SLTU 33h=N/A  3Bh=N/A
-  04h=SLLV  0Ch=SYSCALL 14h=N/A  1Ch=N/A   24h=AND  2Ch=N/A  34h=N/A  3Ch=N/A
-  05h=N/A   0Dh=BREAK   15h=N/A  1Dh=N/A   25h=OR   2Dh=N/A  35h=N/A  3Dh=N/A
-  06h=SRLV  0Eh=N/A     16h=N/A  1Eh=N/A   26h=XOR  2Eh=N/A  36h=N/A  3Eh=N/A
-  07h=SRAV  0Fh=N/A     17h=N/A  1Fh=N/A   27h=NOR  2Fh=N/A  37h=N/A  3Fh=N/A
-*/
-
 
 impl CPU {
     pub fn new() -> Self {
@@ -115,7 +108,6 @@ impl CPU {
         06h=SRLV  0Eh=N/A     16h=N/A  1Eh=N/A   26h=XOR  2Eh=N/A  36h=N/A  3Eh=N/A
         07h=SRAV  0Fh=N/A     17h=N/A  1Fh=N/A   27h=NOR  2Fh=N/A  37h=N/A  3Fh=N/A
         */
-
         let special_instructions = [
             CPU::sll, // 0
             CPU::reserved, // 1
@@ -184,15 +176,17 @@ impl CPU {
         ];
 
         Self {
-            registers: [0; 32],
-            shadow_registers: [0; 32],
+            r: [0; 32],
             pc: 0xbfc00000,
             previous_pc: 0xbfc00000,
+            next_pc: 0xbfc00004,
             hi: 0,
             lo: 0,
             bus: Bus::new(),
             instructions,
-            special_instructions
+            special_instructions,
+            delayed_register: None,
+            delayed_value: None
         }
     }
 
@@ -201,13 +195,17 @@ impl CPU {
     }
 
     pub fn step(&mut self) {
-
+        self.r[0] = 0;
         let opcode = self.bus.mem_read32(self.pc);
+
+        println!("[PC: 0x{:x}] [Opcode: 0x{:x}] {}", self.pc, opcode, self.disassemble(opcode));
 
         self.decode_opcode(opcode);
 
-        self.pc += 4;
-
         self.previous_pc = self.pc;
+
+        self.pc = self.next_pc;
+
+        self.next_pc += 4;
     }
 }
