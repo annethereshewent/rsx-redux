@@ -371,7 +371,7 @@ impl CPU {
     }
 
     pub fn subu(&mut self, instruction: Instruction) {
-        todo!("subu");
+        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] - self.r[instruction.rt()];
     }
 
     pub fn and(&mut self, instruction: Instruction) {
