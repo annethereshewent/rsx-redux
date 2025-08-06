@@ -157,7 +157,15 @@ impl CPU {
     }
 
     pub fn lw(&mut self, instruction: Instruction) {
-        todo!("lw");
+        let address = self.r[instruction.rs()] + instruction.immediate16();
+
+        if self.delayed_register[0].is_none() {
+            self.delayed_register[0] = Some(instruction.rt());
+            self.delayed_value[0] = Some(self.bus.mem_read32(address));
+        } else {
+            self.delayed_register[1] = Some(instruction.rt());
+            self.delayed_value[1] = Some(self.bus.mem_read32(address));
+        }
     }
 
     pub fn lbu(&mut self, instruction: Instruction) {

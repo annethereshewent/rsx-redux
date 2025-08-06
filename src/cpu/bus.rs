@@ -55,6 +55,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
+            0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
             _ => panic!("address not implemented: 0x{:x}", address)
         }

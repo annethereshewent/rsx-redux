@@ -7,13 +7,25 @@ pub mod instructions;
 pub mod disassembler;
 
 pub struct COP0 {
-    pub sr: StatusRegister
+    pub sr: StatusRegister,
+    pub dcic: u32,
+    pub bpc: u32,
+    pub bda: u32,
+    pub tar: u32,
+    pub bdam: u32,
+    pub bpcm: u32
 }
 
 impl COP0 {
     pub fn new() -> Self {
         Self {
-            sr: StatusRegister::from_bits_retain(0)
+            sr: StatusRegister::from_bits_retain(0),
+            dcic: 0,
+            bpc: 0,
+            bda: 0,
+            tar: 0,
+            bdam: 0,
+            bpcm: 0
         }
     }
 
@@ -25,7 +37,14 @@ impl COP0 {
 
     pub fn mtc0(&mut self, index: usize, value: u32) {
         match index {
+            0x3 => self.bpc = value,
+            0x5 => self.bda = value,
+            0x6 => (), // read only
+            0x7 => self.dcic = value,
+            0x9 => self.bdam = value,
+            0xb => self.bpcm = value,
             0xc => self.sr = StatusRegister::from_bits_retain(value),
+            0xd => (), // cause, read only
             _ => todo!("mtc0 index: 0x{:x}", index)
         }
     }
@@ -52,8 +71,8 @@ bitflags! {
 
 pub struct CPU {
     r: [u32; 32],
-    delayed_register: Option<usize>,
-    delayed_value: Option<u32>,
+    delayed_register: [Option<usize>; 2],
+    delayed_value: [Option<u32>; 2],
     pc: u32,
     previous_pc: u32,
     next_pc: u32,
@@ -231,13 +250,15 @@ impl CPU {
             bus: Bus::new(),
             instructions,
             special_instructions,
-            delayed_register: None,
-            delayed_value: None,
+            delayed_register: [None; 2],
+            delayed_value: [None; 2],
             cop0: COP0::new()
         }
     }
 
     pub fn step(&mut self) {
+        let load_delay = self.delayed_register[0].is_some();
+
         self.r[0] = 0;
         let opcode = self.bus.mem_read32(self.pc);
 
@@ -250,5 +271,18 @@ impl CPU {
         self.next_pc += 4;
 
         self.decode_opcode(opcode);
+
+        if load_delay {
+            let delayed_register = self.delayed_register[0].unwrap();
+            let value = self.delayed_value[0].unwrap();
+
+            self.r[delayed_register] = value;
+
+            self.delayed_register[0] = self.delayed_register[1];
+            self.delayed_value[0] = self.delayed_value[1];
+
+            self.delayed_register[1] = None;
+            self.delayed_value[1] = None;
+        }
     }
 }
