@@ -1,0 +1,9 @@
+[package]
+name = "rsx-redux-desktop"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies.rsx-redux]
+path = "../"
+
+[dependencies]
