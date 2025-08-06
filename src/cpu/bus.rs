@@ -80,7 +80,17 @@ impl Bus {
     }
 
     pub fn mem_read16(&self, address: u32) -> u32 {
+        let address = Self::translate_address(address);
+
         match address {
+            0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16 as *const u32 ) },
+            0x1f801d88 => self.spu.keyon & 0xffff,
+            0x1f801d8a => (self.spu.keyon >> 16) & 0xffff,
+            0x1f801d8c => self.spu.keyoff & 0xffff,
+            0x1f801d8e => (self.spu.keyoff >> 16) & 0xffff,
+            0x1f801daa => self.spu.spucnt.bits() as u32,
+            0x1f801dac => self.spu.sound_ram_transfer as u32,
+            0x1f801dae => self.spu.read_stat() as u32,
             _ => todo!("(mem_read16) address: 0x{:x}", address)
         }
     }
@@ -146,7 +156,25 @@ impl Bus {
             0x1f801d82 => self.spu.main_volume_right = value,
             0x1f801d84 => self.spu.reverb_volume_left = value,
             0x1f801d86 => self.spu.reverb_volume_right = value,
+            0x1f801d88 => self.spu.keyon = (self.spu.keyon & 0xffff0000) | value as u32,
+            0x1f801d8a => self.spu.keyon = (self.spu.keyon & 0xffff) | (value as u32) << 16,
+            0x1f801d8c => self.spu.keyoff = (self.spu.keyoff & 0xffff0000) | value as u32,
+            0x1f801d8e => self.spu.keyoff = (self.spu.keyoff & 0xffff) | (value as u32) << 16,
+            0x1f801d90 => self.spu.sound_modulation = (self.spu.sound_modulation & 0xffff000) | value as u32,
+            0x1f801d92 => self.spu.sound_modulation = (self.spu.sound_modulation & 0xffff) | (value as u32) << 16,
+            0x1f801d94 => self.spu.noise_enable = (self.spu.noise_enable & 0xffff000) | value as u32,
+            0x1f801d96 => self.spu.noise_enable = (self.spu.noise_enable & 0xffff) | (value as u32) << 16,
+            0x1f801d98 => self.spu.echo_on = (self.spu.echo_on & 0xffff000) | value as u32,
+            0x1f801d9a => self.spu.echo_on = (self.spu.echo_on & 0xffff) | (value as u32) << 16,
+            0x1f801da6 => self.spu.sound_ram_address = value * 8,
+            0x1f801da8 => self.spu.sample = value as i16,
             0x1f801daa => self.spu.spucnt = SpuControlRegister::from_bits_retain(value),
+            0x1f801dac => self.spu.sound_ram_transfer = value,
+            0x1f801db0 => self.spu.cd_volume.0 = value,
+            0x1f801db2 => self.spu.cd_volume.1 = value,
+            0x1f801db4 => self.spu.external_volume.0 = value,
+            0x1f801db6 => self.spu.external_volume.1 = value,
+            0x1f801c00..=0x1f801d7f => self.spu.write_voices(address, value),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
     }
