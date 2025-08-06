@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use bitflags::bitflags;
 use bus::Bus;
-use cop0::COP0;
+use cop0::{StatusRegister, COP0};
 use instructions::Instruction;
 
 pub mod bus;
@@ -12,23 +12,8 @@ pub mod cop0;
 
 pub const RA_REGISTER: usize = 31;
 
-bitflags! {
-    pub struct StatusRegister: u32 {
-        const IEC = 1 << 0;
-        const KUC = 1 << 1;
-        const IEP = 1 << 2;
-        const KUP = 1 << 3;
-        const IEO = 1 << 4;
-        const KUO = 1 << 5;
-        const ISOLATE_CACHE = 1 << 16;
-        const SWC = 1 << 17;
-        const PZ = 1 << 18;
-        const CM = 1 << 19;
-        const PE = 1 << 20;
-        const BEV = 1 << 22;
-        const COP0_ENABLE = 1 << 28;
-        const GTE_ENABLE = 1 << 30;
-    }
+pub enum ExceptionType {
+    Syscall = 0x8
 }
 
 pub struct CPU {
@@ -300,5 +285,19 @@ impl CPU {
         if should_transfer {
             self.transfer_load();
         }
+    }
+
+    pub fn enter_exception(&mut self, exception_type: ExceptionType) {
+        self.cop0.cause.write_exception_code(exception_type as u32);
+
+        self.cop0.epc = match exception_type {
+            ExceptionType::Syscall => self.pc,
+            _ => self.previous_pc
+        };
+
+        println!("epc = 0x{:x}", self.pc);
+
+        self.pc = if self.cop0.sr.contains(StatusRegister::BEV) { 0xbfc00180 } else { 0x80000080 };
+        self.next_pc = self.pc + 4;
     }
 }

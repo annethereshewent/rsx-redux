@@ -1,4 +1,4 @@
-use super::{CPU, RA_REGISTER};
+use super::{ExceptionType, CPU, RA_REGISTER};
 
 
 pub struct Instruction(pub u32);
@@ -336,8 +336,8 @@ impl CPU {
         self.ignored_load_delay = Some(instruction.rd());
     }
 
-    pub fn syscall(&mut self, instruction: Instruction) {
-        todo!("syscall");
+    pub fn syscall(&mut self, _instruction: Instruction) {
+        self.enter_exception(ExceptionType::Syscall);
     }
 
     pub fn break_(&mut self, instruction: Instruction) {
@@ -351,7 +351,7 @@ impl CPU {
     }
 
     pub fn mthi(&mut self, instruction: Instruction) {
-        todo!("mthi");
+        self.hi = self.r[instruction.rs()];
     }
 
     pub fn mflo(&mut self, instruction: Instruction) {
@@ -361,7 +361,7 @@ impl CPU {
     }
 
     pub fn mtlo(&mut self, instruction: Instruction) {
-        todo!("mtl0");
+        self.lo = self.r[instruction.rs()];
     }
 
     pub fn mult(&mut self, instruction: Instruction) {
