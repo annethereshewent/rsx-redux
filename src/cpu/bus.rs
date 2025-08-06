@@ -1,5 +1,5 @@
 use registers::{delay_register::DelayRegister, dma_control_register::DmaControlRegister, interrupt_register::InterruptRegister};
-use spu::SPU;
+use spu::{spu_control_register::SpuControlRegister, SPU};
 use timer::Timer;
 
 pub mod registers;
@@ -140,6 +140,7 @@ impl Bus {
             0x1f801d82 => self.spu.main_volume_right = value,
             0x1f801d84 => self.spu.reverb_volume_left = value,
             0x1f801d86 => self.spu.reverb_volume_right = value,
+            0x1f801daa => self.spu.spucnt = SpuControlRegister::from_bits_retain(value),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
     }

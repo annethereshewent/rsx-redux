@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use bitflags::bitflags;
 use bus::Bus;
 use cop0::{StatusRegister, COP0};
 use instructions::Instruction;
@@ -275,7 +274,7 @@ impl CPU {
 
         if !self.found.contains(&self.previous_pc) {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
-            self.found.insert(self.previous_pc);
+            // self.found.insert(self.previous_pc);
         }
 
         self.next_pc += 4;
@@ -291,8 +290,7 @@ impl CPU {
         self.cop0.cause.write_exception_code(exception_type as u32);
 
         self.cop0.epc = match exception_type {
-            ExceptionType::Syscall => self.pc,
-            _ => self.previous_pc
+            ExceptionType::Syscall => self.pc
         };
 
         self.pc = if self.cop0.sr.contains(StatusRegister::BEV) { 0xbfc00180 } else { 0x80000080 };
