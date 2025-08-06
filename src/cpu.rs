@@ -45,7 +45,8 @@ pub struct CPU {
     cop0: COP0,
     found: HashSet<u32>,
     debug_on: bool,
-    ignored_load_delay: Option<usize>
+    ignored_load_delay: Option<usize>,
+    cycles: usize
 }
 
 impl CPU {
@@ -218,8 +219,13 @@ impl CPU {
             cop0: COP0::new(),
             found: HashSet::new(),
             debug_on: false,
-            ignored_load_delay: None
+            ignored_load_delay: None,
+            cycles: 0
         }
+    }
+
+    pub fn tick(&mut self, cycles: usize) {
+        self.cycles += cycles;
     }
 
     fn handle_exceptions(&mut self) {

@@ -66,7 +66,9 @@ impl CPU {
     }
 
     pub fn bgez(&mut self, instruction: Instruction) {
-        todo!("bgez");
+        if (self.r[instruction.rs()] as i32) >= 0 {
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
     }
 
     pub fn bltzal(&mut self, instruction: Instruction) {
@@ -136,7 +138,9 @@ impl CPU {
     }
 
     pub fn sltiu(&mut self, instruction: Instruction) {
-        todo!("sltiu");
+        let extended_immediate = instruction.signed_immediate16() as u32;
+        self.r[instruction.rd()] = (self.r[instruction.rs()] < extended_immediate) as u32;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn andi(&mut self, instruction: Instruction) {
@@ -292,11 +296,19 @@ impl CPU {
     }
 
     pub fn srl(&mut self, instruction: Instruction) {
-        todo!("srl");
+        self.r[instruction.rd()] = self.r[instruction.rt()] >> instruction.immediate5();
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn sra(&mut self, instruction: Instruction) {
-        todo!("sra");
+        let shifted_val = self.r[instruction.rt()] as i32;
+        self.r[instruction.rd()] = (shifted_val >> instruction.immediate5()) as u32;
+
+        println!("{}", self.r[instruction.rt()] >> instruction.immediate5());
+
+        println!("result = 0x{:x}, original val = 0x{:x}, immediate5 = 0x{:x}", self.r[instruction.rd()], self.r[instruction.rt()], instruction.immediate5());
+
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn sllv(&mut self, instruction: Instruction) {
@@ -333,7 +345,9 @@ impl CPU {
     }
 
     pub fn mfhi(&mut self, instruction: Instruction) {
-        todo!("mfhi");
+        self.ignored_load_delay = Some(instruction.rd());
+
+        self.r[instruction.rd()] = self.hi;
     }
 
     pub fn mthi(&mut self, instruction: Instruction) {
@@ -341,7 +355,9 @@ impl CPU {
     }
 
     pub fn mflo(&mut self, instruction: Instruction) {
-        todo!("mflo");
+        self.ignored_load_delay = Some(instruction.rd());
+
+        self.r[instruction.rd()] = self.lo;
     }
 
     pub fn mtlo(&mut self, instruction: Instruction) {
@@ -357,7 +373,15 @@ impl CPU {
     }
 
     pub fn div(&mut self, instruction: Instruction) {
-        todo!("div");
+        self.tick(1);
+
+        let divisor = self.r[instruction.rs()] as i32;
+        let dividend = self.r[instruction.rs()] as i32;
+
+        if divisor != 0 {
+            self.lo = (dividend / divisor) as u32;
+            self.hi = (dividend % divisor) as u32;
+        }
     }
 
     pub fn divu(&mut self, instruction: Instruction) {
