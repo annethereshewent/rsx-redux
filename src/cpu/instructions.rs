@@ -58,7 +58,8 @@ impl CPU {
     }
 
     pub fn jal(&mut self, instruction: Instruction) {
-        self.r[RA_REGISTER] = self.next_pc;
+        self.shadow_r[RA_REGISTER] = self.next_pc;
+
         self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
     }
 
@@ -88,12 +89,12 @@ impl CPU {
         if overflow {
             todo!("raise checked add exception");
         } else {
-            self.r[instruction.rt()] = result as u32;
+            self.shadow_r[instruction.rt()] = result as u32;
         }
     }
 
     pub fn addiu(&mut self, instruction: Instruction) {
-        self.r[instruction.rt()] = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+        self.shadow_r[instruction.rt()] = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
     }
 
     pub fn slti(&mut self, instruction: Instruction) {
@@ -105,11 +106,11 @@ impl CPU {
     }
 
     pub fn andi(&mut self, instruction: Instruction) {
-        self.r[instruction.rt()] = self.r[instruction.rs()] & instruction.immediate16();
+        self.shadow_r[instruction.rt()] = self.r[instruction.rs()] & instruction.immediate16();
     }
 
     pub fn ori(&mut self, instruction: Instruction) {
-        self.r[instruction.rt()] = self.r[instruction.rs()] | instruction.immediate16();
+        self.shadow_r[instruction.rt()] = self.r[instruction.rs()] | instruction.immediate16();
     }
 
     pub fn xori(&mut self, instruction: Instruction) {
@@ -117,7 +118,7 @@ impl CPU {
     }
 
     pub fn lui(&mut self, instruction: Instruction) {
-        self.r[instruction.rt()] = instruction.immediate16() << 16;
+        self.shadow_r[instruction.rt()] = instruction.immediate16() << 16;
     }
 
     pub fn cop0(&mut self, instruction: Instruction) {
@@ -126,8 +127,13 @@ impl CPU {
 
         match upper {
             0x4 => match mid {
-                0 => self.r[instruction.rt()] = self.cop0.mfc0(instruction.rd()),
+                0 => {
+                    let value = self.cop0.mfc0(instruction.rd());
+
+                    self.delayed_load = Some((instruction.rt(), value));
+                }
                 4 => self.cop0.mtc0(instruction.rd(), self.r[instruction.rt()]),
+                0x10 => self.cop0.rfe(),
                 _ => todo!("cop0 instruction: 0x{:x}", instruction.0)
             }
             0xc => todo!("lwc"),
@@ -151,13 +157,9 @@ impl CPU {
     pub fn lb(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        if self.delayed_register[0].is_none() {
-            self.delayed_register[0] = Some(instruction.rt());
-            self.delayed_value[0] = Some(self.bus.mem_read8(address) as i8 as i16 as i32 as u32);
-        } else {
-            self.delayed_register[1] = Some(instruction.rt());
-            self.delayed_value[1] = Some(self.bus.mem_read8(address) as i8 as i16 as i32 as u32);
-        }
+        self.delayed_load = Some(
+            (instruction.rt(), self.bus.mem_read8(address) as i8 as i16 as i32 as u32)
+        );
     }
 
     pub fn lh(&mut self, instruction: Instruction) {
@@ -171,13 +173,7 @@ impl CPU {
     pub fn lw(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        if self.delayed_register[0].is_none() {
-            self.delayed_register[0] = Some(instruction.rt());
-            self.delayed_value[0] = Some(self.bus.mem_read32(address));
-        } else {
-            self.delayed_register[1] = Some(instruction.rt());
-            self.delayed_value[1] = Some(self.bus.mem_read32(address));
-        }
+        self.delayed_load = Some((instruction.rt(), self.bus.mem_read32(address)));
     }
 
     pub fn lbu(&mut self, instruction: Instruction) {
@@ -195,15 +191,13 @@ impl CPU {
     pub fn sb(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        println!("address = 0x{:x}, r{} = 0x{:x} immediate = 0x{:x}", address, instruction.rs(), self.r[instruction.rs()], instruction.signed_immediate16());
-
-        self.bus.mem_write8(address, self.r[instruction.rt()] as u8);
+        self.store8(address, self.r[instruction.rt()] as u8);
     }
 
     pub fn sh(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.bus.mem_write16(address, self.r[instruction.rt()] as u16);
+        self.store16(address, self.r[instruction.rt()] as u16);
     }
 
     pub fn swl(&mut self, instruction: Instruction) {
@@ -213,7 +207,7 @@ impl CPU {
     pub fn sw(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.bus.mem_write32(address, self.r[instruction.rt()]);
+        self.store32(address, self.r[instruction.rt()]);
     }
 
     pub fn swr(&mut self, instruction: Instruction) {
@@ -253,7 +247,7 @@ impl CPU {
     }
 
     pub fn sll(&mut self, instruction: Instruction) {
-        self.r[instruction.rd()] = self.r[instruction.rt()] << instruction.immediate5();
+        self.shadow_r[instruction.rd()] = self.r[instruction.rt()] << instruction.immediate5();
     }
 
     pub fn srl(&mut self, instruction: Instruction) {
@@ -330,12 +324,12 @@ impl CPU {
         if overflow {
             todo!("raise checked add exception");
         } else {
-            self.r[instruction.rd()] = result as u32;
+            self.shadow_r[instruction.rd()] = result as u32;
         }
     }
 
     pub fn addu(&mut self, instruction: Instruction) {
-        self.r[instruction.rd()] = self.r[instruction.rs()] + self.r[instruction.rt()];
+        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] + self.r[instruction.rt()];
     }
 
     pub fn sub(&mut self, instruction: Instruction) {
@@ -347,11 +341,11 @@ impl CPU {
     }
 
     pub fn and(&mut self, instruction: Instruction) {
-        self.r[instruction.rd()] = self.r[instruction.rs()] & self.r[instruction.rt()];
+        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] & self.r[instruction.rt()];
     }
 
     pub fn or(&mut self, instruction: Instruction) {
-        self.r[instruction.rd()] = self.r[instruction.rs()] | self.r[instruction.rt()];
+        self.shadow_r[instruction.rd()] = self.r[instruction.rs()] | self.r[instruction.rt()];
     }
 
     pub fn xor(&mut self, instruction: Instruction) {
@@ -367,6 +361,6 @@ impl CPU {
     }
 
     pub fn sltu(&mut self, instruction: Instruction) {
-        self.r[instruction.rd()] = (self.r[instruction.rs()] < self.r[instruction.rt()]) as u32;
+        self.shadow_r[instruction.rd()] = (self.r[instruction.rs()] < self.r[instruction.rt()]) as u32;
     }
 }

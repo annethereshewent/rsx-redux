@@ -81,7 +81,7 @@ impl Bus {
     pub fn mem_write32(&mut self, address: u32, value: u32) {
         let address = Self::translate_address(address);
 
-        if address < 0xff {
+        if (0xb0..=0xbc).contains(&address) {
             println!("address = 0x{:x} value = 0x{:x}", address, value);
         }
 
@@ -111,11 +111,12 @@ impl Bus {
     pub fn mem_write16(&mut self, address: u32, value: u16) {
         let address = Self::translate_address(address);
 
-        if address < 0xff {
+        if (0xb0..=0xbc).contains(&address) {
             println!("address = 0x{:x} value = 0x{:x}", address, value);
         }
 
         match address {
+            0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
             0x1f801d80 => self.spu.main_volume_left = value,
             0x1f801d82 => self.spu.main_volume_right = value,
             0x1f801d84 => self.spu.reverb_volume_left = value,
@@ -125,9 +126,9 @@ impl Bus {
     }
 
     pub fn mem_write8(&mut self, address: u32, value: u8) {
-         let address = Self::translate_address(address);
+        let address = Self::translate_address(address);
 
-        if address < 0xff {
+        if (0xb0..=0xbc).contains(&address) {
             println!("address = 0x{:x} value = 0x{:x}", address, value);
         }
 

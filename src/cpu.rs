@@ -1,57 +1,16 @@
+use std::collections::HashSet;
+
 use bitflags::bitflags;
 use bus::Bus;
+use cop0::COP0;
 use instructions::Instruction;
 
 pub mod bus;
 pub mod instructions;
 pub mod disassembler;
+pub mod cop0;
 
 pub const RA_REGISTER: usize = 31;
-
-pub struct COP0 {
-    pub sr: StatusRegister,
-    pub dcic: u32,
-    pub bpc: u32,
-    pub bda: u32,
-    pub tar: u32,
-    pub bdam: u32,
-    pub bpcm: u32
-}
-
-impl COP0 {
-    pub fn new() -> Self {
-        Self {
-            sr: StatusRegister::from_bits_retain(0),
-            dcic: 0,
-            bpc: 0,
-            bda: 0,
-            tar: 0,
-            bdam: 0,
-            bpcm: 0
-        }
-    }
-
-    pub fn mfc0(&self, index: usize) -> u32 {
-        match index {
-            0xc => self.sr.bits(),
-            _ => todo!("mfc0 index: {index}")
-        }
-    }
-
-    pub fn mtc0(&mut self, index: usize, value: u32) {
-        match index {
-            0x3 => self.bpc = value,
-            0x5 => self.bda = value,
-            0x6 => (), // read only
-            0x7 => self.dcic = value,
-            0x9 => self.bdam = value,
-            0xb => self.bpcm = value,
-            0xc => self.sr = StatusRegister::from_bits_retain(value),
-            0xd => (), // cause, read only
-            _ => todo!("mtc0 index: 0x{:x}", index)
-        }
-    }
-}
 
 bitflags! {
     pub struct StatusRegister: u32 {
@@ -61,7 +20,7 @@ bitflags! {
         const KUP = 1 << 3;
         const IEO = 1 << 4;
         const KUO = 1 << 5;
-        const ISOLATE_CACH = 1 << 16;
+        const ISOLATE_CACHE = 1 << 16;
         const SWC = 1 << 17;
         const PZ = 1 << 18;
         const CM = 1 << 19;
@@ -74,8 +33,8 @@ bitflags! {
 
 pub struct CPU {
     r: [u32; 32],
-    delayed_register: [Option<usize>; 2],
-    delayed_value: [Option<u32>; 2],
+    shadow_r: [u32; 32],
+    delayed_load: Option<(usize, u32)>,
     pc: u32,
     previous_pc: u32,
     next_pc: u32,
@@ -84,7 +43,9 @@ pub struct CPU {
     pub bus: Bus,
     instructions: [fn(&mut CPU, Instruction); 0x40],
     special_instructions: [fn(&mut CPU, Instruction); 0x40],
-    cop0: COP0
+    cop0: COP0,
+    found: HashSet<u32>,
+    debug_on: bool
 }
 
 impl CPU {
@@ -245,6 +206,7 @@ impl CPU {
 
         Self {
             r: [0; 32],
+            shadow_r: [0; 32],
             pc: 0xbfc00000,
             previous_pc: 0xbfc00000,
             next_pc: 0xbfc00004,
@@ -253,39 +215,76 @@ impl CPU {
             bus: Bus::new(),
             instructions,
             special_instructions,
-            delayed_register: [None; 2],
-            delayed_value: [None; 2],
-            cop0: COP0::new()
+            delayed_load: None,
+            cop0: COP0::new(),
+            found: HashSet::new(),
+            debug_on: false
         }
     }
 
+    fn handle_exceptions(&mut self) {
+        // TODO
+    }
+
+    pub fn store8(&mut self, address: u32, value: u8) {
+        if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
+            // TODO: implement this but for real
+            return;
+        }
+
+        self.bus.mem_write8(address, value);
+    }
+
+    pub fn store16(&mut self, address: u32, value: u16) {
+         if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
+            // TODO: implement this but for real
+            return;
+        }
+
+        self.bus.mem_write16(address, value);
+    }
+
+    pub fn store32(&mut self, address: u32, value: u32) {
+         if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
+            // TODO: implement this but for real
+            return;
+        }
+
+        self.bus.mem_write32(address, value);
+    }
+
     pub fn step(&mut self) {
-        let load_delay = self.delayed_register[0].is_some();
+        self.handle_exceptions();
 
         self.r[0] = 0;
+        self.shadow_r[0] = 0;
+
         let opcode = self.bus.mem_read32(self.pc);
 
         self.previous_pc = self.pc;
 
         self.pc = self.next_pc;
 
-        println!("[PC: 0x{:x}] [Opcode: 0x{:x}] {}", self.previous_pc, opcode, self.disassemble(opcode));
+
+        if !self.found.contains(&self.previous_pc) {
+            println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
+            // self.found.insert(self.previous_pc);
+        }
+
+        // if self.previous_pc == 0xbfc0d9a8 {
+        //     panic!("ahhhh!!!!!!!")
+        // }
 
         self.next_pc += 4;
 
+        if let Some((register, value)) = self.delayed_load {
+            self.shadow_r[register] = value;
+
+            self.delayed_load = None;
+        }
+
         self.decode_opcode(opcode);
 
-        if load_delay {
-            let delayed_register = self.delayed_register[0].unwrap();
-            let value = self.delayed_value[0].unwrap();
-
-            self.r[delayed_register] = value;
-
-            self.delayed_register[0] = self.delayed_register[1];
-            self.delayed_value[0] = self.delayed_value[1];
-
-            self.delayed_register[1] = None;
-            self.delayed_value[1] = None;
-        }
+        self.r = self.shadow_r;
     }
 }
