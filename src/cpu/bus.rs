@@ -1,8 +1,10 @@
 use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};
 use spu::SPU;
+use timer::Timer;
 
 pub mod registers;
 pub mod spu;
+pub mod timer;
 
 pub struct Bus {
     bios: Vec<u8>,
@@ -22,7 +24,8 @@ pub struct Bus {
     spu: SPU,
     exp1_post: u8,
     pub interrupt_mask: InterruptRegister,
-    pub interrupt_stat: InterruptRegister
+    pub interrupt_stat: InterruptRegister,
+    pub timers: [Timer; 3]
 }
 
 impl Bus {
@@ -45,7 +48,8 @@ impl Bus {
             spu: SPU::new(),
             exp1_post: 0,
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
-            interrupt_stat: InterruptRegister::from_bits_truncate(0)
+            interrupt_stat: InterruptRegister::from_bits_truncate(0),
+            timers: [Timer::new(); 3]
         }
     }
 
@@ -118,6 +122,15 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
+            0x1f801100 => self.timers[0].counter = value,
+            0x1f801104 => self.timers[0].write_counter_register(value),
+            0x1f801108 => self.timers[0].counter_target = value,
+            0x1f801110 => self.timers[1].counter = value,
+            0x1f801114 => self.timers[1].write_counter_register(value),
+            0x1f801118 => self.timers[1].counter_target = value,
+            0x1f801120 => self.timers[2].counter = value,
+            0x1f801124 => self.timers[2].write_counter_register(value),
+            0x1f801128 => self.timers[2].counter_target = value,
             0x1f801d80 => self.spu.main_volume_left = value,
             0x1f801d82 => self.spu.main_volume_right = value,
             0x1f801d84 => self.spu.reverb_volume_left = value,
