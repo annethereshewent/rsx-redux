@@ -1,4 +1,4 @@
-use super::CPU;
+use super::{CPU, RA_REGISTER};
 
 
 pub struct Instruction(pub u32);
@@ -58,11 +58,14 @@ impl CPU {
     }
 
     pub fn jal(&mut self, instruction: Instruction) {
-        todo!("jal");
+        self.r[RA_REGISTER] = self.next_pc;
+        self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
     }
 
     pub fn beq(&mut self, instruction: Instruction) {
-        todo!("beq");
+       if self.r[instruction.rs()] == self.r[instruction.rt()] {
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
     }
 
     pub fn bne(&mut self, instruction: Instruction) {
@@ -102,7 +105,7 @@ impl CPU {
     }
 
     pub fn andi(&mut self, instruction: Instruction) {
-        todo!("andi");
+        self.r[instruction.rt()] = self.r[instruction.rs()] & instruction.immediate16();
     }
 
     pub fn ori(&mut self, instruction: Instruction) {
@@ -145,7 +148,15 @@ impl CPU {
     }
 
     pub fn lb(&mut self, instruction: Instruction) {
-        todo!("lb");
+        let address = self.r[instruction.rs()] + instruction.immediate16();
+
+        if self.delayed_register[0].is_none() {
+            self.delayed_register[0] = Some(instruction.rt());
+            self.delayed_value[0] = Some(self.bus.mem_read8(address) as u32);
+        } else {
+            self.delayed_register[1] = Some(instruction.rt());
+            self.delayed_value[1] = Some(self.bus.mem_read8(address) as u32);
+        }
     }
 
     pub fn lh(&mut self, instruction: Instruction) {
@@ -181,11 +192,15 @@ impl CPU {
     }
 
     pub fn sb(&mut self, instruction: Instruction) {
-        todo!("sb");
+        let address = self.r[instruction.rs()] + instruction.immediate16();
+
+        self.bus.mem_write8(address, self.r[instruction.rt()] as u8);
     }
 
     pub fn sh(&mut self, instruction: Instruction) {
-        todo!("sh");
+        let address = self.r[instruction.rs()] + instruction.immediate16();
+
+        self.bus.mem_write16(address, self.r[instruction.rt()] as u16);
     }
 
     pub fn swl(&mut self, instruction: Instruction) {
@@ -259,7 +274,7 @@ impl CPU {
     }
 
     pub fn jr(&mut self, instruction: Instruction) {
-        todo!("jr");
+        self.next_pc = self.r[instruction.rs()];
     }
 
     pub fn jalr(&mut self, instruction: Instruction) {
@@ -311,7 +326,7 @@ impl CPU {
     }
 
     pub fn addu(&mut self, instruction: Instruction) {
-        todo!("addu");
+        self.r[instruction.rd()] = self.r[instruction.rs()] + self.r[instruction.rt()];
     }
 
     pub fn sub(&mut self, instruction: Instruction) {
@@ -343,6 +358,6 @@ impl CPU {
     }
 
     pub fn sltu(&mut self, instruction: Instruction) {
-        todo!("sltu");
+        self.r[instruction.rd()] = (self.r[instruction.rs()] < self.r[instruction.rt()]) as u32;
     }
 }

@@ -1,6 +1,8 @@
 use registers::delay_register::DelayRegister;
+use spu::SPU;
 
 pub mod registers;
+pub mod spu;
 
 pub struct Bus {
     bios: Vec<u8>,
@@ -16,7 +18,9 @@ pub struct Bus {
     exp3_delay: DelayRegister,
     exp2_delay: DelayRegister,
     cache_config: u32,
-    main_ram: Box<[u8]>
+    main_ram: Box<[u8]>,
+    spu: SPU,
+    exp1_post: u8
 }
 
 impl Bus {
@@ -35,7 +39,9 @@ impl Bus {
             exp3_delay: DelayRegister::new(),
             exp2_delay: DelayRegister::new(),
             cache_config: 0,
-            main_ram: vec![0; 0x200000].into_boxed_slice()
+            main_ram: vec![0; 0x200000].into_boxed_slice(),
+            spu: SPU::new(),
+            exp1_post: 0
         }
     }
 
@@ -57,6 +63,16 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
+            _ => panic!("address not implemented: 0x{:x}", address)
+        }
+    }
+
+    pub fn mem_read8(&self, address: u32) -> u32 {
+        let address = Self::translate_address(address);
+
+        match address {
+            0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
+            0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
             _ => panic!("address not implemented: 0x{:x}", address)
         }
     }
@@ -83,7 +99,29 @@ impl Bus {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
             }
-            _ => panic!("address not implemented: 0x{:x}", address)
+            _ => todo!("(mem_write32) address: 0x{:x}", address)
+        }
+    }
+
+    pub fn mem_write16(&mut self, address: u32, value: u16) {
+        let address = Self::translate_address(address);
+
+        match address {
+            0x1f801d80 => self.spu.main_volume_left = value,
+            0x1f801d82 => self.spu.main_volume_right = value,
+            0x1f801d84 => self.spu.reverb_volume_left = value,
+            0x1f801d86 => self.spu.reverb_volume_right = value,
+            _ => todo!("(mem_write16) address: 0x{:x}", address)
+        }
+    }
+
+    pub fn mem_write8(&mut self, address: u32, value: u8) {
+         let address = Self::translate_address(address);
+
+        match address {
+            0x00000000..=0x001fffff => self.main_ram[address] = value,
+            0x1f802041 => self.exp1_post = value,
+            _ => todo!("(mem_write8) address: 0x{:x}", address)
         }
     }
 }

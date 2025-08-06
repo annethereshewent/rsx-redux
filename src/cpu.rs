@@ -6,6 +6,8 @@ pub mod bus;
 pub mod instructions;
 pub mod disassembler;
 
+pub const RA_REGISTER: usize = 31;
+
 pub struct COP0 {
     pub sr: StatusRegister,
     pub dcic: u32,
