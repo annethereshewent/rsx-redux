@@ -190,10 +190,6 @@ impl CPU {
         }
     }
 
-    pub fn step_frame(&mut self) {
-
-    }
-
     pub fn step(&mut self) {
         self.r[0] = 0;
         let opcode = self.bus.mem_read32(self.pc);

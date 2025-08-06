@@ -166,7 +166,9 @@ impl CPU {
     }
 
     pub fn sw(&mut self, instruction: Instruction) {
-        todo!("sw");
+        let address = self.r[instruction.rs()] + instruction.immediate16();
+
+        self.bus.mem_write32(address, self.r[instruction.rt()]);
     }
 
     pub fn swr(&mut self, instruction: Instruction) {
@@ -206,7 +208,7 @@ impl CPU {
     }
 
     pub fn sll(&mut self, instruction: Instruction) {
-        todo!("sll");
+        self.r[instruction.rd()] = self.r[instruction.rt()] << instruction.immediate5();
     }
 
     pub fn srl(&mut self, instruction: Instruction) {

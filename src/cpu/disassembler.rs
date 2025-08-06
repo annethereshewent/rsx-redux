@@ -137,7 +137,7 @@ impl CPU {
             return format!("{command} r{}, 0x{:x}", instr.rt(), instr.immediate16());
         }
 
-        if upper & 0b11000 == 0b100000 {
+        if upper & 0b110000 == 0b100000 {
             return format!("{command} r{}, [r{} + 0x{:x}]", instr.rt(), instr.rt(), instr.immediate16());
         }
 
