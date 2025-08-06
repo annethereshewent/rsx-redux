@@ -15,7 +15,8 @@ pub struct Bus {
     cdrom_delay: DelayRegister,
     exp3_delay: DelayRegister,
     exp2_delay: DelayRegister,
-    cache_config: u32
+    cache_config: u32,
+    main_ram: Box<[u8]>
 }
 
 impl Bus {
@@ -33,7 +34,8 @@ impl Bus {
             cdrom_delay: DelayRegister::new(),
             exp3_delay: DelayRegister::new(),
             exp2_delay: DelayRegister::new(),
-            cache_config: 0
+            cache_config: 0,
+            main_ram: vec![0; 0x200000].into_boxed_slice()
         }
     }
 
@@ -62,6 +64,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
+            0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u32 ) = value },
             0x1f801000 => self.exp1_base_address = value & 0xffffff | (0x1f << 24), // TODO: implement
             0x1f801004 => {
                 self.exp2_base_address = value & 0xffffff | (0x1f << 24);

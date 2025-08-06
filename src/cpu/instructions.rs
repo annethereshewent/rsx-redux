@@ -66,7 +66,9 @@ impl CPU {
     }
 
     pub fn bne(&mut self, instruction: Instruction) {
-        todo!("bne");
+        if self.r[instruction.rs()] != self.r[instruction.rt()] {
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
     }
 
     pub fn blez(&mut self, instruction: Instruction) {
@@ -78,11 +80,17 @@ impl CPU {
     }
 
     pub fn addi(&mut self, instruction: Instruction) {
-        todo!("addi");
+        let (result, overflow) = (self.r[instruction.rs()] as i32).overflowing_add(instruction.signed_immediate16());
+
+        if overflow {
+            todo!("raise checked add exception");
+        } else {
+            self.r[instruction.rt()] = result as u32;
+        }
     }
 
     pub fn addiu(&mut self, instruction: Instruction) {
-        self.r[instruction.rt()] = (self.r[instruction.rs()] as i64 + instruction.signed_immediate16() as i64) as u32;
+        self.r[instruction.rt()] = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
     }
 
     pub fn slti(&mut self, instruction: Instruction) {
@@ -110,7 +118,18 @@ impl CPU {
     }
 
     pub fn cop0(&mut self, instruction: Instruction) {
-        todo!("cop0");
+        let upper = instruction.0 >> 28;
+        let mid = (instruction.0 >> 21) & 0x1f;
+
+        match upper {
+            0x4 => match mid {
+                4 => self.cop0.mtc0(instruction.rd(), self.r[instruction.rt()]),
+                _ => todo!("cop0 instruction: 0x{:x}", instruction.0)
+            }
+            0xc => todo!("lwc"),
+            0xd => todo!("swc"),
+            _ => todo!("cop0 instruction: 0x{:x}", instruction.0)
+        }
     }
 
     pub fn cop1(&mut self, instruction: Instruction) {

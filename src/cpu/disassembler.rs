@@ -45,7 +45,7 @@ impl CPU {
             0x5 => "BNE",
             0x6 => "BLEZ",
             0x7 => "BGTZ",
-            0x8 => "ADDIU",
+            0x8 => "ADDI",
             0x9 => "ADDIU",
             0xa => "SLTI",
             0xb => "SLTIU",
@@ -120,12 +120,12 @@ impl CPU {
         }
 
         if upper & 0b111110 == 0b100 {
-            let destination = ((self.pc as i32) + 4 + (instr.signed_immediate16() << 2)) as u32;
+            let destination = ((self.pc as i32) + (instr.signed_immediate16() << 2)) as u32;
             return format!("{command} r{}, r{}, 0x{:x}", instr.rs(), instr.rt(), destination);
         }
 
         if upper & 0b111110 == 0b110 {
-            let destination = ((self.pc as i32) + 4 + (instr.signed_immediate16() << 2)) as u32;
+            let destination = ((self.pc as i32) + (instr.signed_immediate16() << 2)) as u32;
             return format!("{command} r{}, 0x{:x}", instr.rs(), destination);
         }
 
@@ -141,6 +141,16 @@ impl CPU {
             return format!("{command} r{}, [r{} + 0x{:x}]", instr.rt(), instr.rs(), instr.immediate16());
         }
 
-        todo!("coprocessor encoding");
+        let upper_cop0 = instruction >> 28;
+        let mid = (instruction >> 21) & 0x1f;
+
+        match upper_cop0 {
+            0x4 => match mid {
+                // 0x0 => return format!("MFC0 r{}, r{}", instr.rt(), instr.rd()),
+                0x4 => return format!("MTC0 r{}, r{}", instr.rt(), instr.rd()),
+                _ => todo!("cop0 disassembly: 0b{:032b}", instruction)
+            }
+            _ => todo!("cop0 disassembly: 0b{:032b}", instruction)
+        }
     }
 }
