@@ -148,14 +148,14 @@ impl CPU {
     }
 
     pub fn lb(&mut self, instruction: Instruction) {
-        let address = self.r[instruction.rs()] + instruction.immediate16();
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         if self.delayed_register[0].is_none() {
             self.delayed_register[0] = Some(instruction.rt());
-            self.delayed_value[0] = Some(self.bus.mem_read8(address) as u32);
+            self.delayed_value[0] = Some(self.bus.mem_read8(address) as i8 as i16 as i32 as u32);
         } else {
             self.delayed_register[1] = Some(instruction.rt());
-            self.delayed_value[1] = Some(self.bus.mem_read8(address) as u32);
+            self.delayed_value[1] = Some(self.bus.mem_read8(address) as i8 as i16 as i32 as u32);
         }
     }
 
@@ -168,7 +168,7 @@ impl CPU {
     }
 
     pub fn lw(&mut self, instruction: Instruction) {
-        let address = self.r[instruction.rs()] + instruction.immediate16();
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         if self.delayed_register[0].is_none() {
             self.delayed_register[0] = Some(instruction.rt());
@@ -192,13 +192,15 @@ impl CPU {
     }
 
     pub fn sb(&mut self, instruction: Instruction) {
-        let address = self.r[instruction.rs()] + instruction.immediate16();
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        println!("address = 0x{:x}, r{} = 0x{:x} immediate = 0x{:x}", address, instruction.rs(), self.r[instruction.rs()], instruction.signed_immediate16());
 
         self.bus.mem_write8(address, self.r[instruction.rt()] as u8);
     }
 
     pub fn sh(&mut self, instruction: Instruction) {
-        let address = self.r[instruction.rs()] + instruction.immediate16();
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         self.bus.mem_write16(address, self.r[instruction.rt()] as u16);
     }
@@ -208,7 +210,7 @@ impl CPU {
     }
 
     pub fn sw(&mut self, instruction: Instruction) {
-        let address = self.r[instruction.rs()] + instruction.immediate16();
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         self.bus.mem_write32(address, self.r[instruction.rt()]);
     }

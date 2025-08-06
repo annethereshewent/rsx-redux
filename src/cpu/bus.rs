@@ -71,6 +71,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
+            0x00000000..=0x001fffff => self.main_ram[address] as u32,
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
             _ => panic!("address not implemented: 0x{:x}", address)
