@@ -116,7 +116,7 @@ impl CPU {
         }
 
         if upper & 0b111110 == 0b10 {
-            return format!("{command} 0x{:x}", (instr.immediate26() << 2) | 0xf0000000);
+            return format!("{command} 0x{:x}", (instr.immediate26() << 2) | (self.pc & 0xf0000000));
         }
 
         if upper & 0b111110 == 0b100 {

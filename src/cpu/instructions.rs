@@ -54,7 +54,7 @@ impl CPU {
     }
 
     pub fn j(&mut self, instruction: Instruction) {
-        todo!("j");
+        self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
     }
 
     pub fn jal(&mut self, instruction: Instruction) {
@@ -82,7 +82,7 @@ impl CPU {
     }
 
     pub fn addiu(&mut self, instruction: Instruction) {
-        todo!("addiu");
+        self.r[instruction.rt()] = (self.r[instruction.rs()] as i64 + instruction.signed_immediate16() as i64) as u32;
     }
 
     pub fn slti(&mut self, instruction: Instruction) {

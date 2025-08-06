@@ -4,14 +4,16 @@ pub mod registers;
 
 pub struct Bus {
     bios: Vec<u8>,
-    bios_delay: DelayRegister
+    bios_delay: DelayRegister,
+    ram_size: u32
 }
 
 impl Bus {
     pub fn new() -> Self {
         Self {
             bios: Vec::new(),
-            bios_delay: DelayRegister::new()
+            bios_delay: DelayRegister::new(),
+            ram_size: 0
         }
     }
 
@@ -40,7 +42,7 @@ impl Bus {
 
         match address {
             0x1f801010 => self.bios_delay.write(value),
-
+            0x1f801060 => self.ram_size = value, // TODO: actually implement
             _ => panic!("address not implemented: 0x{:x}", address)
         }
     }

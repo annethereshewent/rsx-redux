@@ -196,12 +196,12 @@ impl CPU {
 
         println!("[PC: 0x{:x}] [Opcode: 0x{:x}] {}", self.pc, opcode, self.disassemble(opcode));
 
-        self.decode_opcode(opcode);
-
         self.previous_pc = self.pc;
 
         self.pc = self.next_pc;
 
         self.next_pc += 4;
+
+        self.decode_opcode(opcode);
     }
 }
