@@ -1,4 +1,4 @@
-use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};
+use registers::{delay_register::DelayRegister, dma_control_register::DmaControlRegister, interrupt_register::InterruptRegister};
 use spu::SPU;
 use timer::Timer;
 
@@ -25,7 +25,8 @@ pub struct Bus {
     exp1_post: u8,
     pub interrupt_mask: InterruptRegister,
     pub interrupt_stat: InterruptRegister,
-    pub timers: [Timer; 3]
+    pub timers: [Timer; 3],
+    dma_control: DmaControlRegister
 }
 
 impl Bus {
@@ -49,7 +50,8 @@ impl Bus {
             exp1_post: 0,
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
             interrupt_stat: InterruptRegister::from_bits_truncate(0),
-            timers: [Timer::new(); 3]
+            timers: [Timer::new(); 3],
+            dma_control: DmaControlRegister::from_bits_retain(0x7654321)
         }
     }
 
@@ -70,8 +72,10 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
+            0x1f801074 => self.interrupt_mask.bits(),
+            0x1f8010f0 => self.dma_control.bits(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
-            _ => panic!("address not implemented: 0x{:x}", address)
+            _ => panic!("(mem_read32)address not implemented: 0x{:x}", address)
         }
     }
 
@@ -109,6 +113,7 @@ impl Bus {
                 self.interrupt_stat = InterruptRegister::from_bits_truncate(new_stat);
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
+            0x1f8010f0 => self.dma_control = DmaControlRegister::from_bits_retain(value),
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));

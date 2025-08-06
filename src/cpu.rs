@@ -213,7 +213,7 @@ impl CPU {
         self.cycles += cycles;
     }
 
-    fn handle_exceptions(&mut self) {
+    fn handle_interrupts(&mut self) {
         // TODO
     }
 
@@ -262,9 +262,10 @@ impl CPU {
     pub fn step(&mut self) {
         self.r[0] = 0;
 
-        self.handle_exceptions();
+        self.handle_interrupts();
 
         let should_transfer = self.delayed_load.is_some();
+        self.ignored_load_delay = None;
 
         let opcode = self.bus.mem_read32(self.pc);
 
@@ -272,10 +273,9 @@ impl CPU {
 
         self.pc = self.next_pc;
 
-
         if !self.found.contains(&self.previous_pc) {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
-            // self.found.insert(self.previous_pc);
+            self.found.insert(self.previous_pc);
         }
 
         self.next_pc += 4;
@@ -294,8 +294,6 @@ impl CPU {
             ExceptionType::Syscall => self.pc,
             _ => self.previous_pc
         };
-
-        println!("epc = 0x{:x}", self.pc);
 
         self.pc = if self.cop0.sr.contains(StatusRegister::BEV) { 0xbfc00180 } else { 0x80000080 };
         self.next_pc = self.pc + 4;

@@ -304,10 +304,6 @@ impl CPU {
         let shifted_val = self.r[instruction.rt()] as i32;
         self.r[instruction.rd()] = (shifted_val >> instruction.immediate5()) as u32;
 
-        println!("{}", self.r[instruction.rt()] >> instruction.immediate5());
-
-        println!("result = 0x{:x}, original val = 0x{:x}, immediate5 = 0x{:x}", self.r[instruction.rd()], self.r[instruction.rt()], instruction.immediate5());
-
         self.ignored_load_delay = Some(instruction.rd());
     }
 
@@ -376,7 +372,7 @@ impl CPU {
         self.tick(1);
 
         let divisor = self.r[instruction.rs()] as i32;
-        let dividend = self.r[instruction.rs()] as i32;
+        let dividend = self.r[instruction.rt()] as i32;
 
         if divisor != 0 {
             self.lo = (dividend / divisor) as u32;
@@ -385,7 +381,15 @@ impl CPU {
     }
 
     pub fn divu(&mut self, instruction: Instruction) {
-        todo!("divu");
+        self.tick(1);
+
+        let divisor = self.r[instruction.rs()];
+        let dividend = self.r[instruction.rt()];
+
+        if divisor != 0 {
+            self.lo = dividend / divisor;
+            self.hi = dividend % divisor;
+        }
     }
 
     pub fn add(&mut self, instruction: Instruction) {
