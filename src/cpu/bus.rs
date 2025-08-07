@@ -89,6 +89,7 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
+            0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f8010f0 => self.dma_control.bits(),
             0x1f8010f4 => self.dicr.read(),
@@ -103,6 +104,8 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16 as *const u32 ) },
+            0x1f801070 => self.interrupt_stat.bits() & 0xffff,
+            0x1f801072 => (self.interrupt_stat.bits() >> 16) & 0xffff,
             0x1f801074 => self.interrupt_mask.bits() & 0xffff,
             0x1f801076 => self.interrupt_mask.bits() >> 16,
             0x1f801c00..=0x1f801d7f => self.spu.read_voices(address),
@@ -148,7 +151,7 @@ impl Bus {
             0x1f801060 => self.ram_size = value, // TODO: actually implement lmao
             0x1f801070 => {
                 let new_stat = self.interrupt_stat.bits() & value;
-                self.interrupt_stat = InterruptRegister::from_bits_truncate(new_stat);
+                self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
             0x1f8010f0 => self.dma_control = DmaControlRegister::from_bits_retain(value),
@@ -169,6 +172,10 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
+            0x1f801070 => {
+                let new_stat = self.interrupt_stat.bits() & value as u32;
+                self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
+            }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_retain((self.interrupt_mask.bits() & 0xffff0000) | value as u32),
             0x1f801076 => self.interrupt_mask = InterruptRegister::from_bits_retain((self.interrupt_mask.bits() & 0xffff) | (value as u32) << 16),
             0x1f801100 => self.timers[0].counter = value,

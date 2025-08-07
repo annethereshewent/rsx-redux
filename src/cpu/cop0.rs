@@ -66,7 +66,7 @@ bitflags! {
 
 impl StatusRegister {
     pub fn interrupt_mask(&self) -> u32 {
-        (self.bits() >> 8) & 0x1ff
+        (self.bits() >> 8) & 0xff
     }
 
     pub fn return_from_exception(&mut self) {
@@ -74,12 +74,18 @@ impl StatusRegister {
 
         let bits45 = (self.bits45()) << 2;
 
-        *self = Self::from_bits_retain((self.bits() & !bits23) | bits23);
-        *self = Self::from_bits_retain((self.bits() & !(bits45 << 2) | (bits45 << 2)))
+        let mut sr_bits = self.bits();
+
+        sr_bits &= !0xf;
+
+        sr_bits |= bits23;
+        sr_bits |= bits45;
+
+        *self = Self::from_bits_retain(sr_bits);
     }
 
     pub fn bits23(&self) -> u32 {
-        (self.bits() << 2) & 0x3
+        (self.bits() >> 2) & 0x3
     }
 
     pub fn bits45(&self) -> u32 {
@@ -121,12 +127,11 @@ impl COP0 {
             0xb => self.bpcm = value,
             0xc => self.sr = StatusRegister::from_bits_retain(value),
             0xd => self.cause.write(value),
-
             _ => todo!("mtc0 index: 0x{:x}", index)
         }
     }
 
     pub fn rfe(&mut self) {
-
+        self.sr.return_from_exception();
     }
 }

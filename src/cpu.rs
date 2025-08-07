@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use bus::{scheduler::EventType, Bus};
-use cop0::{StatusRegister, COP0};
+use cop0::{CauseRegister, StatusRegister, COP0};
 use instructions::Instruction;
 
 pub mod bus;
@@ -32,7 +32,8 @@ pub struct CPU {
     found: HashSet<u32>,
     debug_on: bool,
     ignored_load_delay: Option<usize>,
-    cycles: usize
+    branch_taken: bool,
+    in_delay_slot: bool
 }
 
 impl CPU {
@@ -206,7 +207,8 @@ impl CPU {
             found: HashSet::new(),
             debug_on: false,
             ignored_load_delay: None,
-            cycles: 0
+            in_delay_slot: false,
+            branch_taken: false
         }
     }
 
@@ -215,12 +217,31 @@ impl CPU {
     }
 
     fn handle_interrupts(&mut self) {
-        let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits() & self.cop0.sr.interrupt_mask();
+        let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits();
 
-        // if interrupts != 0 {
-        //     println!("entering interrupt!");
-        //     self.enter_exception(ExceptionType::Interrupt);
-        // }
+        if interrupts != 0 {
+            println!("interrupts = 0b{:b}", interrupts);
+            let shift = interrupts.trailing_zeros() + 10;
+
+            println!("interrupt bit # = {shift}");
+            self.prepare_interrupt(1 << shift);
+        } else {
+            self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() & 0xffc03ff);
+        }
+    }
+
+    fn check_irqs(&self) -> bool {
+        ((self.cop0.cause.bits() >> 8) as u8) & ((self.cop0.sr.bits() >> 8) as u8) != 0 &&
+            self.cop0.sr.contains(StatusRegister::IEC)
+    }
+
+    fn prepare_interrupt(&mut self, interrupt: u32) {
+        let mut cop0_bits = self.cop0.cause.bits();
+
+        cop0_bits &= !0x7f;
+        cop0_bits |= interrupt;
+
+        self.cop0.cause = CauseRegister::from_bits_retain(cop0_bits);
     }
 
     pub fn store8(&mut self, address: u32, value: u8) {
@@ -281,13 +302,21 @@ impl CPU {
         let should_transfer = self.delayed_load.is_some();
         self.ignored_load_delay = None;
 
+        self.in_delay_slot = self.branch_taken;
+        self.cop0.cause.set(CauseRegister::BT, self.in_delay_slot);
+        self.branch_taken = false;
+        self.cop0.cause.remove(CauseRegister::BD);
+
+        if self.check_irqs() {
+            println!("firing an interrupt! how exciting!");
+            self.enter_exception(ExceptionType::Interrupt);
+        }
+
         let opcode = self.bus.mem_read32(self.pc);
 
         self.previous_pc = self.pc;
 
         self.pc = self.next_pc;
-
-        self.debug_on = true;
 
         if !self.found.contains(&self.previous_pc) && self.debug_on {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
@@ -316,10 +345,27 @@ impl CPU {
         let exception_cause = exception_type as u32;
         self.cop0.cause.write_exception_code(exception_cause);
 
+
+        let mut sr_bits = self.cop0.sr.bits();
+        let mode = sr_bits & 0x3f;
+        sr_bits &= !0x3f;
+        sr_bits |= (mode << 2) & 0x3f;
+
+        self.cop0.sr = StatusRegister::from_bits_retain(sr_bits);
+
         self.cop0.epc = match exception_type {
             ExceptionType::Interrupt => self.pc,
             _ => self.previous_pc
         };
+
+        if self.in_delay_slot {
+            self.cop0.epc -= 4;
+            self.cop0.cause = CauseRegister::from_bits_retain(self.cop0.cause.bits() | 1 << 31);
+
+            self.cop0.tar = self.pc;
+        } else {
+            self.cop0.cause = CauseRegister::from_bits_retain(self.cop0.cause.bits() & !(1 << 31));
+        }
 
         self.pc = if self.cop0.sr.contains(StatusRegister::BEV) { 0xbfc00180 } else { 0x80000080 };
         self.next_pc = self.pc + 4;

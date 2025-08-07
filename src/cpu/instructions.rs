@@ -1,4 +1,4 @@
-use super::{ExceptionType, CPU, RA_REGISTER};
+use super::{cop0::CauseRegister, ExceptionType, CPU, RA_REGISTER};
 
 
 pub struct Instruction(pub u32);
@@ -62,12 +62,16 @@ impl CPU {
     pub fn bltz(&mut self, instruction: Instruction) {
         if (self.r[instruction.rs()] as i32) < 0 {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+            self.branch_taken = true;
+            self.cop0.cause.insert(CauseRegister::BD);
         }
     }
 
     pub fn bgez(&mut self, instruction: Instruction) {
         if (self.r[instruction.rs()] as i32) >= 0 {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+            self.branch_taken = true;
+            self.cop0.cause.insert(CauseRegister::BD);
         }
     }
 
@@ -81,6 +85,8 @@ impl CPU {
 
     pub fn j(&mut self, instruction: Instruction) {
         self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
+        self.branch_taken = true;
+        self.cop0.cause.insert(CauseRegister::BD);
     }
 
     pub fn jal(&mut self, instruction: Instruction) {
@@ -89,29 +95,39 @@ impl CPU {
         self.ignored_load_delay = Some(RA_REGISTER);
 
         self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
+        self.branch_taken = true;
+        self.cop0.cause.insert(CauseRegister::BD);
     }
 
     pub fn beq(&mut self, instruction: Instruction) {
        if self.r[instruction.rs()] == self.r[instruction.rt()] {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+            self.branch_taken = true;
+            self.cop0.cause.insert(CauseRegister::BD);
         }
     }
 
     pub fn bne(&mut self, instruction: Instruction) {
         if self.r[instruction.rs()] != self.r[instruction.rt()] {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+            self.branch_taken = true;
+            self.cop0.cause.insert(CauseRegister::BD);
         }
     }
 
     pub fn blez(&mut self, instruction: Instruction) {
         if self.r[instruction.rs()] as i32 <= 0 {
-           self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+            self.branch_taken = true;
+            self.cop0.cause.insert(CauseRegister::BD);
         }
     }
 
     pub fn bgtz(&mut self, instruction: Instruction) {
         if self.r[instruction.rs()] > 0 {
            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+           self.branch_taken = true;
+           self.cop0.cause.insert(CauseRegister::BD);
         }
     }
 
@@ -329,6 +345,9 @@ impl CPU {
 
     pub fn jr(&mut self, instruction: Instruction) {
         self.next_pc = self.r[instruction.rs()];
+
+        self.branch_taken = true;
+        self.cop0.cause.insert(CauseRegister::BD);
     }
 
     pub fn jalr(&mut self, instruction: Instruction) {
@@ -338,6 +357,9 @@ impl CPU {
 
         self.r[instruction.rd()] = return_val;
         self.ignored_load_delay = Some(instruction.rd());
+
+        self.branch_taken = true;
+        self.cop0.cause.insert(CauseRegister::BD);
     }
 
     pub fn syscall(&mut self, _instruction: Instruction) {
