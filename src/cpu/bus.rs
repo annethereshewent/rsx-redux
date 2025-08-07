@@ -1,5 +1,10 @@
+use dma::dma_interrupt_register::DmaInterruptRegister;
 use gpu::GPU;
-use registers::{delay_register::DelayRegister, dma_control_register::DmaControlRegister, interrupt_register::InterruptRegister};
+use registers::{
+    delay_register::DelayRegister,
+    dma_control_register::DmaControlRegister,
+    interrupt_register::InterruptRegister
+};
 use scheduler::Scheduler;
 use spu::SPU;
 use timer::Timer;
@@ -9,6 +14,7 @@ pub mod spu;
 pub mod timer;
 pub mod scheduler;
 pub mod gpu;
+pub mod dma;
 
 pub struct Bus {
     bios: Vec<u8>,
@@ -31,6 +37,7 @@ pub struct Bus {
     pub interrupt_stat: InterruptRegister,
     pub timers: [Timer; 3],
     dma_control: DmaControlRegister,
+    dicr: DmaInterruptRegister,
     pub scheduler: Scheduler,
     pub gpu: GPU
 }
@@ -60,7 +67,8 @@ impl Bus {
             timers: [Timer::new(); 3],
             dma_control: DmaControlRegister::from_bits_retain(0x7654321),
             gpu: GPU::new(&mut scheduler),
-            scheduler
+            scheduler,
+            dicr: DmaInterruptRegister::from_bits_retain(0)
         }
     }
 
@@ -83,6 +91,8 @@ impl Bus {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f8010f0 => self.dma_control.bits(),
+            0x1f8010f4 => self.dicr.read(),
+            0x1f801814 => self.gpu.read_stat(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
             _ => todo!("(mem_read32) address: 0x{:x}", address)
         }
@@ -93,6 +103,8 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16 as *const u32 ) },
+            0x1f801074 => self.interrupt_mask.bits() & 0xffff,
+            0x1f801076 => self.interrupt_mask.bits() >> 16,
             0x1f801c00..=0x1f801d7f => self.spu.read_voices(address),
             0x1f801d88 => self.spu.keyon & 0xffff,
             0x1f801d8a => (self.spu.keyon >> 16) & 0xffff,
@@ -140,6 +152,10 @@ impl Bus {
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
             0x1f8010f0 => self.dma_control = DmaControlRegister::from_bits_retain(value),
+            0x1f8010f4 => self.dicr = DmaInterruptRegister::from_bits_retain(value),
+            0x1f801114 => self.timers[1].counter = value as u16,
+            0x1f801118 => self.timers[1].counter_target = value as u16,
+            0x1f801810 => self.gpu.command_fifo.push_back(value),
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
@@ -153,6 +169,8 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
+            0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_retain((self.interrupt_mask.bits() & 0xffff0000) | value as u32),
+            0x1f801076 => self.interrupt_mask = InterruptRegister::from_bits_retain((self.interrupt_mask.bits() & 0xffff) | (value as u32) << 16),
             0x1f801100 => self.timers[0].counter = value,
             0x1f801104 => self.timers[0].write_counter_register(value),
             0x1f801108 => self.timers[0].counter_target = value,

@@ -11,8 +11,10 @@ pub mod cop0;
 
 pub const RA_REGISTER: usize = 31;
 
+#[derive(Copy, Clone)]
 pub enum ExceptionType {
-    Syscall = 0x8
+    Syscall = 0x8,
+    Interrupt = 0x0
 }
 
 pub struct CPU {
@@ -213,7 +215,12 @@ impl CPU {
     }
 
     fn handle_interrupts(&mut self) {
-        // TODO
+        let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits() & self.cop0.sr.interrupt_mask();
+
+        // if interrupts != 0 {
+        //     println!("entering interrupt!");
+        //     self.enter_exception(ExceptionType::Interrupt);
+        // }
     }
 
     pub fn store8(&mut self, address: u32, value: u8) {
@@ -280,6 +287,8 @@ impl CPU {
 
         self.pc = self.next_pc;
 
+        self.debug_on = true;
+
         if !self.found.contains(&self.previous_pc) && self.debug_on {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
             self.found.insert(self.previous_pc);
@@ -293,7 +302,8 @@ impl CPU {
 
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
-                EventType::FrameFinished => self.bus.gpu.handle_frame_finished(&mut self.bus.scheduler, cycles_left)
+                EventType::Vblank => self.bus.gpu.handle_vblank(&mut self.bus.scheduler, cycles_left),
+                EventType::Hblank => self.bus.gpu.handle_hblank(&mut self.bus.interrupt_stat, &mut self.bus.scheduler, cycles_left)
             }
         }
 
@@ -303,10 +313,12 @@ impl CPU {
     }
 
     pub fn enter_exception(&mut self, exception_type: ExceptionType) {
-        self.cop0.cause.write_exception_code(exception_type as u32);
+        let exception_cause = exception_type as u32;
+        self.cop0.cause.write_exception_code(exception_cause);
 
         self.cop0.epc = match exception_type {
-            ExceptionType::Syscall => self.pc
+            ExceptionType::Interrupt => self.pc,
+            _ => self.previous_pc
         };
 
         self.pc = if self.cop0.sr.contains(StatusRegister::BEV) { 0xbfc00180 } else { 0x80000080 };

@@ -4,7 +4,8 @@ use priority_queue::PriorityQueue;
 
 #[derive(Hash, Eq, PartialEq)]
 pub enum EventType {
-    FrameFinished
+    Vblank,
+    Hblank,
 }
 
 pub struct Scheduler {

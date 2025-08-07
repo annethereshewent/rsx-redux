@@ -32,7 +32,7 @@ impl Frontend {
         });
 
         let window = video_subsystem
-            .window("RSX-redux", (640 * 2) as u32, (480 * 2) as u32)
+            .window("RSX-redux", (320 * 2) as u32, (240 * 2) as u32)
             .position_centered()
             .build()
             .unwrap();
