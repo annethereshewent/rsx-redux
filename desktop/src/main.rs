@@ -1,6 +1,9 @@
 use std::{env, fs};
 
+use frontend::Frontend;
 use rsx_redux::cpu::CPU;
+
+pub mod frontend;
 
 
 fn main() {
@@ -16,7 +19,10 @@ fn main() {
 
     cpu.bus.load_bios(bios);
 
+    let mut frontend = Frontend::new();
+
     loop {
         cpu.step_frame();
+        frontend.handle_events();
     }
 }

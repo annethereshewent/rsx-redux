@@ -289,17 +289,17 @@ impl CPU {
 
         self.decode_opcode(opcode);
 
-        if should_transfer {
-            self.transfer_load();
-        }
+        self.tick(2);
 
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
-                EventType::FrameFinished => self.bus.gpu.handle_frame_finished(&mut self.bus.scheduler)
+                EventType::FrameFinished => self.bus.gpu.handle_frame_finished(&mut self.bus.scheduler, cycles_left)
             }
         }
 
-        self.tick(2);
+        if should_transfer {
+            self.transfer_load();
+        }
     }
 
     pub fn enter_exception(&mut self, exception_type: ExceptionType) {

@@ -16,8 +16,10 @@ impl GPU {
         }
     }
 
-    pub fn handle_frame_finished(&mut self, scheduler: &mut Scheduler) {
-        scheduler.schedule(EventType::FrameFinished, ((CYCLES_PER_SCANLINE as f32 * NUM_SCANLINES as f32) * (7.0/11.0)) as usize);
+    pub fn handle_frame_finished(&mut self, scheduler: &mut Scheduler, cycles_left: usize) {
+        let cycles = ((CYCLES_PER_SCANLINE as f32 * NUM_SCANLINES as f32) * (7.0 / 11.0)) as usize;
+
+        scheduler.schedule(EventType::FrameFinished, cycles - cycles_left);
 
         self.frame_finished = true;
     }
