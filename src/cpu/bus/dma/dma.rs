@@ -152,9 +152,9 @@ impl Dma {
 
         self.dicr = DmaInterruptRegister::from_bits_retain(interrupt_bits);
 
-        // if self.dicr.master_interrupt_flag() {
-        //     interrupt_stat.insert(InterruptRegister::DMA);
-        // }
+        if self.dicr.master_interrupt_flag() {
+            interrupt_stat.insert(InterruptRegister::DMA);
+        }
     }
 
     pub fn write_registers(&mut self, address: usize, value: u32, scheduler: &mut Scheduler, ram: &mut [u8]) {
