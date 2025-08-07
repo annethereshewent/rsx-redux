@@ -17,6 +17,6 @@ fn main() {
     cpu.bus.load_bios(bios);
 
     loop {
-        cpu.step();
+        cpu.step_frame();
     }
 }

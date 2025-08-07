@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use bus::Bus;
+use bus::{scheduler::EventType, Bus};
 use cop0::{StatusRegister, COP0};
 use instructions::Instruction;
 
@@ -209,7 +209,7 @@ impl CPU {
     }
 
     pub fn tick(&mut self, cycles: usize) {
-        self.cycles += cycles;
+        self.bus.scheduler.tick(cycles);
     }
 
     fn handle_interrupts(&mut self) {
@@ -258,6 +258,14 @@ impl CPU {
         self.bus.mem_write32(address, value);
     }
 
+    pub fn step_frame(&mut self) {
+        while !self.bus.gpu.frame_finished {
+            self.step();
+        }
+
+        self.bus.gpu.frame_finished = false;
+    }
+
     pub fn step(&mut self) {
         self.r[0] = 0;
 
@@ -272,7 +280,7 @@ impl CPU {
 
         self.pc = self.next_pc;
 
-        if !self.found.contains(&self.previous_pc) {
+        if !self.found.contains(&self.previous_pc) && self.debug_on {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
             self.found.insert(self.previous_pc);
         }
@@ -284,6 +292,14 @@ impl CPU {
         if should_transfer {
             self.transfer_load();
         }
+
+        if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
+            match event {
+                EventType::FrameFinished => self.bus.gpu.handle_frame_finished(&mut self.bus.scheduler)
+            }
+        }
+
+        self.tick(2);
     }
 
     pub fn enter_exception(&mut self, exception_type: ExceptionType) {

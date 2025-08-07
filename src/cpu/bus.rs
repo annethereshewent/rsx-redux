@@ -1,10 +1,14 @@
+use gpu::GPU;
 use registers::{delay_register::DelayRegister, dma_control_register::DmaControlRegister, interrupt_register::InterruptRegister};
+use scheduler::Scheduler;
 use spu::SPU;
 use timer::Timer;
 
 pub mod registers;
 pub mod spu;
 pub mod timer;
+pub mod scheduler;
+pub mod gpu;
 
 pub struct Bus {
     bios: Vec<u8>,
@@ -26,11 +30,14 @@ pub struct Bus {
     pub interrupt_mask: InterruptRegister,
     pub interrupt_stat: InterruptRegister,
     pub timers: [Timer; 3],
-    dma_control: DmaControlRegister
+    dma_control: DmaControlRegister,
+    pub scheduler: Scheduler,
+    pub gpu: GPU
 }
 
 impl Bus {
     pub fn new() -> Self {
+        let mut scheduler = Scheduler::new();
         Self {
             bios: Vec::new(),
             bios_delay: DelayRegister::new(),
@@ -51,7 +58,9 @@ impl Bus {
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
             interrupt_stat: InterruptRegister::from_bits_truncate(0),
             timers: [Timer::new(); 3],
-            dma_control: DmaControlRegister::from_bits_retain(0x7654321)
+            dma_control: DmaControlRegister::from_bits_retain(0x7654321),
+            gpu: GPU::new(&mut scheduler),
+            scheduler
         }
     }
 

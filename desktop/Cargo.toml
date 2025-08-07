@@ -7,3 +7,4 @@ edition = "2024"
 path = "../"
 
 [dependencies]
+sdl2 = "0.37"

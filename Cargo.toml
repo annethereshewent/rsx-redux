@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 bitflags = "2.9.1"
+priority-queue = "2.5.0"
