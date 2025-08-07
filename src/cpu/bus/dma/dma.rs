@@ -1,4 +1,4 @@
-use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, Bus};
+use crate::cpu::bus::{gpu::GPU, registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
 
 use super::{dma_channel_control_register::{DmaChannelControlRegister, SyncMode}, dma_control_register::DmaControlRegister, dma_interrupt_register::DmaInterruptRegister};
 
@@ -101,8 +101,73 @@ impl Dma {
         todo!("mdec out transfer");
     }
 
-    fn start_command_transfer(&mut self) -> u32 {
-        todo!("gpu command transfer");
+    fn start_gpu_transfer(&mut self, ram: &mut [u8], gpu: &mut GPU) -> u32 {
+        let dma_channel = &mut self.channels[GPU];
+
+        if !dma_channel.control.contains(DmaChannelControlRegister::TRANSFER_DIR) {
+            // to ram
+            todo!("transfer to ram");
+        } else {
+            // from ram
+            if dma_channel.control.sync_mode() != SyncMode::LinkedList {
+                let mut current_address = dma_channel.base_address & 0x1fffff;
+
+                println!("sync_mode = {:?}", dma_channel.control.sync_mode());
+
+                for _ in 0..dma_channel.num_words {
+                    let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
+                    gpu.command_fifo.push_back(word);
+
+                    if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                        current_address -= 4;
+                    } else {
+                        current_address += 4;
+                    }
+                }
+            } else {
+                let mut current_address = dma_channel.base_address & 0x1fffff;
+                let mut packet = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
+
+                let mut next_packet_address = current_address;
+                current_address += 4;
+
+                let mut total_word_count = 0;
+
+                loop {
+                    let mut word_count = packet >> 24;
+
+                    total_word_count += word_count;
+
+                    packet = unsafe { *(&ram[next_packet_address as usize] as *const u8 as *const u32 ) };
+
+                    while word_count > 0 {
+                        let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
+                        word_count -= 1;
+                        current_address += 4;
+
+                        gpu.command_fifo.push_back(word);
+                    }
+
+                    if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                        current_address -= 4;
+                    } else {
+                        current_address += 4;
+                    }
+
+                    next_packet_address = packet & 0xffffff;
+
+                    if next_packet_address == 0xffffff {
+                        break;
+                    }
+
+                    current_address = next_packet_address + 4;
+                }
+
+                return total_word_count;
+            }
+        }
+
+        0
     }
 
     fn start_cdrom_transfer(&mut self) {
@@ -131,10 +196,10 @@ impl Dma {
 
             unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = value };
 
-            if !channel.control.contains(DmaChannelControlRegister::TRANSFER_DIR) {
-                current_address += 4;
-            } else {
+            if channel.control.contains(DmaChannelControlRegister::DECREMENT) {
                 current_address -= 4;
+            } else {
+                current_address += 4;
             }
         }
     }
@@ -157,7 +222,7 @@ impl Dma {
         }
     }
 
-    pub fn write_registers(&mut self, address: usize, value: u32, scheduler: &mut Scheduler, ram: &mut [u8]) {
+    pub fn write_registers(&mut self, address: usize, value: u32, scheduler: &mut Scheduler, ram: &mut [u8], gpu: &mut GPU) {
         let channel = (address - 0x1f801080) / 0x10;
         let register = address & 0xf;
 
@@ -197,7 +262,13 @@ impl Dma {
             match channel {
                 0 => self.start_mdec_in_transfer(),
                 1 => self.start_mdec_out_transfer(),
-                2 => num_words = self.start_command_transfer(),
+                2 =>  {
+                    if dma_channel.control.sync_mode() == SyncMode::LinkedList {
+                        num_words = self.start_gpu_transfer(ram, gpu);
+                    } else {
+                        self.start_gpu_transfer(ram, gpu);
+                    }
+                }
                 3 => self.start_cdrom_transfer(),
                 4 => self.start_spu_transfer(),
                 5 => self.start_pio_transfer(),

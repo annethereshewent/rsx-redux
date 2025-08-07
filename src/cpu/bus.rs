@@ -152,7 +152,13 @@ impl Bus {
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
-            0x1f801080..=0x1f8010f4 => self.dma.write_registers(address, value, &mut self.scheduler, &mut self.main_ram),
+            0x1f801080..=0x1f8010f4 => self.dma.write_registers(
+                address,
+                value,
+                &mut self.scheduler,
+                &mut self.main_ram,
+                &mut self.gpu
+            ),
             0x1f801114 => self.timers[1].counter = value as u16,
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.command_fifo.push_back(value),
