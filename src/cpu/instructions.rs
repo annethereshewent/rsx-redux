@@ -333,6 +333,7 @@ impl CPU {
     pub fn sllv(&mut self, instruction: Instruction) {
         let shift = self.r[instruction.rs()] & 0x1f;
         self.r[instruction.rd()] = self.r[instruction.rt()] << shift;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn srlv(&mut self, instruction: Instruction) {
@@ -458,11 +459,13 @@ impl CPU {
     }
 
     pub fn xor(&mut self, instruction: Instruction) {
-        todo!("xor");
+        self.r[instruction.rd()] = self.r[instruction.rs()] ^ self.r[instruction.rt()];
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn nor(&mut self, instruction: Instruction) {
         self.r[instruction.rd()] = !(self.r[instruction.rs()] | self.r[instruction.rt()]);
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn slt(&mut self, instruction: Instruction) {

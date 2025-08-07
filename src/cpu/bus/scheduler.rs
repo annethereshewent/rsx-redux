@@ -6,6 +6,7 @@ use priority_queue::PriorityQueue;
 pub enum EventType {
     Vblank,
     Hblank,
+    DmaFinished(usize)
 }
 
 pub struct Scheduler {

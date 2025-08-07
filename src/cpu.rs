@@ -328,7 +328,8 @@ impl CPU {
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
                 EventType::Vblank => self.bus.gpu.handle_vblank(&mut self.bus.scheduler, cycles_left),
-                EventType::Hblank => self.bus.gpu.handle_hblank(&mut self.bus.interrupt_stat, &mut self.bus.scheduler, cycles_left)
+                EventType::Hblank => self.bus.gpu.handle_hblank(&mut self.bus.interrupt_stat, &mut self.bus.scheduler, cycles_left),
+                EventType::DmaFinished(channel) => self.bus.dma.finish_transfer(channel, &mut self.bus.interrupt_stat),
             }
         }
 

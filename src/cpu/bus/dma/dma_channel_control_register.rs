@@ -11,7 +11,7 @@ bitflags! {
     #[derive(Copy, Clone)]
     pub struct DmaChannelControlRegister: u32 {
         const TRANSFER_DIR = 1;
-        const INCREMEINT = 1 << 1;
+        const INCREMENT = 1 << 1;
         const MODE = 1 << 8;
         const START_TRANSFER = 1 << 24;
         const FORCE_TRANSFER = 1 << 28;

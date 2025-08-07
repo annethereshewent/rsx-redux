@@ -1,4 +1,4 @@
-use dma::{dma::Dma, dma_control_register::DmaControlRegister, dma_interrupt_register::DmaInterruptRegister};
+use dma::dma::Dma;
 use gpu::GPU;
 use registers::{
     delay_register::DelayRegister,
@@ -89,6 +89,7 @@ impl Bus {
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f801080..=0x1f8010f4 => self.dma.read_registers(address),
+            0x1f801110 => self.timers[1].counter as u32,
             0x1f801810 => self.gpu.gpuread,
             0x1f801814 => self.gpu.read_stat(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
@@ -151,7 +152,7 @@ impl Bus {
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
-            0x1f801080..=0x1f8010f4 => self.dma.write_registers(address, value),
+            0x1f801080..=0x1f8010f4 => self.dma.write_registers(address, value, &mut self.scheduler, &mut self.main_ram),
             0x1f801114 => self.timers[1].counter = value as u16,
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.command_fifo.push_back(value),
