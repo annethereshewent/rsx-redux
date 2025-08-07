@@ -1,8 +1,7 @@
-use dma::dma_interrupt_register::DmaInterruptRegister;
+use dma::{dma::Dma, dma_control_register::DmaControlRegister, dma_interrupt_register::DmaInterruptRegister};
 use gpu::GPU;
 use registers::{
     delay_register::DelayRegister,
-    dma_control_register::DmaControlRegister,
     interrupt_register::InterruptRegister
 };
 use scheduler::Scheduler;
@@ -39,7 +38,8 @@ pub struct Bus {
     dma_control: DmaControlRegister,
     dicr: DmaInterruptRegister,
     pub scheduler: Scheduler,
-    pub gpu: GPU
+    pub gpu: GPU,
+    pub dma: Dma
 }
 
 impl Bus {
@@ -68,7 +68,8 @@ impl Bus {
             dma_control: DmaControlRegister::from_bits_retain(0x7654321),
             gpu: GPU::new(&mut scheduler),
             scheduler,
-            dicr: DmaInterruptRegister::from_bits_retain(0)
+            dicr: DmaInterruptRegister::from_bits_retain(0),
+            dma: Dma::new()
         }
     }
 
@@ -91,8 +92,10 @@ impl Bus {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
+            0x1f801080..=0x1f8010f4 => self.dma.read_registers(address),
             0x1f8010f0 => self.dma_control.bits(),
             0x1f8010f4 => self.dicr.read(),
+            0x1f801810 => self.gpu.gpuread,
             0x1f801814 => self.gpu.read_stat(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
             _ => todo!("(mem_read32) address: 0x{:x}", address)
@@ -154,11 +157,11 @@ impl Bus {
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
-            0x1f8010f0 => self.dma_control = DmaControlRegister::from_bits_retain(value),
-            0x1f8010f4 => self.dicr = DmaInterruptRegister::from_bits_retain(value),
+            0x1f801080..=0x1f8010f4 => self.dma.write_registers(address, value),
             0x1f801114 => self.timers[1].counter = value as u16,
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.command_fifo.push_back(value),
+            0x1f801814 => (), // read only
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));

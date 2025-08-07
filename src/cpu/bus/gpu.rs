@@ -49,7 +49,8 @@ pub struct GPU {
     even_flag: u32,
     interlaced: bool,
     pub command_fifo: VecDeque<u32>,
-    texpage: Texpage
+    texpage: Texpage,
+    pub gpuread: u32
 }
 
 impl GPU {
@@ -62,7 +63,8 @@ impl GPU {
             even_flag: 0,
             interlaced: false,
             command_fifo: VecDeque::with_capacity(16),
-            texpage: Texpage::new()
+            texpage: Texpage::new(),
+            gpuread: 0
         }
     }
 
@@ -90,6 +92,7 @@ impl GPU {
 
             // process the command
             match command {
+                0x0 => (),
                 0xe1 => self.texpage(word),
                 _ => todo!("command: 0x{:x}", command)
             }
