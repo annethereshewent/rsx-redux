@@ -1,5 +1,5 @@
 use registers::{delay_register::DelayRegister, dma_control_register::DmaControlRegister, interrupt_register::InterruptRegister};
-use spu::{spu_control_register::SpuControlRegister, SPU};
+use spu::SPU;
 use timer::Timer;
 
 pub mod registers;
@@ -75,7 +75,7 @@ impl Bus {
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f8010f0 => self.dma_control.bits(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
-            _ => panic!("(mem_read32)address not implemented: 0x{:x}", address)
+            _ => todo!("(mem_read32) address: 0x{:x}", address)
         }
     }
 
@@ -103,7 +103,7 @@ impl Bus {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
-            _ => panic!("address not implemented: 0x{:x}", address)
+            _ => todo!("(mem_read8) address 0x{:x}", address)
         }
     }
 
