@@ -67,4 +67,18 @@ impl Voice {
             _ => panic!("invalid channel given: 0x{:x}", channel)
         }
     }
+
+    pub fn read(&self, channel: usize) -> u16 {
+        match channel {
+            0x0 => (self.volume_left / 2) as u16,
+            0x2 => (self.volume_right / 2) as u16,
+            0x4 => self.sample_rate,
+            0x6 => (self.start_address / 8) as u16,
+            0x8 => (self.adsr.bits() & 0xffff) as u16,
+            0xa => (self.adsr.bits() >> 16) as u16,
+            0xc => self.current_adsr_volume as u16,
+            0xe => (self.repeat_address / 8) as u16,
+            _ => panic!("invalid channel given: 0x{:x}", channel)
+        }
+    }
 }

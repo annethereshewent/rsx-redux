@@ -205,7 +205,12 @@ impl CPU {
     }
 
     pub fn lh(&mut self, instruction: Instruction) {
-        todo!("lh");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        self.update_load(
+            instruction.rt(),
+            self.bus.mem_read16(address) as i16 as i32 as u32
+        );
     }
 
     pub fn lwl(&mut self, instruction: Instruction) {
@@ -310,7 +315,8 @@ impl CPU {
     }
 
     pub fn sllv(&mut self, instruction: Instruction) {
-        todo!("sllv");
+        let shift = self.r[instruction.rs()] & 0x1f;
+        self.r[instruction.rd()] = self.r[instruction.rt()] << shift;
     }
 
     pub fn srlv(&mut self, instruction: Instruction) {
@@ -434,7 +440,7 @@ impl CPU {
     }
 
     pub fn nor(&mut self, instruction: Instruction) {
-        todo!("nor");
+        self.r[instruction.rd()] = !(self.r[instruction.rs()] | self.r[instruction.rt()]);
     }
 
     pub fn slt(&mut self, instruction: Instruction) {
