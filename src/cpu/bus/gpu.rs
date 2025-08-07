@@ -49,8 +49,15 @@ pub struct GPU {
     even_flag: u32,
     interlaced: bool,
     pub command_fifo: VecDeque<u32>,
+    pub current_command_buffer: VecDeque<u32>,
     texpage: Texpage,
-    pub gpuread: u32
+    pub gpuread: u32,
+    words_left: usize,
+    is_polyline: bool,
+    x1: u32,
+    x2: u32,
+    y1: u32,
+    y2: u32
 }
 
 impl GPU {
@@ -63,8 +70,15 @@ impl GPU {
             even_flag: 0,
             interlaced: false,
             command_fifo: VecDeque::with_capacity(16),
+            current_command_buffer: VecDeque::new(),
             texpage: Texpage::new(),
-            gpuread: 0
+            gpuread: 0,
+            words_left: 0,
+            is_polyline: false,
+            x1: 0,
+            x2: 0,
+            y1: 0,
+            y2: 0
         }
     }
 
@@ -85,16 +99,127 @@ impl GPU {
         self.current_line += 1;
     }
 
+    fn get_words_left(word: u32) -> usize {
+        let upper_bits = word >> 29;
+
+        if upper_bits == 0x1 {
+            // render polygon command
+            let is_textured = (word >> 26) & 1 == 1;
+            let is_shaded = (word >> 28) & 1 == 1;
+
+            let num_vertices = if (word >> 27) == 1 { 4 } else { 3 };
+
+            let mut multiplier = 1;
+
+            if is_shaded {
+                multiplier += 1;
+            }
+            if is_textured {
+                multiplier += 1;
+            }
+
+            return num_vertices * multiplier
+        }
+
+        1
+    }
+
+    fn render_polygon(&mut self) {
+
+    }
+
+    fn render_rectangle(&mut self) {
+
+    }
+
+    fn set_drawing_area(&mut self, word: u32, is_bottom_right: bool) {
+        if is_bottom_right {
+            self.x2 = word & 0x3ff;
+            self.y2 = (word >> 10) & 0x3ff;
+        } else {
+            self.x1 = word & 0x3ff;
+            self.y1 = (word >> 10) & 0x3ff;
+        }
+    }
+
+    fn execute_command(&mut self, word: u32) {
+        let command = word >> 24;
+        let upper = word >> 29;
+
+        match upper {
+            1 => self.render_polygon(),
+            2 => unreachable!("shouldn't happen"),
+            3 => self.render_rectangle(),
+            _ => {
+                match command {
+                    0x0 => (),
+                    0xe1 => self.texpage(word),
+                    0xe3 => self.set_drawing_area(word, false),
+                    0xe4 => self.set_drawing_area(word, true),
+                    _ => todo!("command: 0x{:x}", command)
+                }
+            }
+        }
+
+
+    }
+
+    fn draw_line(&mut self) {
+        todo!("draw line");
+    }
+
+    fn draw_polyline(&mut self) {
+        todo!("draw polyline");
+    }
+
     fn process_commands(&mut self) {
+        let len = self.command_fifo.len();
+        if len > 0 {
+            println!("command fifo length: {len}");
+        }
         while !self.command_fifo.is_empty() {
             let word = self.command_fifo.pop_front().unwrap();
-            let command = word >> 24;
+            let upper = word >> 29;
 
-            // process the command
-            match command {
-                0x0 => (),
-                0xe1 => self.texpage(word),
-                _ => todo!("command: 0x{:x}", command)
+            self.current_command_buffer.push_back(word);
+
+            if self.words_left == 0 {
+
+                println!("upper = 0x{:x}", upper);
+                println!("command = 0x{:x}", word >> 24);
+                if upper == 0x2 {
+                    if (word >> 27) & 1 == 1 {
+                        self.is_polyline = true;
+                    }
+                } else {
+                    self.words_left = Self::get_words_left(word);
+                }
+            }
+
+            if self.words_left == 1 {
+                let word = self.current_command_buffer[0];
+                self.execute_command(word);
+
+                self.current_command_buffer = VecDeque::new();
+            }
+
+            if self.words_left == 0 && upper == 0x2 || self.is_polyline {
+                if self.is_polyline {
+                    if (word & 0xf000f000) == 0x50005000 {
+                        self.is_polyline = false;
+
+                        self.draw_polyline();
+
+                        self.current_command_buffer = VecDeque::new();
+                    }
+                } else {
+                    self.draw_line();
+                    self.current_command_buffer = VecDeque::new();
+                }
+            }
+
+            if self.words_left > 1 {
+                self.words_left -= 1;
             }
         }
     }
