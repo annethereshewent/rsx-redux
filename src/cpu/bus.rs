@@ -35,8 +35,6 @@ pub struct Bus {
     pub interrupt_mask: InterruptRegister,
     pub interrupt_stat: InterruptRegister,
     pub timers: [Timer; 3],
-    dma_control: DmaControlRegister,
-    dicr: DmaInterruptRegister,
     pub scheduler: Scheduler,
     pub gpu: GPU,
     pub dma: Dma
@@ -65,10 +63,8 @@ impl Bus {
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
             interrupt_stat: InterruptRegister::from_bits_truncate(0),
             timers: [Timer::new(); 3],
-            dma_control: DmaControlRegister::from_bits_retain(0x7654321),
             gpu: GPU::new(&mut scheduler),
             scheduler,
-            dicr: DmaInterruptRegister::from_bits_retain(0),
             dma: Dma::new()
         }
     }
@@ -93,8 +89,6 @@ impl Bus {
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f801080..=0x1f8010f4 => self.dma.read_registers(address),
-            0x1f8010f0 => self.dma_control.bits(),
-            0x1f8010f4 => self.dicr.read(),
             0x1f801810 => self.gpu.gpuread,
             0x1f801814 => self.gpu.read_stat(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },

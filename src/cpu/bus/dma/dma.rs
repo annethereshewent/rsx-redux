@@ -61,7 +61,7 @@ impl Dma {
     pub fn new() -> Self {
         Self {
             channels: [DmaChannel::new(); 7],
-            dma_control: DmaControlRegister::from_bits_retain(0),
+            dma_control: DmaControlRegister::from_bits_retain(0x7654321),
             dicr: DmaInterruptRegister::from_bits_retain(0)
         }
     }
