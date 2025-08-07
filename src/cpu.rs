@@ -220,10 +220,7 @@ impl CPU {
         let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits();
 
         if interrupts != 0 {
-            println!("interrupts = 0b{:b}", interrupts);
             let shift = interrupts.trailing_zeros() + 10;
-
-            println!("interrupt bit # = {shift}");
             self.prepare_interrupt(1 << shift);
         } else {
             self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() & 0xffc03ff);
@@ -308,7 +305,6 @@ impl CPU {
         self.cop0.cause.remove(CauseRegister::BD);
 
         if self.check_irqs() {
-            println!("firing an interrupt! how exciting!");
             self.enter_exception(ExceptionType::Interrupt);
         }
 
