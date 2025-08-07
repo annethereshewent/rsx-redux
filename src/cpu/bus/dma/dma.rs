@@ -112,8 +112,6 @@ impl Dma {
             if dma_channel.control.sync_mode() != SyncMode::LinkedList {
                 let mut current_address = dma_channel.base_address & 0x1fffff;
 
-                println!("sync_mode = {:?}", dma_channel.control.sync_mode());
-
                 for _ in 0..dma_channel.num_words {
                     let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
                     gpu.command_fifo.push_back(word);

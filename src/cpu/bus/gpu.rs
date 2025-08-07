@@ -57,7 +57,15 @@ pub struct GPU {
     x1: u32,
     x2: u32,
     y1: u32,
-    y2: u32
+    y2: u32,
+    x_offset: u32,
+    y_offset: u32,
+    texture_window_mask_x: u32,
+    texture_window_offset_x: u32,
+    texture_window_mask_y: u32,
+    texture_window_offset_y: u32,
+    set_while_drawing: bool,
+    check_before_drawing: bool
 }
 
 impl GPU {
@@ -78,7 +86,15 @@ impl GPU {
             x1: 0,
             x2: 0,
             y1: 0,
-            y2: 0
+            y2: 0,
+            x_offset: 0,
+            y_offset: 0,
+            texture_window_mask_x: 0,
+            texture_window_mask_y: 0,
+            texture_window_offset_x: 0,
+            texture_window_offset_y: 0,
+            set_while_drawing: false,
+            check_before_drawing: false
         }
     }
 
@@ -125,11 +141,16 @@ impl GPU {
     }
 
     fn render_polygon(&mut self) {
-
+        todo!("render polygon");
     }
 
     fn render_rectangle(&mut self) {
+        todo!("render rectangle");
+    }
 
+    fn set_drawing_offset(&mut self, word: u32) {
+        self.x_offset = ((word & 0x7ff) << 21) >> 21;
+        self.y_offset = (((word >> 11) & 0x7ff) << 21 ) >> 21;
     }
 
     fn set_drawing_area(&mut self, word: u32, is_bottom_right: bool) {
@@ -142,6 +163,18 @@ impl GPU {
         }
     }
 
+    fn texture_window(&mut self, word: u32) {
+        self.texture_window_mask_x = word & 0x1f;
+        self.texture_window_mask_y = (word >> 5) & 0x1f;
+        self.texture_window_offset_x = (word >> 10) & 0x1f;
+        self.texture_window_offset_y = (word >> 15) & 0x1f;
+    }
+
+    fn mask_bit(&mut self, word: u32) {
+        self.set_while_drawing = word & 1 == 1;
+        self.check_before_drawing = (word >> 1) & 1 == 1;
+    }
+
     fn execute_command(&mut self, word: u32) {
         let command = word >> 24;
         let upper = word >> 29;
@@ -152,10 +185,14 @@ impl GPU {
             3 => self.render_rectangle(),
             _ => {
                 match command {
-                    0x0 => (),
+                    0x0 => (), // NOP
+                    0x3..=0x1e => (), // NOP
                     0xe1 => self.texpage(word),
+                    0xe2 => self.texture_window(word),
                     0xe3 => self.set_drawing_area(word, false),
                     0xe4 => self.set_drawing_area(word, true),
+                    0xe5 => self.set_drawing_offset(word),
+                    0xe6 => self.mask_bit(word),
                     _ => todo!("command: 0x{:x}", command)
                 }
             }
@@ -173,10 +210,6 @@ impl GPU {
     }
 
     fn process_commands(&mut self) {
-        let len = self.command_fifo.len();
-        if len > 0 {
-            println!("command fifo length: {len}");
-        }
         while !self.command_fifo.is_empty() {
             let word = self.command_fifo.pop_front().unwrap();
             let upper = word >> 29;
@@ -184,9 +217,6 @@ impl GPU {
             self.current_command_buffer.push_back(word);
 
             if self.words_left == 0 {
-
-                println!("upper = 0x{:x}", upper);
-                println!("command = 0x{:x}", word >> 24);
                 if upper == 0x2 {
                     if (word >> 27) & 1 == 1 {
                         self.is_polyline = true;
@@ -194,13 +224,6 @@ impl GPU {
                 } else {
                     self.words_left = Self::get_words_left(word);
                 }
-            }
-
-            if self.words_left == 1 {
-                let word = self.current_command_buffer[0];
-                self.execute_command(word);
-
-                self.current_command_buffer = VecDeque::new();
             }
 
             if self.words_left == 0 && upper == 0x2 || self.is_polyline {
@@ -216,9 +239,18 @@ impl GPU {
                     self.draw_line();
                     self.current_command_buffer = VecDeque::new();
                 }
+
+                return;
             }
 
-            if self.words_left > 1 {
+            if self.words_left == 1 {
+                let word = self.current_command_buffer[0];
+                self.execute_command(word);
+
+                self.current_command_buffer = VecDeque::new();
+            }
+
+            if self.words_left > 0 {
                 self.words_left -= 1;
             }
         }
