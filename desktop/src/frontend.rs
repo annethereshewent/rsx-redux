@@ -1,11 +1,22 @@
+use std::os::raw::c_void;
 use std::process::exit;
 
+use objc2::rc::Retained;
+use objc2_quartz_core::CAMetalLayer;
 use sdl2::{controller::GameController, event::Event, video::Window, EventPump};
+use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
+use objc2_metal::{
+    MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCreateSystemDefaultDevice,
+    MTLDevice as _, MTLLibrary, MTLPackedFloat3, MTLPrimitiveType, MTLRenderCommandEncoder,
+    MTLRenderPipelineDescriptor, MTLRenderPipelineState,
+};
 
 pub struct Frontend {
     window: Window,
     event_pump: EventPump,
-    _controller: Option<GameController>
+    _controller: Option<GameController>,
+    metal_view: *mut c_void,
+    metal_layer: Retained<CAMetalLayer>
 }
 
 impl Frontend {
@@ -37,10 +48,21 @@ impl Frontend {
             .build()
             .unwrap();
 
+        let metal_view = unsafe { SDL_Metal_CreateView(window.raw()) };
+        let metal_layer_ptr = unsafe { SDL_Metal_GetLayer(metal_view) };
+
+        let metal_layer: Retained<CAMetalLayer> = unsafe { Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer).expect("Couldn cast pointer to CAMetalLayer!") };
+
+        let device = MTLCreateSystemDefaultDevice().unwrap();
+
+        unsafe { metal_layer.setDevice(Some(&device)) };
+
         Self {
             window,
             event_pump: sdl_context.event_pump().unwrap(),
-            _controller: controller
+            _controller: controller,
+            metal_view,
+            metal_layer
         }
     }
 
