@@ -19,7 +19,6 @@ impl Renderer {
         encoder: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>
     ) {
         println!("{:x?}", polygons);
-        let drawable = unsafe { self.metal_layer.nextDrawable().unwrap() };
 
         polygons.clear();
 
