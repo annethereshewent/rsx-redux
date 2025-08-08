@@ -314,10 +314,12 @@ impl CPU {
 
         self.pc = self.next_pc;
 
-        if !self.found.contains(&self.previous_pc) && self.debug_on {
-            // println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
-            self.found.insert(self.previous_pc);
-        }
+        self.debug_on = true;
+
+        // if !self.found.contains(&self.previous_pc) && self.debug_on {
+        //     println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
+        //     // self.found.insert(self.previous_pc);
+        // }
 
         self.next_pc += 4;
 

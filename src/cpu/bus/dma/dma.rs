@@ -236,7 +236,7 @@ impl Dma {
         if dma_channel.control.contains(DmaChannelControlRegister::START_TRANSFER) && !previous_enable && (self.dma_control.bits() >> shift) & 0x1 == 1 {
             let clocks = match channel {
                 0 | 1 | 2 | 6 => 1,
-                3 => 24, // CDROM BIOS access, or...
+                3 => 24,
                 4 => 4,
                 5 => 20,
                 _ => panic!("Unknown DMA channel")

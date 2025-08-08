@@ -1,3 +1,4 @@
+use cdrom::CDRom;
 use dma::dma::Dma;
 use gpu::GPU;
 use registers::{
@@ -14,6 +15,7 @@ pub mod timer;
 pub mod scheduler;
 pub mod gpu;
 pub mod dma;
+pub mod cdrom;
 
 pub struct Bus {
     bios: Vec<u8>,
@@ -38,6 +40,7 @@ pub struct Bus {
     pub scheduler: Scheduler,
     pub gpu: GPU,
     pub dma: Dma,
+    pub cdrom: CDRom
 }
 
 impl Bus {
@@ -65,7 +68,8 @@ impl Bus {
             timers: [Timer::new(); 3],
             gpu: GPU::new(&mut scheduler),
             scheduler,
-            dma: Dma::new()
+            dma: Dma::new(),
+            cdrom: CDRom::new()
         }
     }
 
@@ -121,11 +125,13 @@ impl Bus {
     pub fn mem_read8(&self, address: u32) -> u32 {
         let address = Self::translate_address(address);
 
+        println!("(mem_read8) stuck reading 0x{:x}", address);
+
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
+            0x1f801800..=0x1f801803 => self.cdrom.read(address) as u32,
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
-            0x1f801800..=0x1f801803 => 0,
             _ => todo!("(mem_read8) address 0x{:x}", address)
         }
     }
@@ -202,8 +208,9 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
+            0x1f801800 => self.cdrom.write_bank(value),
+            0x1f801801..=0x1f801803 => self.cdrom.write(address, value),
             0x1f802041 => self.exp1_post = value,
-            0x1f801800..=0x1f801803 => (),
             _ => todo!("(mem_write8) address: 0x{:x}", address)
         }
     }
