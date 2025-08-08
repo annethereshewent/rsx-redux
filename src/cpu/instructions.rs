@@ -230,7 +230,27 @@ impl CPU {
     }
 
     pub fn lwl(&mut self, instruction: Instruction) {
-        todo!("lwl");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        let mut result = self.r[instruction.rt()];
+
+        if let Some((register, value)) = self.delayed_load {
+            if register == instruction.rt() {
+                result = value;
+            }
+        }
+
+        let aligned_word = self.bus.mem_read32(address & !3);
+
+        result = match address & 0x3 {
+            0 => (result & 0xffffff) | (aligned_word << 24),
+            1 => (result & 0xffff) | (aligned_word << 16),
+            2 => (result & 0xff) | (aligned_word << 8),
+            3 => aligned_word,
+            _ => unreachable!("can't happen")
+        };
+
+        self.update_load(instruction.rt(), result);
     }
 
     pub fn lw(&mut self, instruction: Instruction) {
@@ -252,7 +272,27 @@ impl CPU {
     }
 
     pub fn lwr(&mut self, instruction: Instruction) {
-        todo!("lwr");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        let mut result = self.r[instruction.rt()];
+
+        if let Some((register, value)) = self.delayed_load {
+            if register == instruction.rt() {
+                result = value;
+            }
+        }
+
+        let aligned_word = self.bus.mem_read32(address & !3);
+
+        result = match address & 0x3 {
+            0 => aligned_word,
+            1 => (result & 0xff000000) | (aligned_word >> 8),
+            2 => (result & 0xffff0000) | (aligned_word >> 16),
+            3 => (result & 0xffffff00) | (aligned_word >> 24),
+            _ => unreachable!("can't happen")
+        };
+
+        self.update_load(instruction.rt(), result);
     }
 
     pub fn sb(&mut self, instruction: Instruction) {
@@ -268,7 +308,21 @@ impl CPU {
     }
 
     pub fn swl(&mut self, instruction: Instruction) {
-        todo!("swl");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        let value = self.r[instruction.rt()];
+        let mem_value = self.bus.mem_read32(address & !3);
+
+        let result = match address & 0x3 {
+            0 => (mem_value & 0xffffff00) | (value >> 24),
+            1 => (mem_value & 0xffff0000) | (value >> 16),
+            2 => (mem_value & 0xff000000) | (value >> 8),
+            3 => value,
+            _ => unreachable!("can't happen")
+        };
+
+        self.store32(address & !3, result);
+
     }
 
     pub fn sw(&mut self, instruction: Instruction) {
@@ -278,7 +332,20 @@ impl CPU {
     }
 
     pub fn swr(&mut self, instruction: Instruction) {
-        todo!("swr");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        let value = self.r[instruction.rt()];
+        let mem_value = self.bus.mem_read32(address & !3);
+
+        let result = match address & 0x3 {
+            0 => value,
+            1 => (mem_value & 0xff) | (value << 8),
+            2 => (mem_value & 0xffff) | (value << 16),
+            3 => (mem_value & 0xffffff) | (value << 24),
+            _ => unreachable!("can't happen")
+        };
+
+        self.store32(address & !3, result);
     }
 
     pub fn lwc0(&mut self, instruction: Instruction) {
