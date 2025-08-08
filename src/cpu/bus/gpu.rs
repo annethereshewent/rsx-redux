@@ -6,6 +6,12 @@ const CYCLES_PER_SCANLINE: usize = 3413;
 const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 
+#[derive(Copy, Clone, PartialEq)]
+enum TransferType {
+    FromVram,
+    ToVram
+}
+
 #[derive(Copy, Clone, Debug)]
 enum TexturePageColors {
     Bit4 = 0,
@@ -48,7 +54,7 @@ pub struct Vertex {
 
 
 #[derive(Debug, Copy, Clone)]
-struct Texpage {
+pub struct Texpage {
     x_base: u32,
     y_base1: u32,
     semi_transparency: u32,
@@ -106,7 +112,15 @@ pub struct GPU {
     num_vertices: usize,
     is_shaded: bool,
     is_textured: bool,
-    clut_index: usize
+    clut_index: usize,
+    destination_x: u32,
+    destination_y: u32,
+    transfer_width: u32,
+    transfer_height: u32,
+    transfer_type: Option<TransferType>,
+    read_x: u32,
+    read_y: u32,
+    vram: Box<[u8]>
 }
 
 impl GPU {
@@ -141,7 +155,15 @@ impl GPU {
             num_vertices: 0,
             is_shaded: false,
             is_textured: false,
-            clut_index: 0
+            clut_index: 0,
+            transfer_height: 0,
+            transfer_width: 0,
+            destination_x: 0,
+            destination_y: 0,
+            transfer_type: None,
+            read_x: 0,
+            read_y: 0,
+            vram: vec![0; 1024 * 512 * 2].into_boxed_slice()
         }
     }
 
@@ -186,6 +208,14 @@ impl GPU {
             self.is_textured = is_textured;
 
             return num_vertices * multiplier + 1;
+        }
+
+        if upper_bits == 4 {
+            return 4;
+        }
+
+        if [5,6].contains(&upper_bits) {
+            return 3;
         }
 
         1
@@ -315,6 +345,34 @@ impl GPU {
         self.check_before_drawing = (word >> 1) & 1 == 1;
     }
 
+    fn vram_to_cpu_transfer(&mut self) {
+        todo!("vram to cpu");
+    }
+
+    fn cpu_to_vram_transfer(&mut self) {
+        self.transfer_type = Some(TransferType::ToVram);
+
+        let destination = self.current_command_buffer.pop_front().unwrap();
+        let dimensions = self.current_command_buffer.pop_front().unwrap();
+
+        self.destination_x = destination & 0x3ff;
+        self.destination_y = (destination >> 16) & 0x1ff;
+
+        self.transfer_width = dimensions & 0x3ff;
+        self.transfer_height = (dimensions >> 16) & 0x1ff;
+
+        if self.transfer_width == 0 {
+            self.transfer_width = 0x400;
+        }
+        if self.transfer_height == 0 {
+            self.transfer_height = 0x200;
+        }
+    }
+
+    fn vram_to_vram_transfer(&mut self) {
+        todo!("vram to vram");
+    }
+
     fn execute_command(&mut self, word: u32) {
         let command = word >> 24;
         let upper = word >> 29;
@@ -323,9 +381,13 @@ impl GPU {
             1 => self.render_polygon(),
             2 => unreachable!("shouldn't happen"),
             3 => self.render_rectangle(),
+            4 => self.vram_to_vram_transfer(),
+            5 => self.cpu_to_vram_transfer(),
+            6 => self.vram_to_cpu_transfer(),
             _ => {
                 match command {
                     0x0 => (), // NOP
+                    0x1 => self.command_fifo = VecDeque::with_capacity(16),
                     0x3..=0x1e => (), // NOP
                     0xe1 => self.texpage(word),
                     0xe2 => self.texture_window(word),
@@ -351,8 +413,52 @@ impl GPU {
         todo!("draw polyline");
     }
 
+    fn transfer_to_vram(&mut self, halfword: u16) {
+        let curr_x = self.destination_x + self.read_x;
+
+        self.read_x += 1;
+
+        let curr_y = self.destination_y + self.read_y;
+
+        let address = Self::get_vram_address(curr_x, curr_y);
+
+        unsafe { *(&mut self.vram[address] as *mut u8 as *mut u16) = halfword };
+
+        if self.read_x == self.transfer_width {
+            self.read_x = 0;
+
+            self.read_y += 1;
+
+            if self.read_y == self.transfer_height {
+                self.transfer_type = None;
+
+                self.read_y = 0;
+                self.transfer_width = 0;
+                self.transfer_height = 0;
+                self.destination_x = 0;
+                self.destination_y = 0;
+            }
+        }
+    }
+
+    fn get_vram_address(x: u32, y: u32) -> usize {
+        2 * ((x & 0x3ff) + 1024 * (y & 0x1ff)) as usize
+    }
+
     fn process_commands(&mut self) {
         while !self.command_fifo.is_empty() {
+            if let Some(transfer_type) = self.transfer_type {
+                if transfer_type == TransferType::ToVram {
+                    let word = self.command_fifo.pop_front().unwrap();
+                    self.transfer_to_vram(word as u16);
+
+                    if self.transfer_type.is_some() {
+                        self.transfer_to_vram((word >> 16) as u16);
+                    }
+
+                    return;
+                }
+            }
             let word = self.command_fifo.pop_front().unwrap();
             let upper = word >> 29;
 
