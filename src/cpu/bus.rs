@@ -125,6 +125,7 @@ impl Bus {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
+            0x1f801800..=0x1f801803 => 0,
             _ => todo!("(mem_read8) address 0x{:x}", address)
         }
     }
@@ -202,6 +203,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
             0x1f802041 => self.exp1_post = value,
+            0x1f801800..=0x1f801803 => (),
             _ => todo!("(mem_write8) address: 0x{:x}", address)
         }
     }

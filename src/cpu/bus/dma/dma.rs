@@ -123,42 +123,32 @@ impl Dma {
                     }
                 }
             } else {
-                let mut current_address = dma_channel.base_address & 0x1fffff;
-                let mut packet = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
-
-                let mut next_packet_address = current_address;
-                current_address += 4;
+                let mut current_address = dma_channel.base_address & 0x1ffffc;
 
                 let mut total_word_count = 0;
 
                 loop {
+                    let packet = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
                     let mut word_count = packet >> 24;
 
-                    total_word_count += word_count;
-
-                    packet = unsafe { *(&ram[next_packet_address as usize] as *const u8 as *const u32 ) };
-
                     while word_count > 0 {
+                        current_address += 4;
+
                         let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
                         word_count -= 1;
-                        current_address += 4;
 
                         gpu.command_fifo.push_back(word);
                     }
 
-                    if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
-                        current_address -= 4;
-                    } else {
-                        current_address += 4;
-                    }
+                    current_address = packet & 0xffffff;
 
-                    next_packet_address = packet & 0xffffff;
-
-                    if next_packet_address == 0xffffff {
+                    if current_address == 0xffffff {
                         break;
                     }
 
-                    current_address = next_packet_address + 4;
+                    current_address &= !(0x3);
+
+                    total_word_count += word_count;
                 }
 
                 return total_word_count;
@@ -200,6 +190,7 @@ impl Dma {
                 current_address += 4;
             }
         }
+
     }
 
     pub fn finish_transfer(&mut self, channel: usize, interrupt_stat: &mut InterruptRegister) {

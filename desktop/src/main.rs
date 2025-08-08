@@ -41,7 +41,6 @@ fn main() {
                     let rpd = unsafe { MTLRenderPassDescriptor::new() };
                     drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
                     command_buffer = frontend.renderer.command_queue.commandBuffer();
-                    encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
 
                     let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
 
@@ -49,6 +48,7 @@ fn main() {
                         color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
                     }
 
+                    encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
                 }
 
                 if let Some(encoder_ref) = &mut encoder {
@@ -58,7 +58,7 @@ fn main() {
             }
         }
 
-        println!("finished frame!");
+        // println!("finished frame!");
 
         if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
             encoder.endEncoding();

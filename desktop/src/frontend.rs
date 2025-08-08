@@ -73,7 +73,6 @@ impl Frontend {
 
         pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
         pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
-        // pipeline_descriptor.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
         let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
@@ -103,7 +102,7 @@ impl Frontend {
 
         let layout = unsafe { vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
 
-        unsafe { layout.setStride((7 * std::mem::size_of::<f32>()) as usize) };
+        unsafe { layout.setStride((8 * std::mem::size_of::<f32>()) as usize) };
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 

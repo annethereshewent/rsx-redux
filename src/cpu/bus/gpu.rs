@@ -44,11 +44,11 @@ pub struct Color {
 
 #[derive(Debug)]
 pub struct Vertex {
-    pub x: i16,
-    pub y: i16,
+    pub x: i32,
+    pub y: i32,
     pub u: Option<u32>,
     pub v: Option<u32>,
-    pub color: Option<Color>,
+    pub color: Color,
     pub texpage: Option<Texpage>
 }
 
@@ -99,8 +99,8 @@ pub struct GPU {
     x2: u32,
     y1: u32,
     y2: u32,
-    x_offset: u32,
-    y_offset: u32,
+    x_offset: i32,
+    y_offset: i32,
     texture_window_mask_x: u32,
     texture_window_offset_x: u32,
     texture_window_mask_y: u32,
@@ -192,7 +192,7 @@ impl GPU {
             let is_textured = (word >> 26) & 1 == 1;
             let is_shaded = (word >> 28) & 1 == 1;
 
-            let num_vertices = if (word >> 27) == 1 { 4 } else { 3 };
+            let num_vertices = if (word >> 27) & 1 == 1 { 4 } else { 3 };
 
             let mut multiplier = 1;
 
@@ -200,7 +200,7 @@ impl GPU {
                 multiplier += 1;
             }
             if is_textured {
-                multiplier += 2;
+                multiplier += 1;
             }
 
             self.num_vertices = num_vertices;
@@ -230,7 +230,7 @@ impl GPU {
         texpage.texture_page_colors = match (word >> 7) & 0x3 {
             0 => TexturePageColors::Bit4,
             1 => TexturePageColors::Bit8,
-            2 => TexturePageColors::Bit15,
+            2 | 3 => TexturePageColors::Bit15,
             _ => panic!("reserved value for texpage colors")
         };
         texpage.dither = (word >> 9) & 0x1 == 1;
@@ -245,63 +245,76 @@ impl GPU {
         texpage
     }
 
+    fn parse_color(word: u32) -> Color {
+        let r = word as u8;
+        let g = (word >> 8) as u8;
+        let b = (word >> 16) as u8;
+
+        Color {
+            r,
+            g,
+            b,
+            a: true
+        }
+    }
+
     fn render_polygon(&mut self) {
-        let command_len = self.current_command_buffer.len();
-
-        let words_per_vertex = command_len / self.num_vertices as usize;
-
-        println!("words per vertex = {words_per_vertex}");
+        let mut command_index = 0;
 
         let mut vertices: Vec<Vertex> = Vec::new();
 
-        while !self.current_command_buffer.is_empty() {
+        for i in 0..self.num_vertices {
             let mut vertex = Vertex {
                 x: 0,
                 y: 0,
                 u: if self.is_textured { Some(0) } else { None },
                 v: if self.is_textured { Some(0) } else { None },
-                color: if self.is_shaded { Some(Color { r: 0, g: 0, b: 0, a: true }) } else { None },
+                color: Self::parse_color(self.current_command_buffer[0]),
                 texpage: None
             };
 
-            for i in 0..words_per_vertex {
-                let word = self.current_command_buffer.pop_front().unwrap();
-                match i {
-                    0 => if self.is_shaded {
-                        // get color
-                        let color = vertex.color.as_mut().unwrap();
+            if i == 0 || self.is_shaded {
+                let word = self.current_command_buffer[command_index];
 
-                        color.r = word as u8;
-                        color.g = (word >> 8) as u8;
-                        color.b = (word >> 16) as u8;
+                let color = &mut vertex.color;
+                color.r = word as u8;
+                color.g = (word >> 8) as u8;
+                color.b = (word >> 16) as u8;
 
-                    } else {
-                        // get coordinates
-                        vertex.x = word as i16;
-                        vertex.y = (word >> 16) as i16;
-                    }
-                    1 => {
-                        // get coordinates
-                        vertex.x = word as i16;
-                        vertex.y = (word >> 16) as i16;
-                    },
-                    2 => {
-                        // get lower texture coordinates
-                        let u = vertex.u.as_mut().unwrap();
-                        let v = vertex.v.as_mut().unwrap();
+                command_index += 1;
+            }
 
-                        self.clut_index = (word >> 16) as usize;
+            let word = self.current_command_buffer[command_index];
 
-                        *u = word & 0xff;
-                        *v = (word >> 8) & 0xff;
-                    },
-                    3 => {
-                        let texpage = word >> 16;
+            let mut x = word as i16 as i32;
+            let mut y = (word >> 16) as i16 as i32;
 
-                        vertex.texpage = Some(Self::parse_texpage(texpage));
-                    }
-                    _ => unreachable!("shouldn't happen")
+            x = (x << 21) >> 21;
+            y = (y << 21) >> 21;
+
+            vertex.x = x + self.x_offset;
+            vertex.y = y + self.y_offset;
+
+            command_index += 1;
+
+            if self.is_textured {
+                let word = self.current_command_buffer[command_index];
+
+                let u = vertex.u.as_mut().unwrap();
+
+                *u = word & 0xff;
+
+                let v = vertex.u.as_mut().unwrap();
+
+                *v = (word >> 16) & 0xff;
+
+                if i == 0 {
+                    self.clut_index = (word >> 16) as usize;
+                } else if i == 1 {
+                    vertex.texpage = Some(Self::parse_texpage(word));
                 }
+
+                command_index += 1;
             }
 
             vertices.push(vertex);
@@ -319,8 +332,8 @@ impl GPU {
     }
 
     fn set_drawing_offset(&mut self, word: u32) {
-        self.x_offset = ((word & 0x7ff) << 21) >> 21;
-        self.y_offset = (((word >> 11) & 0x7ff) << 21 ) >> 21;
+        self.x_offset = (((word & 0x7ff) as i32) << 21) >> 21;
+        self.y_offset = ((((word >> 11) & 0x7ff) as i32) << 21 ) >> 21;
     }
 
     fn set_drawing_area(&mut self, word: u32, is_bottom_right: bool) {
@@ -456,7 +469,7 @@ impl GPU {
                         self.transfer_to_vram((word >> 16) as u16);
                     }
 
-                    return;
+                    continue;
                 }
             }
             let word = self.command_fifo.pop_front().unwrap();
@@ -492,7 +505,8 @@ impl GPU {
             }
 
             if self.words_left == 1 {
-                let word = self.current_command_buffer.pop_front().unwrap();
+                let word = self.current_command_buffer[0];
+
                 self.execute_command(word);
 
                 self.current_command_buffer = VecDeque::new();
