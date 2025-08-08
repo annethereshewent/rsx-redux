@@ -22,7 +22,16 @@ fn main() {
     let mut frontend = Frontend::new();
 
     loop {
-        cpu.step_frame();
+        while !cpu.bus.gpu.frame_finished {
+            cpu.step();
+
+            if cpu.bus.gpu.commands_ready {
+                cpu.bus.gpu.commands_ready = false;
+            }
+        }
+
+        cpu.bus.gpu.frame_finished = false;
+
         frontend.handle_events();
     }
 }

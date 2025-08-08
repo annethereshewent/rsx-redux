@@ -37,7 +37,7 @@ pub struct Bus {
     pub timers: [Timer; 3],
     pub scheduler: Scheduler,
     pub gpu: GPU,
-    pub dma: Dma
+    pub dma: Dma,
 }
 
 impl Bus {
