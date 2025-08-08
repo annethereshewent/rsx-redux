@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fs;
 use std::ops::Deref;
 use std::os::raw::c_void;
 use std::process::exit;
@@ -58,7 +59,7 @@ impl Frontend {
 
         let device = MTLCreateSystemDefaultDevice().unwrap();
 
-        let source = NSString::from_str("shaders/Shaders.metal");
+        let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
 
         let library = device.newLibraryWithSource_options_error(source.deref(), None).unwrap();
 
@@ -75,24 +76,10 @@ impl Frontend {
         // pipeline_descriptor.colorAttachments[0].pixelFormat = mtkView.colorPixelFormat
         let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
-        color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
+        // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
+        unsafe { color_attachment.setPixelFormat(metal_layer.pixelFormat()) };
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
-
-        // Position at attribute(0)
-        // vertexDescriptor.attributes[0].format = .float3
-        // vertexDescriptor.attributes[0].offset = 0
-        // vertexDescriptor.attributes[0].bufferIndex = 0
-
-        // // UV at attribute(1)
-        // vertexDescriptor.attributes[1].format = .float2
-        // vertexDescriptor.attributes[1].offset = 16
-        // vertexDescriptor.attributes[1].bufferIndex = 0
-
-        // // Color at attribute(2)
-        // vertexDescriptor.attributes[2].format = .float4
-        // vertexDescriptor.attributes[2].offset = 32
-        // vertexDescriptor.attributes[2].bufferIndex = 0
 
         let attributes = vertex_descriptor.attributes();
 
@@ -105,16 +92,22 @@ impl Frontend {
         let uv = unsafe { attributes.objectAtIndexedSubscript(1) };
 
         uv.setFormat(MTLVertexFormat::Float2);
-        unsafe { uv.setOffset(16) };
+        unsafe { uv.setOffset(8) };
         unsafe { uv.setBufferIndex(0) };
 
         let color = unsafe { attributes.objectAtIndexedSubscript(2) };
 
         color.setFormat(MTLVertexFormat::Float4);
-        unsafe { uv.setOffset(32) };
-        unsafe { uv.setBufferIndex(0) };
+        unsafe { color.setOffset(16) };
+        unsafe { color.setBufferIndex(0) };
+
+        let layout = unsafe { vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
+
+        unsafe { layout.setStride((7 * std::mem::size_of::<f32>()) as usize) };
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
+
+        let pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor).unwrap();
 
         unsafe { metal_layer.setDevice(Some(&device)) };
 
@@ -126,7 +119,9 @@ impl Frontend {
             renderer: Renderer {
                 metal_layer,
                 metal_view,
-                command_queue
+                command_queue,
+                device,
+                pipeline_state
             }
         }
     }

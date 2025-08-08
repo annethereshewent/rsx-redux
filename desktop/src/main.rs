@@ -8,13 +8,9 @@ pub mod frontend;
 pub mod renderer;
 
 use objc2_metal::{
-    MTLCommandBuffer,
-    MTLCommandEncoder,
-    MTLCommandQueue,
-    MTLRenderPassDescriptor,
-    MTLRenderCommandEncoder,
-    MTLDrawable
+    MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLRenderPassDescriptor
 };
+use objc2_quartz_core::CAMetalDrawable;
 
 fn main() {
     let mut cpu = CPU::new();
@@ -34,10 +30,19 @@ fn main() {
     let mut has_rendered = false;
 
     loop {
-        let mut command_buffer = frontend.renderer.command_queue.commandBuffer().unwrap();
-        let rpd: Retained<MTLRenderPassDescriptor> = unsafe { MTLRenderPassDescriptor::new() };
-        let mut encoder = command_buffer.renderCommandEncoderWithDescriptor(&rpd).unwrap();
+        let command_buffer = frontend.renderer.command_queue.commandBuffer().unwrap();
+        let rpd = unsafe { MTLRenderPassDescriptor::new() };
+
         let drawable = unsafe { frontend.renderer.metal_layer.nextDrawable().unwrap() };
+
+        let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+        unsafe {
+            color_attachment.setTexture(Some(&drawable.texture()));
+        }
+
+        let mut encoder = command_buffer.renderCommandEncoderWithDescriptor(&rpd).unwrap();
+
 
         while !cpu.bus.gpu.frame_finished {
             cpu.step();
@@ -46,16 +51,13 @@ fn main() {
                 has_rendered = true;
                 cpu.bus.gpu.commands_ready = false;
 
-                frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, &mut command_buffer, &mut encoder);
+                frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, &mut encoder);
             }
         }
 
-        if has_rendered {
-            encoder.endEncoding();
-
-            command_buffer.presentDrawable(drawable.as_ref());
-            command_buffer.commit();
-        }
+        encoder.endEncoding();
+        command_buffer.presentDrawable(drawable.as_ref());
+        command_buffer.commit();
 
         cpu.bus.gpu.frame_finished = false;
 

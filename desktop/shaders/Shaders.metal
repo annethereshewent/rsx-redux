@@ -1,3 +1,11 @@
+#include <metal_stdlib>
+using namespace metal;
+
+struct FragmentUniforms {
+    bool hasTexture;
+    bool isShaded;
+};
+
 struct VertexIn {
     float3 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
@@ -25,13 +33,6 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                               sampler textureSampler [[sampler(0)]])
 {
     if (uniforms.hasTexture) {
-        if (uniforms.clampS) {
-            in.uv.x = clamp(in.uv.x, 0.0, 1.0);
-        }
-        if (uniforms.clampT) {
-            in.uv.y = clamp(in.uv.y, 0.0, 1.0);
-        }
-
         float4 texColor = tex.sample(textureSampler, in.uv);
         float4 finalColor = texColor * in.color;
 

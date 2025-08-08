@@ -15,8 +15,8 @@ enum TexturePageColors {
 
 #[derive(Debug)]
 pub struct Polygon {
-    vertices: Vec<Vertex>,
-    is_line: bool
+    pub vertices: Vec<Vertex>,
+    pub is_line: bool
 }
 
 impl Polygon {
@@ -30,24 +30,24 @@ impl Polygon {
 
 #[derive(Debug)]
 pub struct Color {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: bool
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: bool
 }
 
 #[derive(Debug)]
 pub struct Vertex {
-    x: i16,
-    y: i16,
-    u: Option<u32>,
-    v: Option<u32>,
-    color: Option<Color>,
-    texpage: Option<Texpage>
+    pub x: i16,
+    pub y: i16,
+    pub u: Option<u32>,
+    pub v: Option<u32>,
+    pub color: Option<Color>,
+    pub texpage: Option<Texpage>
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct Texpage {
     x_base: u32,
     y_base1: u32,
@@ -268,13 +268,7 @@ impl GPU {
                     3 => {
                         let texpage = word >> 16;
 
-                        let u = vertex.u.as_mut().unwrap();
-                        let v = vertex.v.as_mut().unwrap();
-
                         vertex.texpage = Some(Self::parse_texpage(texpage));
-
-                        *u |= (word & 0xff) << 16;
-                        *v |= ((word >> 8) & 0xff) << 16;
                     }
                     _ => unreachable!("shouldn't happen")
                 }
