@@ -1,14 +1,14 @@
 use std::{env, fs};
 
 use frontend::Frontend;
-use objc2::rc::Retained;
+use objc2::{rc::Retained, runtime::ProtocolObject};
 use rsx_redux::cpu::CPU;
 
 pub mod frontend;
 pub mod renderer;
 
 use objc2_metal::{
-    MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLRenderPassDescriptor
+    MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLRenderCommandEncoder, MTLRenderPassDescriptor
 };
 use objc2_quartz_core::CAMetalDrawable;
 
@@ -27,37 +27,44 @@ fn main() {
 
     let mut frontend = Frontend::new();
 
-    let mut has_rendered = false;
+    let mut encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>> = None;
+    let mut drawable: Option<Retained<ProtocolObject<dyn CAMetalDrawable>>> = None;
+    let mut command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>> = None;
 
     loop {
-        let command_buffer = frontend.renderer.command_queue.commandBuffer().unwrap();
-        let rpd = unsafe { MTLRenderPassDescriptor::new() };
-
-        let drawable = unsafe { frontend.renderer.metal_layer.nextDrawable().unwrap() };
-
-        let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
-
-        unsafe {
-            color_attachment.setTexture(Some(&drawable.texture()));
-        }
-
-        let mut encoder = command_buffer.renderCommandEncoderWithDescriptor(&rpd).unwrap();
-
-
         while !cpu.bus.gpu.frame_finished {
             cpu.step();
 
             if cpu.bus.gpu.commands_ready {
-                has_rendered = true;
                 cpu.bus.gpu.commands_ready = false;
+                if encoder.is_none() {
+                    let rpd = unsafe { MTLRenderPassDescriptor::new() };
+                    drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
+                    command_buffer = frontend.renderer.command_queue.commandBuffer();
+                    encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
 
-                frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, &mut encoder);
+                    let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+                    unsafe {
+                        color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
+                    }
+
+                }
+
+                if let Some(encoder_ref) = &mut encoder {
+                    frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, encoder_ref);
+                }
+
             }
         }
 
-        encoder.endEncoding();
-        command_buffer.presentDrawable(drawable.as_ref());
-        command_buffer.commit();
+        println!("finished frame!");
+
+        if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
+            encoder.endEncoding();
+            command_buffer.presentDrawable(drawable.as_ref());
+            command_buffer.commit();
+        }
 
         cpu.bus.gpu.frame_finished = false;
 

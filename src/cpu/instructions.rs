@@ -337,7 +337,9 @@ impl CPU {
     }
 
     pub fn srlv(&mut self, instruction: Instruction) {
-        todo!("srlv");
+        let shift = self.r[instruction.rs()] & 0x1f;
+        self.r[instruction.rd()] = self.r[instruction.rt()] >> shift;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn srav(&mut self, instruction: Instruction) {
@@ -396,7 +398,12 @@ impl CPU {
     }
 
     pub fn multu(&mut self, instruction: Instruction) {
-        todo!("multu");
+        self.tick(1);
+
+        let result = self.r[instruction.rs()] as u64 * self.r[instruction.rt()] as u64;
+
+        self.lo = result as u32;
+        self.hi = (result >> 32) as u32;
     }
 
     pub fn div(&mut self, instruction: Instruction) {

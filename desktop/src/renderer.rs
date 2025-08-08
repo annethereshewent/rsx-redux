@@ -1,7 +1,7 @@
 use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
-use objc2_metal::{MTLCommandBuffer, MTLCommandQueue, MTLDevice, MTLPrimitiveType, MTLRenderCommandEncoder, MTLRenderPipelineState, MTLResourceOptions};
+use objc2_metal::{MTLCommandQueue, MTLDevice, MTLPrimitiveType, MTLRenderCommandEncoder, MTLRenderPipelineState, MTLResourceOptions};
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::bus::gpu::Polygon;
 
@@ -19,6 +19,7 @@ impl Renderer {
         &mut Vec<Polygon>,
         encoder: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>
     ) {
+        println!("num polygons = {}", polygons.len());
         for polygon in polygons.drain(..) {
             let mut vertices: Vec<[f32; 7]> = vec![[0.0; 7]; polygon.vertices.len()];
 
@@ -37,18 +38,25 @@ impl Renderer {
                 vertices[i] = [vertex.x as f32 / 16.0, vertex.y as f32 / 16.0, u as f32, v as f32, r, g, b];
             }
 
+            println!("vertices.len() = {}", vertices.len());
+
             let byte_len = vertices.len() * std::mem::size_of::<[f32; 7]>();
             let buffer = unsafe { self.device.newBufferWithBytes_length_options(NonNull::new(vertices.as_ptr() as *mut c_void).unwrap(), byte_len, MTLResourceOptions::empty()) }.unwrap();
 
+            println!("setting vertex buffer!");
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
+            println!("great success!!!!");
             let primitive_type = if vertices.len() == 3 {
                 MTLPrimitiveType::Triangle
             } else {
                 MTLPrimitiveType::TriangleStrip
             };
+
+            println!("setting pipeline state!");
             encoder.setRenderPipelineState(&self.pipeline_state);
 
+            println!("finally drawing primitives!");
             unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
         }
 
