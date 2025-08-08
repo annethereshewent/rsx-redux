@@ -2,13 +2,24 @@ use std::os::raw::c_void;
 use std::process::exit;
 
 use objc2::rc::Retained;
-use objc2_quartz_core::CAMetalLayer;
+use objc2::runtime::ProtocolObject;
+use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
+use rsx_redux::cpu::bus::gpu::Polygon;
 use sdl2::{controller::GameController, event::Event, video::Window, EventPump};
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use objc2_metal::{
-    MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCreateSystemDefaultDevice,
-    MTLDevice as _, MTLLibrary, MTLPackedFloat3, MTLPrimitiveType, MTLRenderCommandEncoder,
-    MTLRenderPipelineDescriptor, MTLRenderPipelineState,
+    MTLCommandBuffer,
+    MTLCommandEncoder,
+    MTLCommandQueue,
+    MTLCreateSystemDefaultDevice,
+    MTLDevice as _,
+    MTLDrawable,
+    MTLLibrary,
+    MTLPackedFloat3,
+    MTLPrimitiveType,
+    MTLRenderCommandEncoder,
+    MTLRenderPipelineDescriptor,
+    MTLRenderPipelineState
 };
 
 use crate::renderer::Renderer;
@@ -58,13 +69,15 @@ impl Frontend {
 
         unsafe { metal_layer.setDevice(Some(&device)) };
 
+        let command_queue = device.newCommandQueue().unwrap();
         Self {
             window,
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
             renderer: Renderer {
                 metal_layer,
-                metal_view
+                metal_view,
+                command_queue
             }
         }
     }
