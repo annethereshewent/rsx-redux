@@ -4,7 +4,7 @@ use frontend::Frontend;
 use rsx_redux::cpu::CPU;
 
 pub mod frontend;
-
+pub mod renderer;
 
 fn main() {
     let mut cpu = CPU::new();
@@ -27,6 +27,8 @@ fn main() {
 
             if cpu.bus.gpu.commands_ready {
                 cpu.bus.gpu.commands_ready = false;
+
+                frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons);
             }
         }
 

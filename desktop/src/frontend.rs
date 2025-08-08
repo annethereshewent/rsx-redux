@@ -11,12 +11,13 @@ use objc2_metal::{
     MTLRenderPipelineDescriptor, MTLRenderPipelineState,
 };
 
+use crate::renderer::Renderer;
+
 pub struct Frontend {
     window: Window,
     event_pump: EventPump,
     _controller: Option<GameController>,
-    metal_view: *mut c_void,
-    metal_layer: Retained<CAMetalLayer>
+    pub renderer: Renderer
 }
 
 impl Frontend {
@@ -61,8 +62,10 @@ impl Frontend {
             window,
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
-            metal_view,
-            metal_layer
+            renderer: Renderer {
+                metal_layer,
+                metal_view
+            }
         }
     }
 

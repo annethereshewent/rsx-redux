@@ -13,6 +13,7 @@ enum TexturePageColors {
     Bit15 = 2
 }
 
+#[derive(Debug)]
 pub struct Polygon {
     vertices: Vec<Vertex>,
     is_line: bool
@@ -27,6 +28,7 @@ impl Polygon {
     }
 }
 
+#[derive(Debug)]
 pub struct Color {
     r: u8,
     g: u8,
@@ -34,9 +36,10 @@ pub struct Color {
     a: bool
 }
 
+#[derive(Debug)]
 pub struct Vertex {
-    x: u32,
-    y: u32,
+    x: i16,
+    y: i16,
     u: Option<u32>,
     v: Option<u32>,
     color: Option<Color>,
@@ -244,13 +247,13 @@ impl GPU {
 
                     } else {
                         // get coordinates
-                        vertex.x = word & 0xffff;
-                        vertex.y = (word >> 16) & 0xffff;
+                        vertex.x = word as i16;
+                        vertex.y = (word >> 16) as i16;
                     }
                     1 => {
                         // get coordinates
-                        vertex.x = word & 0xffff;
-                        vertex.y = (word >> 16) & 0xffff;
+                        vertex.x = word as i16;
+                        vertex.y = (word >> 16) as i16;
                     },
                     2 => {
                         // get lower texture coordinates
