@@ -214,9 +214,11 @@ impl CPU {
     pub fn lb(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
+        let value = self.bus.mem_read8(address) as i8 as i16 as i32 as u32;
+
         self.update_load(
             instruction.rt(),
-            self.bus.mem_read8(address) as i8 as i16 as i32 as u32
+            value
         );
     }
 
@@ -262,7 +264,9 @@ impl CPU {
     pub fn lbu(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.update_load(instruction.rt(), self.bus.mem_read8(address));
+        let value = self.bus.mem_read8(address);
+
+        self.update_load(instruction.rt(), value);
     }
 
     pub fn lhu(&mut self, instruction: Instruction) {
