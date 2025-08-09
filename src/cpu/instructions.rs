@@ -326,7 +326,6 @@ impl CPU {
         };
 
         self.store32(address & !3, result);
-
     }
 
     pub fn sw(&mut self, instruction: Instruction) {

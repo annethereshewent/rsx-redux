@@ -6,6 +6,8 @@ use std::process::exit;
 
 use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
+use rsx_redux::cpu::CPU;
+use sdl2::keyboard::Keycode;
 use sdl2::{controller::GameController, event::Event, video::Window, EventPump};
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use objc2_foundation::NSString;
@@ -125,11 +127,18 @@ impl Frontend {
         }
     }
 
-    pub fn handle_events(&mut self) {
+    pub fn handle_events(&mut self, cpu: &mut CPU) {
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => {
                     exit(0);
+                }
+                Event::KeyDown { keycode, ..} => {
+                    if let Some(keycode) = keycode {
+                        if keycode == Keycode::G {
+                            cpu.debug_on = !cpu.debug_on
+                        }
+                    }
                 }
                 _ => ()
             }

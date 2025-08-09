@@ -180,7 +180,6 @@ impl CDRom {
         match subcommand {
             0x20 => {
                 // get date
-
                 // PSX/PSone date in byte form
                 let bytes = [0x99,0x2,0x1,0xC3];
 
@@ -204,7 +203,7 @@ impl CDRom {
             _ => todo!("command byte 0x{:x}", self.command)
         }
 
-        // self.process_irqs(interrupt_register);
+        self.process_irqs(interrupt_register);
     }
 
     pub fn clear_response(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {

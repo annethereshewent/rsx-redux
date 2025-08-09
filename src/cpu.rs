@@ -30,7 +30,7 @@ pub struct CPU {
     special_instructions: [fn(&mut CPU, Instruction); 0x40],
     cop0: COP0,
     found: HashSet<u32>,
-    debug_on: bool,
+    pub debug_on: bool,
     ignored_load_delay: Option<usize>,
     branch_taken: bool,
     in_delay_slot: bool,
@@ -327,7 +327,7 @@ impl CPU {
 
         if !self.found.contains(&self.previous_pc) && self.debug_on {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
-            self.found.insert(self.previous_pc);
+            // self.found.insert(self.previous_pc);
         }
 
         self.next_pc += 4;
@@ -338,11 +338,16 @@ impl CPU {
 
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
-                EventType::Vblank => self.bus.gpu.handle_vblank(&mut self.bus.scheduler, cycles_left),
+                EventType::Vblank => self.bus.gpu.handle_vblank(
+                    &mut self.bus.scheduler,
+                    &mut self.bus.interrupt_stat,
+                    &mut self.bus.timers,
+                    cycles_left
+                ),
                 EventType::Hblank => self.bus.gpu.handle_hblank(
                     &mut self.bus.scheduler,
                     &mut self.bus.interrupt_stat,
-                    &mut self.bus.timers[1],
+                    &mut self.bus.timers,
                     cycles_left
                 ),
                 EventType::DmaFinished(channel) => self.bus.dma.finish_transfer(channel, &mut self.bus.interrupt_stat),

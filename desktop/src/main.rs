@@ -67,6 +67,6 @@ fn main() {
         cpu.bus.gpu.frame_finished = false;
         cpu.bus.gpu.cap_fps();
 
-        frontend.handle_events();
+        frontend.handle_events(&mut cpu);
     }
 }

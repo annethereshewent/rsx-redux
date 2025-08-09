@@ -173,22 +173,38 @@ impl GPU {
     pub fn handle_hblank(
         &mut self,
         scheduler: &mut Scheduler,
-        interrupt_stat: &mut InterruptRegister, timer: &mut Timer, cycles_left: usize) {
+        interrupt_stat: &mut InterruptRegister,
+        timers: &mut [Timer],
+        cycles_left: usize
+    ) {
         self.process_commands();
 
-        if timer.clock_source == ClockSource::Hblank {
-            match timer.counter_register.sync_mode() {
-                0 => timer.is_active = false,
-                1 => timer.counter = 0,
+        timers[0].in_xblank = true;
+        timers[1].in_xblank = false;
+
+        if timers[0].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
+            match timers[0].counter_register.sync_mode() {
+                0 => timers[0].is_active = false,
+                1 => timers[0].counter = 0,
                 2 => {
-                    timer.is_active = true;
-                    timer.counter =  0;
+                    timers[0].is_active = true;
+                    if self.current_line == 0 {
+                        timers[0].counter =  0;
+                    } else {
+                        timers[0].tick(1, scheduler, interrupt_stat);
+                    }
                 }
-                3 => if let Some(free_run) = &mut timer.switch_free_run {
-                    timer.is_active = true;
+                3 => if let Some(_) = &mut timers[0].switch_free_run {
+                    timers[0].is_active = true;
+                } else {
+                    timers[0].switch_free_run = Some(true);
                 }
                 _ => unreachable!()
             }
+        }
+
+        if timers[1].clock_source == ClockSource::Hblank {
+            timers[1].tick(1, scheduler, interrupt_stat);
         }
 
         if self.current_line < VBLANK_LINE_START {
@@ -575,8 +591,38 @@ impl GPU {
             .as_millis();
     }
 
-    pub fn handle_vblank(&mut self, scheduler: &mut Scheduler, cycles_left: usize) {
+    pub fn handle_vblank(
+        &mut self,
+        scheduler: &mut Scheduler,
+        interrupt_stat: &mut InterruptRegister,
+        timers: &mut [Timer],
+        cycles_left: usize
+    ) {
         self.even_flag = 0;
+
+        timers[0].in_xblank = false;
+        timers[1].in_xblank = true;
+
+        if timers[1].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
+            match timers[1].counter_register.sync_mode() {
+                0 => timers[1].is_active = false,
+                1 => timers[1].counter = 0,
+                2 => {
+                    timers[1].is_active = true;
+                    if self.current_line == 0 {
+                        timers[1].counter =  0;
+                    } else {
+                        timers[1].tick(1, scheduler, interrupt_stat);
+                    }
+                }
+                3 => if let Some(_) = &mut timers[0].switch_free_run {
+                    timers[1].is_active = true;
+                } else {
+                    timers[1].switch_free_run = Some(true);
+                }
+                _ => unreachable!()
+            }
+        }
 
         if self.current_line == NUM_SCANLINES {
             self.frame_finished = true;
