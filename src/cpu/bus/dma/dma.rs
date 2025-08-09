@@ -170,7 +170,7 @@ impl Dma {
         todo!("pio transfer");
     }
 
-    fn start_otc_transfer(&mut self, ram: &mut [u8]) {
+    fn start_otc_transfer(&mut self, ram: &mut [u8], interrupt_stat: &mut InterruptRegister) {
         let channel = &mut self.channels[OTC];
 
         let mut current_address = channel.base_address & 0x1ffffc;
@@ -191,6 +191,7 @@ impl Dma {
             }
         }
 
+        self.finish_transfer(OTC, interrupt_stat);
     }
 
     pub fn finish_transfer(&mut self, channel: usize, interrupt_stat: &mut InterruptRegister) {
@@ -211,7 +212,15 @@ impl Dma {
         }
     }
 
-    pub fn write_registers(&mut self, address: usize, value: u32, scheduler: &mut Scheduler, ram: &mut [u8], gpu: &mut GPU) {
+    pub fn write_registers(
+        &mut self,
+        address: usize,
+        value: u32,
+        scheduler: &mut Scheduler,
+        ram: &mut [u8],
+        gpu: &mut GPU,
+        interrupt_stat: &mut InterruptRegister
+    ) {
         let channel = (address - 0x1f801080) / 0x10;
         let register = address & 0xf;
 
@@ -261,11 +270,13 @@ impl Dma {
                 3 => self.start_cdrom_transfer(),
                 4 => self.start_spu_transfer(),
                 5 => self.start_pio_transfer(),
-                6 => self.start_otc_transfer(ram),
+                6 => self.start_otc_transfer(ram, interrupt_stat),
                 _ => todo!("dma transfer for channel {channel}")
             }
 
-            scheduler.schedule(EventType::DmaFinished(channel), (num_words * clocks) as usize);
+            if channel != 6 {
+                scheduler.schedule(EventType::DmaFinished(channel), (num_words * clocks) as usize);
+            }
         }
     }
 }

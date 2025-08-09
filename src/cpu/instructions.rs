@@ -124,7 +124,7 @@ impl CPU {
     }
 
     pub fn bgtz(&mut self, instruction: Instruction) {
-        if self.r[instruction.rs()] > 0 {
+        if (self.r[instruction.rs()] as i32) > 0 {
            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
            self.branch_taken = true;
            self.cop0.cause.insert(CauseRegister::BD);
@@ -392,7 +392,9 @@ impl CPU {
 
     pub fn sra(&mut self, instruction: Instruction) {
         let shifted_val = self.r[instruction.rt()] as i32;
-        self.r[instruction.rd()] = (shifted_val >> instruction.immediate5()) as u32;
+        let value = shifted_val >> instruction.immediate5();
+
+        self.r[instruction.rd()] = value as u32;
 
         self.ignored_load_delay = Some(instruction.rd());
     }
@@ -410,7 +412,14 @@ impl CPU {
     }
 
     pub fn srav(&mut self, instruction: Instruction) {
-        todo!("srav");
+        let shifted_val = self.r[instruction.rt()] as i32;
+
+        let shift = self.r[instruction.rs()] & 0x1f;
+        let value = shifted_val >> shift;
+
+        self.r[instruction.rd()] = value as u32;
+
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn jr(&mut self, instruction: Instruction) {

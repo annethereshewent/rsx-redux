@@ -67,9 +67,10 @@ impl Bus {
             interrupt_stat: InterruptRegister::from_bits_truncate(0),
             timers: [Timer::new(); 3],
             gpu: GPU::new(&mut scheduler),
+            cdrom: CDRom::new(&mut scheduler),
             scheduler,
             dma: Dma::new(),
-            cdrom: CDRom::new()
+
         }
     }
 
@@ -105,7 +106,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
-            0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16 as *const u32 ) },
+            0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16) as u32 },
             0x1f801070 => self.interrupt_stat.bits() & 0xffff,
             0x1f801072 => (self.interrupt_stat.bits() >> 16) & 0xffff,
             0x1f801074 => self.interrupt_mask.bits() & 0xffff,
@@ -122,14 +123,15 @@ impl Bus {
         }
     }
 
-    pub fn mem_read8(&self, address: u32) -> u32 {
+    pub fn mem_read8(&mut self, address: u32) -> u32 {
         let address = Self::translate_address(address);
-
-        println!("(mem_read8) stuck reading 0x{:x}", address);
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
-            0x1f801800..=0x1f801803 => self.cdrom.read(address) as u32,
+            0x1f801800..=0x1f801803 => {
+                panic!("cycles = {}", self.scheduler.cycles);
+                self.cdrom.read(address) as u32;
+            }
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
             _ => todo!("(mem_read8) address 0x{:x}", address)
@@ -164,7 +166,8 @@ impl Bus {
                 value,
                 &mut self.scheduler,
                 &mut self.main_ram,
-                &mut self.gpu
+                &mut self.gpu,
+                &mut self.interrupt_stat
             ),
             0x1f801114 => self.timers[1].counter = value as u16,
             0x1f801118 => self.timers[1].counter_target = value as u16,
@@ -208,8 +211,14 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
-            0x1f801800 => self.cdrom.write_bank(value),
-            0x1f801801..=0x1f801803 => self.cdrom.write(address, value),
+            0x1f801800 => {
+                self.cdrom.write_bank(value);
+                panic!("cycles = {}", self.scheduler.cycles);
+            }
+            0x1f801801..=0x1f801803 => {
+                panic!("cycles = {}", self.scheduler.cycles);
+                self.cdrom.write(address, value, &mut self.scheduler);
+            }
             0x1f802041 => self.exp1_post = value,
             _ => todo!("(mem_write8) address: 0x{:x}", address)
         }

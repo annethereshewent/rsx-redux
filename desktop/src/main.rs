@@ -58,8 +58,6 @@ fn main() {
             }
         }
 
-        // println!("finished frame!");
-
         if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
             encoder.endEncoding();
             command_buffer.presentDrawable(drawable.as_ref());
@@ -67,6 +65,7 @@ fn main() {
         }
 
         cpu.bus.gpu.frame_finished = false;
+        cpu.bus.gpu.cap_fps();
 
         frontend.handle_events();
     }

@@ -6,7 +6,14 @@ use priority_queue::PriorityQueue;
 pub enum EventType {
     Vblank,
     Hblank,
-    DmaFinished(usize)
+    DmaFinished(usize),
+    CDExecuteCommand,
+    CDCheckCommands,
+    CDLatchInterrupts,
+    CDCommandTransfer,
+    CDParamTransfer,
+    CDResponseClear,
+    CDResponseTransfer
 }
 
 pub struct Scheduler {

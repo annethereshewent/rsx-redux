@@ -1,10 +1,11 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
 
 const CYCLES_PER_SCANLINE: usize = 3413;
 const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
+pub const FPS_INTERVAL: u128 = 1000 / 60;
 
 #[derive(Copy, Clone, PartialEq)]
 enum TransferType {
@@ -120,7 +121,8 @@ pub struct GPU {
     transfer_type: Option<TransferType>,
     read_x: u32,
     read_y: u32,
-    vram: Box<[u8]>
+    vram: Box<[u8]>,
+    previous_time: u128
 }
 
 impl GPU {
@@ -163,7 +165,8 @@ impl GPU {
             transfer_type: None,
             read_x: 0,
             read_y: 0,
-            vram: vec![0; 1024 * 512 * 2].into_boxed_slice()
+            vram: vec![0; 1024 * 512 * 2].into_boxed_slice(),
+            previous_time: 0
         }
     }
 
@@ -518,19 +521,6 @@ impl GPU {
         }
     }
 
-    /*
-        0-3   Texture page X Base   (N*64) (ie. in 64-halfword steps)    ;GPUSTAT.0-3
-        4     Texture page Y Base 1 (N*256) (ie. 0, 256, 512 or 768)     ;GPUSTAT.4
-        5-6   Semi-transparency     (0=B/2+F/2, 1=B+F, 2=B-F, 3=B+F/4)   ;GPUSTAT.5-6
-        7-8   Texture page colors   (0=4bit, 1=8bit, 2=15bit, 3=Reserved);GPUSTAT.7-8
-        9     Dither 24bit to 15bit (0=Off/strip LSBs, 1=Dither Enabled) ;GPUSTAT.9
-        10    Drawing to display area (0=Prohibited, 1=Allowed)          ;GPUSTAT.10
-        11    Texture page Y Base 2 (N*512) (only for 2 MB VRAM)         ;GPUSTAT.15
-        12    Textured Rectangle X-Flip   (BIOS does set this bit on power-up...?)
-        13    Textured Rectangle Y-Flip   (BIOS does set it equal to GPUSTAT.13...?)
-        14-23 Not used (should be 0)
-        24-31 Command  (E1h)
-    */
     fn texpage(&mut self, word: u32) {
         self.texpage = Self::parse_texpage(word);
     }
@@ -545,6 +535,25 @@ impl GPU {
             (self.texpage.draw_to_display_area as u32) << 10 |
             self.texpage.y_base2 << 15 |
             0x7 << 26
+    }
+
+    pub fn cap_fps(&mut self) {
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("an error occurred")
+            .as_millis();
+
+        if self.previous_time != 0 {
+            let diff = current_time - self.previous_time;
+            if diff < FPS_INTERVAL {
+                sleep(Duration::from_millis((FPS_INTERVAL - diff) as u64));
+            }
+        }
+
+        self.previous_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("an error occurred")
+            .as_millis();
     }
 
     pub fn handle_vblank(&mut self, scheduler: &mut Scheduler, cycles_left: usize) {

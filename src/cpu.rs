@@ -33,7 +33,8 @@ pub struct CPU {
     debug_on: bool,
     ignored_load_delay: Option<usize>,
     branch_taken: bool,
-    in_delay_slot: bool
+    in_delay_slot: bool,
+    output: String
 }
 
 impl CPU {
@@ -208,7 +209,8 @@ impl CPU {
             debug_on: false,
             ignored_load_delay: None,
             in_delay_slot: false,
-            branch_taken: false
+            branch_taken: false,
+            output: "".to_string()
         }
     }
 
@@ -310,16 +312,16 @@ impl CPU {
 
         let opcode = self.bus.mem_read32(self.pc);
 
+        self.update_tty();
+
         self.previous_pc = self.pc;
 
         self.pc = self.next_pc;
 
-        self.debug_on = true;
-
-        // if !self.found.contains(&self.previous_pc) && self.debug_on {
-        //     println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
-        //     // self.found.insert(self.previous_pc);
-        // }
+        if !self.found.contains(&self.previous_pc) && self.debug_on {
+            println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
+            self.found.insert(self.previous_pc);
+        }
 
         self.next_pc += 4;
 
@@ -332,11 +334,40 @@ impl CPU {
                 EventType::Vblank => self.bus.gpu.handle_vblank(&mut self.bus.scheduler, cycles_left),
                 EventType::Hblank => self.bus.gpu.handle_hblank(&mut self.bus.interrupt_stat, &mut self.bus.scheduler, cycles_left),
                 EventType::DmaFinished(channel) => self.bus.dma.finish_transfer(channel, &mut self.bus.interrupt_stat),
+                EventType::CDExecuteCommand => self.bus.cdrom.execute_command(
+                    &mut self.bus.scheduler,
+                    &mut self.bus.interrupt_stat
+                ),
+                EventType::CDLatchInterrupts => self.bus.cdrom.transfer_interrupts(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDCheckCommands => self.bus.cdrom.check_commands(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDCommandTransfer => self.bus.cdrom.transfer_command(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDParamTransfer => self.bus.cdrom.transfer_params(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDResponseTransfer => self.bus.cdrom.transfer_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDResponseClear => self.bus.cdrom.clear_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat)
             }
         }
 
         if should_transfer {
             self.transfer_load();
+        }
+    }
+
+    fn update_tty(&mut self) {
+        if self.pc == 0xb0 && self.r[9] == 0x3d {
+            let mut buf: Vec<u8> = Vec::new();
+
+            buf.push(self.r[4] as u8);
+            buf.push((self.r[4] >> 8) as u8);
+            buf.push((self.r[4] >> 16) as u8);
+            buf.push((self.r[4] >> 24 ) as u8);
+
+
+            self.output += &String::from_utf8(buf).unwrap();
+
+            if self.output.contains("\n") {
+                print!("{}", self.output);
+                self.output = "".to_string();
+            }
         }
     }
 
