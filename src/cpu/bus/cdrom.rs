@@ -35,7 +35,8 @@ pub struct CDRom {
     status: CDStatus,
     controller_status: ControllerStatus,
     command_latch: Option<u8>,
-    command: u8
+    command: u8,
+    in_irq: bool
 }
 
 impl CDRom {
@@ -54,6 +55,7 @@ impl CDRom {
             command: 0,
             command_latch: None,
             controller_response_fifo: VecDeque::with_capacity(16),
+            in_irq: false
         }
     }
 
@@ -67,6 +69,7 @@ impl CDRom {
         } else {
             scheduler.schedule(EventType::CDLatchInterrupts, 10 * CDROM_CYCLES);
         }
+        self.in_irq = false;
     }
     fn read_hintsts(&self) -> u8 {
         self.irqs | 0x7 << 5
@@ -118,8 +121,6 @@ impl CDRom {
         let subcommand = self.controller_param_fifo.pop_front().unwrap();
 
         self.execute_subcommand(subcommand, scheduler, interrupt_register);
-
-        // self.process_irqs(interrupt_register);
     }
 
     pub fn check_commands(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
@@ -130,11 +131,12 @@ impl CDRom {
             scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
         }
 
-        // self.process_irqs(interrupt_register);
+        self.process_irqs(interrupt_register);
     }
 
     fn process_irqs(&mut self, interrupt_register: &mut InterruptRegister) {
-        if self.irqs & self.hntmask.enable_irq() != 0 {
+        if self.irqs & self.hntmask.enable_irq() != 0 && !self.in_irq {
+            self.in_irq = true;
             interrupt_register.insert(InterruptRegister::CDROM);
         }
     }
@@ -145,7 +147,7 @@ impl CDRom {
 
         scheduler.schedule(EventType::CDExecuteCommand, CDROM_CYCLES * 10);
 
-        // self.process_irqs(interrupt_register);
+        self.process_irqs(interrupt_register);
     }
 
     pub fn transfer_params(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
@@ -159,7 +161,7 @@ impl CDRom {
             scheduler.schedule(EventType::CDCommandTransfer, CDROM_CYCLES * 10);
         }
 
-        // self.process_irqs(interrupt_register);
+        self.process_irqs(interrupt_register);
     }
 
     pub fn transfer_interrupts(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {

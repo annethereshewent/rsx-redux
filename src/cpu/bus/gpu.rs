@@ -314,13 +314,15 @@ impl GPU {
 
         let mut vertices: Vec<Vertex> = Vec::new();
 
+        let color0 = self.current_command_buffer[0];
+
         for i in 0..self.num_vertices {
             let mut vertex = Vertex {
                 x: 0,
                 y: 0,
                 u: if self.is_textured { Some(0) } else { None },
                 v: if self.is_textured { Some(0) } else { None },
-                color: Self::parse_color(self.current_command_buffer[0]),
+                color: Self::parse_color(color0),
                 texpage: None
             };
 
