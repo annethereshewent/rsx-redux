@@ -77,7 +77,6 @@ impl CDRom {
     }
 
     pub fn read(&mut self, address: usize) -> u8 {
-        panic!("noooo!!!!!!!");
         match address {
             0x1f801800 => self.read_hsts(),
             0x1f801801 => self.read_response(),
@@ -227,7 +226,6 @@ impl CDRom {
     }
 
     pub fn write(&mut self, address: usize, value: u8, scheduler: &mut Scheduler) {
-        panic!("nooooo");
         match address {
             0x1f801803 => match self.bank {
                 1 => self.write_control(value),

@@ -65,7 +65,7 @@ impl Bus {
             exp1_post: 0,
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
             interrupt_stat: InterruptRegister::from_bits_truncate(0),
-            timers: [Timer::new(); 3],
+            timers: [Timer::new(0), Timer::new(1), Timer::new(2)],
             gpu: GPU::new(&mut scheduler),
             cdrom: CDRom::new(&mut scheduler),
             scheduler,
@@ -94,7 +94,7 @@ impl Bus {
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f801080..=0x1f8010f4 => self.dma.read_registers(address),
-            0x1f801110 => self.timers[1].counter as u32,
+            0x1f801110 => self.timers[1].counter,
             0x1f801810 => self.gpu.gpuread,
             0x1f801814 => self.gpu.read_stat(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
@@ -129,8 +129,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
             0x1f801800..=0x1f801803 => {
-                panic!("cycles = {}", self.scheduler.cycles);
-                self.cdrom.read(address) as u32;
+                self.cdrom.read(address) as u32
             }
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
@@ -169,7 +168,7 @@ impl Bus {
                 &mut self.gpu,
                 &mut self.interrupt_stat
             ),
-            0x1f801114 => self.timers[1].counter = value as u16,
+            0x1f801114 => self.timers[1].write_counter_register(value as u16, &mut self.scheduler),
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.command_fifo.push_back(value),
             0x1f801814 => (), // read only
@@ -192,14 +191,14 @@ impl Bus {
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_retain((self.interrupt_mask.bits() & 0xffff0000) | value as u32),
             0x1f801076 => self.interrupt_mask = InterruptRegister::from_bits_retain((self.interrupt_mask.bits() & 0xffff) | (value as u32) << 16),
-            0x1f801100 => self.timers[0].counter = value,
-            0x1f801104 => self.timers[0].write_counter_register(value),
+            0x1f801100 => self.timers[0].counter = value as u32,
+            0x1f801104 => self.timers[0].write_counter_register(value, &mut self.scheduler),
             0x1f801108 => self.timers[0].counter_target = value,
-            0x1f801110 => self.timers[1].counter = value,
-            0x1f801114 => self.timers[1].write_counter_register(value),
+            0x1f801110 => self.timers[1].counter = value as u32,
+            0x1f801114 => self.timers[1].write_counter_register(value, &mut self.scheduler),
             0x1f801118 => self.timers[1].counter_target = value,
-            0x1f801120 => self.timers[2].counter = value,
-            0x1f801124 => self.timers[2].write_counter_register(value),
+            0x1f801120 => self.timers[2].counter = value as u32,
+            0x1f801124 => self.timers[2].write_counter_register(value, &mut self.scheduler),
             0x1f801128 => self.timers[2].counter_target = value,
             0x1f801c00..=0x1f801e7f  => self.spu.write16(address, value),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
@@ -213,10 +212,8 @@ impl Bus {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
             0x1f801800 => {
                 self.cdrom.write_bank(value);
-                panic!("cycles = {}", self.scheduler.cycles);
             }
             0x1f801801..=0x1f801803 => {
-                panic!("cycles = {}", self.scheduler.cycles);
                 self.cdrom.write(address, value, &mut self.scheduler);
             }
             0x1f802041 => self.exp1_post = value,

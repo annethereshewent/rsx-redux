@@ -13,7 +13,8 @@ pub enum EventType {
     CDCommandTransfer,
     CDParamTransfer,
     CDResponseClear,
-    CDResponseTransfer
+    CDResponseTransfer,
+    Timer(usize)
 }
 
 pub struct Scheduler {

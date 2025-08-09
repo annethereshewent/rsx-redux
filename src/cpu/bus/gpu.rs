@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}};
 
-use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
+use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, timer::{counter_mode_register::CounterModeRegister, ClockSource, Timer}};
 
 const CYCLES_PER_SCANLINE: usize = 3413;
 const VBLANK_LINE_START: usize = 240;
@@ -170,8 +170,27 @@ impl GPU {
         }
     }
 
-    pub fn handle_hblank(&mut self, interrupt_stat: &mut InterruptRegister, scheduler: &mut Scheduler, cycles_left: usize) {
+    pub fn handle_hblank(
+        &mut self,
+        scheduler: &mut Scheduler,
+        interrupt_stat: &mut InterruptRegister, timer: &mut Timer, cycles_left: usize) {
         self.process_commands();
+
+        if timer.clock_source == ClockSource::Hblank {
+            match timer.counter_register.sync_mode() {
+                0 => timer.is_active = false,
+                1 => timer.counter = 0,
+                2 => {
+                    timer.is_active = true;
+                    timer.counter =  0;
+                }
+                3 => if let Some(free_run) = &mut timer.switch_free_run {
+                    timer.is_active = true;
+                }
+                _ => unreachable!()
+            }
+        }
+
         if self.current_line < VBLANK_LINE_START {
             scheduler.schedule(EventType::Hblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
         } else {

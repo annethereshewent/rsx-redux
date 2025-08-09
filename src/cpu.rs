@@ -215,6 +215,13 @@ impl CPU {
     }
 
     pub fn tick(&mut self, cycles: usize) {
+        if self.bus.timers[0].is_active {
+            self.bus.timers[0].tick(cycles, &mut self.bus.scheduler, &mut self.bus.interrupt_stat);
+        }
+        if self.bus.timers[1].is_active {
+            self.bus.timers[1].tick(cycles, &mut self.bus.scheduler, &mut self.bus.interrupt_stat);
+        }
+
         self.bus.scheduler.tick(cycles);
     }
 
@@ -332,7 +339,12 @@ impl CPU {
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
                 EventType::Vblank => self.bus.gpu.handle_vblank(&mut self.bus.scheduler, cycles_left),
-                EventType::Hblank => self.bus.gpu.handle_hblank(&mut self.bus.interrupt_stat, &mut self.bus.scheduler, cycles_left),
+                EventType::Hblank => self.bus.gpu.handle_hblank(
+                    &mut self.bus.scheduler,
+                    &mut self.bus.interrupt_stat,
+                    &mut self.bus.timers[1],
+                    cycles_left
+                ),
                 EventType::DmaFinished(channel) => self.bus.dma.finish_transfer(channel, &mut self.bus.interrupt_stat),
                 EventType::CDExecuteCommand => self.bus.cdrom.execute_command(
                     &mut self.bus.scheduler,
@@ -343,7 +355,8 @@ impl CPU {
                 EventType::CDCommandTransfer => self.bus.cdrom.transfer_command(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDParamTransfer => self.bus.cdrom.transfer_params(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDResponseTransfer => self.bus.cdrom.transfer_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::CDResponseClear => self.bus.cdrom.clear_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat)
+                EventType::CDResponseClear => self.bus.cdrom.clear_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::Timer(timer_id) => self.bus.timers[timer_id].on_overflow_or_target(&mut self.bus.scheduler, &mut self.bus.interrupt_stat)
             }
         }
 
