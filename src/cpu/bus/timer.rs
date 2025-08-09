@@ -202,7 +202,6 @@ impl Timer {
                 }
             }
         }
-        // no need to schedule timers if they're using sync enable, as those are ticked manually
     }
 
     pub fn on_overflow_or_target(&mut self, scheduler: &mut Scheduler, interrupt_stat: &mut InterruptRegister) {

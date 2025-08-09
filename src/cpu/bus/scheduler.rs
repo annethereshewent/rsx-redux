@@ -5,7 +5,8 @@ use priority_queue::PriorityQueue;
 #[derive(Hash, Eq, PartialEq)]
 pub enum EventType {
     Vblank,
-    Hblank,
+    HblankStart,
+    HblankEnd,
     DmaFinished(usize),
     CDExecuteCommand,
     CDCheckCommands,

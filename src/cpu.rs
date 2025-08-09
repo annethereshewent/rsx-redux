@@ -344,7 +344,12 @@ impl CPU {
                     &mut self.bus.timers,
                     cycles_left
                 ),
-                EventType::Hblank => self.bus.gpu.handle_hblank(
+                EventType::HblankStart => self.bus.gpu.handle_hblank_start(
+                    &mut self.bus.scheduler,
+                    &mut self.bus.timers,
+                    cycles_left
+                ),
+                EventType::HblankEnd => self.bus.gpu.handle_hblank(
                     &mut self.bus.scheduler,
                     &mut self.bus.interrupt_stat,
                     &mut self.bus.timers,

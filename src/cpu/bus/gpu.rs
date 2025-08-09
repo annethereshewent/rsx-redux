@@ -2,7 +2,9 @@ use std::{collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNI
 
 use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, timer::{counter_mode_register::CounterModeRegister, ClockSource, Timer}};
 
+const HBLANK_START: usize = 2813;
 const CYCLES_PER_SCANLINE: usize = 3413;
+const HBLANK_END: usize = CYCLES_PER_SCANLINE - HBLANK_START;
 const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
@@ -127,7 +129,7 @@ pub struct GPU {
 
 impl GPU {
     pub fn new(scheduler: &mut Scheduler) -> Self {
-        scheduler.schedule(EventType::Hblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize);
+        scheduler.schedule(EventType::HblankStart, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize);
 
         Self {
             frame_finished: false,
@@ -170,6 +172,18 @@ impl GPU {
         }
     }
 
+    pub fn handle_hblank_start(
+        &mut self,
+        scheduler: &mut Scheduler,
+        timers: &mut [Timer],
+        cycles_left: usize
+    ) {
+        timers[0].in_xblank = true;
+        timers[1].in_xblank = false;
+
+        scheduler.schedule(EventType::HblankEnd, HBLANK_END - cycles_left);
+    }
+
     pub fn handle_hblank(
         &mut self,
         scheduler: &mut Scheduler,
@@ -177,10 +191,8 @@ impl GPU {
         timers: &mut [Timer],
         cycles_left: usize
     ) {
+        timers[0].in_xblank = false;
         self.process_commands();
-
-        timers[0].in_xblank = true;
-        timers[1].in_xblank = false;
 
         if timers[0].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
             match timers[0].counter_register.sync_mode() {
@@ -208,8 +220,9 @@ impl GPU {
         }
 
         if self.current_line < VBLANK_LINE_START {
-            scheduler.schedule(EventType::Hblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
+            scheduler.schedule(EventType::HblankStart, (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left);
         } else {
+            timers[1].in_xblank = true;
             interrupt_stat.insert(InterruptRegister::VBLANK);
 
             scheduler.schedule(EventType::Vblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
@@ -600,7 +613,6 @@ impl GPU {
     ) {
         self.even_flag = 0;
 
-        timers[0].in_xblank = false;
         timers[1].in_xblank = true;
 
         if timers[1].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
@@ -627,7 +639,7 @@ impl GPU {
         if self.current_line == NUM_SCANLINES {
             self.frame_finished = true;
             self.current_line = 0;
-            scheduler.schedule(EventType::Hblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
+            scheduler.schedule(EventType::HblankStart, (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left);
         } else {
             scheduler.schedule(EventType::Vblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
             self.current_line += 1;
