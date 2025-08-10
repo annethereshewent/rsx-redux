@@ -125,8 +125,8 @@ pub struct GPU {
     is_shaded: bool,
     is_textured: bool,
     clut_index: usize,
-    destination_x: u32,
-    destination_y: u32,
+    transfer_x: u32,
+    transfer_y: u32,
     transfer_width: u32,
     transfer_height: u32,
     transfer_type: Option<TransferType>,
@@ -174,8 +174,8 @@ impl GPU {
             clut_index: 0,
             transfer_height: 0,
             transfer_width: 0,
-            destination_x: 0,
-            destination_y: 0,
+            transfer_x: 0,
+            transfer_y: 0,
             transfer_type: None,
             read_x: 0,
             read_y: 0,
@@ -185,6 +185,44 @@ impl GPU {
             modulate: false,
             rectangle_size: RectangleSize::Single
         }
+    }
+
+    pub fn read_gpu(&mut self) -> u32 {
+        if let Some(transfer_type) = self.transfer_type {
+            if transfer_type == TransferType::FromVram {
+                let lower = self.transfer_to_cpu();
+                let upper = self.transfer_to_cpu();
+
+                println!("transferring 0x{:x}", lower as u32 | (upper as u32) << 16);
+
+                return lower as u32 | (upper as u32) << 16;
+            }
+        }
+
+        self.gpuread
+    }
+
+    pub fn transfer_to_cpu(&mut self) -> u16 {
+        let curr_x = self.transfer_x + self.read_x;
+        let curr_y = self.transfer_y + self.read_y;
+
+        let address = Self::get_vram_address(curr_x, curr_y);
+
+        let value = unsafe { *(&self.vram[address as usize] as *const u8 as *const u16) };
+
+        self.read_x += 1;
+
+        if self.read_x == self.transfer_width {
+            self.read_x = 0;
+
+            self.read_y += 1;
+
+            if self.read_y == self.transfer_height {
+                self.transfer_type = None;
+            }
+        }
+
+        value
     }
 
     pub fn handle_hblank_start(
@@ -533,7 +571,21 @@ impl GPU {
     }
 
     fn vram_to_cpu_transfer(&mut self) {
-        todo!("vram to cpu");
+        self.transfer_type = Some(TransferType::FromVram);
+
+        self.current_command_buffer.pop_front().unwrap();
+
+        let source = self.current_command_buffer.pop_front().unwrap();
+        let dimensions = self.current_command_buffer.pop_front().unwrap();
+
+        self.transfer_x = source & 0x3ff;
+        self.transfer_y = (source >> 16) & 0x1ff;
+
+        self.transfer_width = dimensions & 0x3ff;
+        self.transfer_height = (dimensions >> 16) & 0x1ff;
+
+        self.read_y = 0;
+        self.read_x = 0;
     }
 
     fn cpu_to_vram_transfer(&mut self) {
@@ -545,8 +597,8 @@ impl GPU {
         let destination = self.current_command_buffer.pop_front().unwrap();
         let dimensions = self.current_command_buffer.pop_front().unwrap();
 
-        self.destination_x = destination & 0x3ff;
-        self.destination_y = (destination >> 16) & 0x1ff;
+        self.transfer_x = destination & 0x3ff;
+        self.transfer_y = (destination >> 16) & 0x1ff;
 
         self.transfer_width = dimensions & 0x3ff;
         self.transfer_height = (dimensions >> 16) & 0x1ff;
@@ -605,11 +657,11 @@ impl GPU {
     }
 
     fn transfer_to_vram(&mut self, halfword: u16) {
-        let curr_x = self.destination_x + self.read_x;
+        let curr_x = self.transfer_x + self.read_x;
 
         self.read_x += 1;
 
-        let curr_y = self.destination_y + self.read_y;
+        let curr_y = self.transfer_y + self.read_y;
 
         let address = Self::get_vram_address(curr_x, curr_y);
 
@@ -626,8 +678,8 @@ impl GPU {
                 self.read_y = 0;
                 self.transfer_width = 0;
                 self.transfer_height = 0;
-                self.destination_x = 0;
-                self.destination_y = 0;
+                self.transfer_x = 0;
+                self.transfer_y = 0;
             }
         }
     }

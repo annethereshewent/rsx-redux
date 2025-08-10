@@ -86,7 +86,7 @@ impl Bus {
         }
     }
 
-    pub fn mem_read32(&self, address: u32) -> u32 {
+    pub fn mem_read32(&mut self, address: u32) -> u32 {
         let address = Self::translate_address(address);
 
         match address {
@@ -95,7 +95,7 @@ impl Bus {
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f801080..=0x1f8010f4 => self.dma.read_registers(address),
             0x1f801110 => self.timers[1].counter,
-            0x1f801810 => self.gpu.gpuread,
+            0x1f801810 => self.gpu.read_gpu(),
             0x1f801814 => self.gpu.read_stat(),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
             _ => todo!("(mem_read32) address: 0x{:x}", address)

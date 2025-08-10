@@ -38,59 +38,32 @@ fn main() {
     loop {
         while !cpu.bus.gpu.frame_finished {
             cpu.step();
-            // if cpu.bus.gpu.commands_ready {
-            //     cpu.bus.gpu.commands_ready = false;
-            //     if encoder.is_none() {
-            //         let rpd = unsafe { MTLRenderPassDescriptor::new() };
-            //         drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
-            //         command_buffer = frontend.renderer.command_queue.commandBuffer();
+            if cpu.bus.gpu.commands_ready {
+                cpu.bus.gpu.commands_ready = false;
+                if encoder.is_none() {
+                    let rpd = unsafe { MTLRenderPassDescriptor::new() };
+                    drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
+                    command_buffer = frontend.renderer.command_queue.commandBuffer();
 
-            //         let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+                    let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
 
-            //         unsafe {
-            //             color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
-            //         }
+                    unsafe {
+                        color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
+                    }
 
-            //         encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
-            //     }
+                    encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
+                }
 
-            //     if let Some(encoder_ref) = &mut encoder {
-            //         frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, encoder_ref);
-            //     }
-            // }
+                if let Some(encoder_ref) = &mut encoder {
+                    frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, encoder_ref);
+                }
+            }
 
             if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
                 encoder.endEncoding();
                 command_buffer.presentDrawable(drawable.as_ref());
                 command_buffer.commit();
             }
-        }
-
-        if cpu.bus.gpu.commands_ready {
-            cpu.bus.gpu.commands_ready = false;
-            if encoder.is_none() {
-                let rpd = unsafe { MTLRenderPassDescriptor::new() };
-                drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
-                command_buffer = frontend.renderer.command_queue.commandBuffer();
-
-                let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
-
-                unsafe {
-                    color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
-                }
-
-                encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
-            }
-
-            if let Some(encoder_ref) = &mut encoder {
-                frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, encoder_ref);
-            }
-        }
-
-        if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
-            encoder.endEncoding();
-            command_buffer.presentDrawable(drawable.as_ref());
-            command_buffer.commit();
         }
 
         cpu.bus.gpu.frame_finished = false;

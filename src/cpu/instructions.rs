@@ -256,7 +256,8 @@ impl CPU {
 
     pub fn lw(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-        self.update_load(instruction.rt(), self.bus.mem_read32(address));
+        let value = self.bus.mem_read32(address);
+        self.update_load(instruction.rt(), value);
     }
 
     pub fn lbu(&mut self, instruction: Instruction) {
