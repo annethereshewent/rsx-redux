@@ -488,8 +488,8 @@ impl CPU {
     pub fn div(&mut self, instruction: Instruction) {
         self.tick(1);
 
-        let divisor = self.r[instruction.rs()] as i32;
-        let dividend = self.r[instruction.rt()] as i32;
+        let dividend = self.r[instruction.rs()] as i32;
+        let divisor = self.r[instruction.rt()] as i32;
 
         if divisor != 0 {
             self.lo = (dividend / divisor) as u32;

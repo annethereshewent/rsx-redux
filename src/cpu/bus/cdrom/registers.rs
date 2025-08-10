@@ -17,6 +17,6 @@ impl HntmaskRegister {
     }
 
     pub fn enable_irq(&self) -> u8 {
-        self.bits() & 0x7
+        self.bits() & 0x1f
     }
 }

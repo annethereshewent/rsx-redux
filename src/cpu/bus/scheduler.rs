@@ -15,6 +15,7 @@ pub enum EventType {
     CDParamTransfer,
     CDResponseClear,
     CDResponseTransfer,
+    CDCheckIrqs,
     Timer(usize)
 }
 

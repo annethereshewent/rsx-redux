@@ -222,6 +222,7 @@ impl GPU {
         if self.current_line < VBLANK_LINE_START {
             scheduler.schedule(EventType::HblankStart, (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left);
         } else {
+            self.frame_finished = true;
             timers[1].in_xblank = true;
             interrupt_stat.insert(InterruptRegister::VBLANK);
 
@@ -639,7 +640,6 @@ impl GPU {
         }
 
         if self.current_line == NUM_SCANLINES {
-            self.frame_finished = true;
             self.current_line = 0;
             scheduler.schedule(EventType::HblankStart, (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left);
         } else {

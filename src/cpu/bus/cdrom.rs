@@ -36,12 +36,14 @@ pub struct CDRom {
     controller_status: ControllerStatus,
     command_latch: Option<u8>,
     command: u8,
-    in_irq: bool
+    in_irq: bool,
+    is_first0x19: bool
 }
 
 impl CDRom {
     pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
+        scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES);
         Self {
             hntmask: HntmaskRegister::from_bits_retain(0),
             bank: 0,
@@ -55,7 +57,8 @@ impl CDRom {
             command: 0,
             command_latch: None,
             controller_response_fifo: VecDeque::with_capacity(16),
-            in_irq: false
+            in_irq: false,
+            is_first0x19: false
         }
     }
 
@@ -69,14 +72,13 @@ impl CDRom {
         } else {
             scheduler.schedule(EventType::CDLatchInterrupts, 10 * CDROM_CYCLES);
         }
-        self.in_irq = false;
     }
     fn read_hintsts(&self) -> u8 {
         self.irqs | 0x7 << 5
     }
 
     fn read_response(&mut self) -> u8 {
-        if self.controller_response_fifo.is_empty() { 0 } else { self.controller_response_fifo.pop_front().unwrap() }
+        if self.result_fifo.is_empty() { 0 } else { self.result_fifo.pop_front().unwrap() }
     }
 
     pub fn read(&mut self, address: usize) -> u8 {
@@ -130,24 +132,21 @@ impl CDRom {
         } else {
             scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
         }
-
-        self.process_irqs(interrupt_register);
     }
 
-    fn process_irqs(&mut self, interrupt_register: &mut InterruptRegister) {
-        if self.irqs & self.hntmask.enable_irq() != 0 && !self.in_irq {
+    pub fn process_irqs(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+        if self.irqs & self.hntmask.enable_irq() & 0x1f != 0 {
             self.in_irq = true;
             interrupt_register.insert(InterruptRegister::CDROM);
         }
+
+        scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES);
     }
 
     pub fn transfer_command(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
-
         self.command = self.command_latch.take().unwrap();
 
         scheduler.schedule(EventType::CDExecuteCommand, CDROM_CYCLES * 10);
-
-        self.process_irqs(interrupt_register);
     }
 
     pub fn transfer_params(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
@@ -160,8 +159,6 @@ impl CDRom {
         } else {
             scheduler.schedule(EventType::CDCommandTransfer, CDROM_CYCLES * 10);
         }
-
-        self.process_irqs(interrupt_register);
     }
 
     pub fn transfer_interrupts(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
@@ -169,12 +166,11 @@ impl CDRom {
             self.irqs = self.irq_latch;
 
             self.controller_status = ControllerStatus::Idle;
+
             scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
         } else {
             scheduler.schedule(EventType::CDLatchInterrupts, CDROM_CYCLES);
         }
-
-        self.process_irqs(interrupt_register);
     }
 
 
@@ -191,21 +187,21 @@ impl CDRom {
 
                 self.irq_latch = 3;
 
-
-                self.controller_status = ControllerStatus::Busy;
-                scheduler.schedule(EventType::CDLatchInterrupts, 10 * CDROM_CYCLES);
+                scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
             }
             _ => todo!("subcommand = 0x{:x}", subcommand)
         }
     }
 
     pub fn execute_command(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+        self.controller_response_fifo.clear();
+
         match self.command {
             0x19 => self.commandx19(scheduler, interrupt_register),
             _ => todo!("command byte 0x{:x}", self.command)
         }
 
-        self.process_irqs(interrupt_register);
+        self.controller_param_fifo.clear();
     }
 
     pub fn clear_response(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
@@ -221,12 +217,14 @@ impl CDRom {
     fn write_control(&mut self, value: u8) {
         self.irqs &= !(value & 0x1f);
 
+        self.result_fifo.clear();
+
         if (value >> 6) & 1 == 1 {
             self.parameter_fifo.clear();
         }
     }
 
-    pub fn write(&mut self, address: usize, value: u8, scheduler: &mut Scheduler) {
+    pub fn write(&mut self, address: usize, value: u8) {
         match address {
             0x1f801803 => match self.bank {
                 1 => self.write_control(value),

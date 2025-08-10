@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use bus::{scheduler::EventType, Bus};
+use bus::{registers::interrupt_register::InterruptRegister, scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
 use instructions::Instruction;
 
@@ -34,7 +34,8 @@ pub struct CPU {
     ignored_load_delay: Option<usize>,
     branch_taken: bool,
     in_delay_slot: bool,
-    output: String
+    output: String,
+    num_instructions: usize
 }
 
 impl CPU {
@@ -210,7 +211,8 @@ impl CPU {
             ignored_load_delay: None,
             in_delay_slot: false,
             branch_taken: false,
-            output: "".to_string()
+            output: "".to_string(),
+            num_instructions: 0
         }
     }
 
@@ -229,26 +231,26 @@ impl CPU {
         let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits();
 
         if interrupts != 0 {
-            let shift = interrupts.trailing_zeros() + 10;
-            self.prepare_interrupt(1 << shift);
+            self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() | 1 << 10);
         } else {
-            self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() & 0xffc03ff);
+            self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() & !(1 << 10));
         }
     }
 
     fn check_irqs(&self) -> bool {
-        ((self.cop0.cause.bits() >> 8) as u8) & ((self.cop0.sr.bits() >> 8) as u8) != 0 &&
-            self.cop0.sr.contains(StatusRegister::IEC)
+        let mask = ((self.cop0.sr.bits() >> 8) as u8) & ((self.cop0.cause.bits() >> 8) as u8);
+
+        mask != 0 && self.cop0.sr.contains(StatusRegister::IEC)
     }
 
-    fn prepare_interrupt(&mut self, interrupt: u32) {
-        let mut cop0_bits = self.cop0.cause.bits();
+    // fn prepare_interrupt(&mut self) {
+    //     let mut cop0_bits = self.cop0.cause.bits();
 
-        cop0_bits &= !0x7f;
-        cop0_bits |= interrupt;
+    //     cop0_bits &= !0x7f;
 
-        self.cop0.cause = CauseRegister::from_bits_retain(cop0_bits);
-    }
+    //     cop0_bits |= 1 << 10;
+    //     self.cop0.cause = CauseRegister::from_bits_retain(cop0_bits);
+    // }
 
     pub fn store8(&mut self, address: u32, value: u8) {
         if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
@@ -270,7 +272,7 @@ impl CPU {
 
     fn transfer_load(&mut self) {
         if let Some((index, value)) = self.delayed_load {
-            if let Some(ignored_load_delay) = self.ignored_load_delay {
+            if let Some(ignored_load_delay) = self.ignored_load_delay.take() {
                 if ignored_load_delay != index {
                     self.r[index] = value;
                 }
@@ -327,7 +329,7 @@ impl CPU {
 
         if !self.found.contains(&self.previous_pc) && self.debug_on {
             println!("[Opcode: 0x{:x}] [PC: 0x{:x}] {}", opcode, self.previous_pc, self.disassemble(opcode));
-            // self.found.insert(self.previous_pc);
+            self.found.insert(self.previous_pc);
         }
 
         self.next_pc += 4;
@@ -366,7 +368,8 @@ impl CPU {
                 EventType::CDParamTransfer => self.bus.cdrom.transfer_params(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDResponseTransfer => self.bus.cdrom.transfer_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDResponseClear => self.bus.cdrom.clear_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::Timer(timer_id) => self.bus.timers[timer_id].on_overflow_or_target(&mut self.bus.scheduler, &mut self.bus.interrupt_stat)
+                EventType::Timer(timer_id) => self.bus.timers[timer_id].on_overflow_or_target(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDCheckIrqs => self.bus.cdrom.process_irqs(&mut self.bus.scheduler, &mut self.bus.interrupt_stat)
             }
         }
 
@@ -403,6 +406,13 @@ impl CPU {
         let mode = sr_bits & 0x3f;
         sr_bits &= !0x3f;
         sr_bits |= (mode << 2) & 0x3f;
+
+        let mut cause_bits = self.cop0.cause.bits();
+
+        cause_bits &= !0x7c;
+        cause_bits |= (exception_type as u32) << 2;
+
+        self.cop0.cause = CauseRegister::from_bits_retain(cause_bits);
 
         self.cop0.sr = StatusRegister::from_bits_retain(sr_bits);
 

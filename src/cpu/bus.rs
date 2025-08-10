@@ -214,7 +214,7 @@ impl Bus {
                 self.cdrom.write_bank(value);
             }
             0x1f801801..=0x1f801803 => {
-                self.cdrom.write(address, value, &mut self.scheduler);
+                self.cdrom.write(address, value);
             }
             0x1f802041 => self.exp1_post = value,
             _ => todo!("(mem_write8) address: 0x{:x}", address)
