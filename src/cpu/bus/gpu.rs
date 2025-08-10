@@ -207,7 +207,6 @@ impl GPU {
         cycles_left: usize
     ) {
         timers[0].in_xblank = false;
-        self.process_commands();
 
         if timers[0].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
             match timers[0].counter_register.sync_mode() {
@@ -237,8 +236,8 @@ impl GPU {
         if self.current_line < VBLANK_LINE_START {
             scheduler.schedule(EventType::HblankStart, (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left);
         } else {
-            self.frame_finished = true;
             timers[1].in_xblank = true;
+            self.frame_finished = true;
             interrupt_stat.insert(InterruptRegister::VBLANK);
 
             scheduler.schedule(EventType::Vblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
@@ -637,62 +636,58 @@ impl GPU {
         2 * ((x & 0x3ff) + 1024 * (y & 0x1ff)) as usize
     }
 
-    fn process_commands(&mut self) {
-        while !self.command_fifo.is_empty() {
-            if let Some(transfer_type) = self.transfer_type {
-                if transfer_type == TransferType::ToVram {
-                    let word = self.command_fifo.pop_front().unwrap();
-                    self.transfer_to_vram(word as u16);
+    pub fn process_commands(&mut self, word: u32) {
+        if let Some(transfer_type) = self.transfer_type {
+            if transfer_type == TransferType::ToVram {
+                self.transfer_to_vram(word as u16);
 
-                    if self.transfer_type.is_some() {
-                        self.transfer_to_vram((word >> 16) as u16);
-                    }
-                    continue;
+                if self.transfer_type.is_some() {
+                    self.transfer_to_vram((word >> 16) as u16);
                 }
-            }
-            let word = self.command_fifo.pop_front().unwrap();
-            let upper = word >> 29;
-
-            self.current_command_buffer.push_back(word);
-
-            if self.words_left == 0 {
-                if upper == 0x2 {
-                    if (word >> 27) & 1 == 1 {
-                        self.is_polyline = true;
-                    }
-                } else {
-                    self.words_left = self.get_words_left(word);
-                }
-            }
-
-            if self.words_left == 0 && upper == 0x2 || self.is_polyline {
-                if self.is_polyline {
-                    if (word & 0xf000f000) == 0x50005000 {
-                        self.is_polyline = false;
-
-                        self.draw_polyline();
-
-                        self.current_command_buffer = VecDeque::new();
-                    }
-                } else {
-                    self.draw_line();
-                    self.current_command_buffer = VecDeque::new();
-                }
-
                 return;
             }
+        }
+        let upper = word >> 29;
 
-            if self.words_left == 1 {
-                let word = self.current_command_buffer[0];
+        self.current_command_buffer.push_back(word);
 
-                self.execute_command(word);
+        if self.words_left == 0 {
+            if upper == 0x2 {
+                if (word >> 27) & 1 == 1 {
+                    self.is_polyline = true;
+                }
+            } else {
+                self.words_left = self.get_words_left(word);
+            }
+        }
 
+        if self.words_left == 0 && upper == 0x2 || self.is_polyline {
+            if self.is_polyline {
+                if (word & 0xf000f000) == 0x50005000 {
+                    self.is_polyline = false;
+
+                    self.draw_polyline();
+
+                    self.current_command_buffer = VecDeque::new();
+                }
+            } else {
+                self.draw_line();
                 self.current_command_buffer = VecDeque::new();
             }
 
-            if self.words_left > 0 {
-                self.words_left -= 1;
-            }
+            return;
+        }
+
+        if self.words_left == 1 {
+            let word = self.current_command_buffer[0];
+
+            self.execute_command(word);
+
+            self.current_command_buffer = VecDeque::new();
+        }
+
+        if self.words_left > 0 {
+            self.words_left -= 1;
         }
     }
 

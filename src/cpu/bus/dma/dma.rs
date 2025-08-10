@@ -6,10 +6,11 @@ use super::{dma_channel_control_register::{DmaChannelControlRegister, SyncMode},
 #[derive(Copy, Clone)]
 pub struct DmaChannel {
     pub base_address: u32,
-    pub num_words: u32,
     pub block_size: u32,
     pub num_blocks: u32,
-    pub control: DmaChannelControlRegister
+    pub control: DmaChannelControlRegister,
+    pub blocks_remaining: u32,
+    pub current_slice_address: u32
 }
 
 const MDEC_IN: usize = 0;
@@ -24,23 +25,20 @@ impl DmaChannel {
     pub fn new() -> Self {
         Self {
             base_address: 0,
-            num_words: 0,
             block_size: 0,
             num_blocks: 0,
-            control: DmaChannelControlRegister::from_bits_retain(0)
+            control: DmaChannelControlRegister::from_bits_retain(0),
+            blocks_remaining: 0,
+            current_slice_address: 0
         }
     }
 
     pub fn write(&mut self, register: usize, value: u32) {
         match register {
             0 => self.base_address = value & 0xffffff,
-            4 => match self.control.sync_mode() {
-                SyncMode::Burst => self.num_words = value & 0xffff,
-                SyncMode::Slice => {
-                    self.block_size = value & 0xffff;
-                    self.num_blocks = value >> 16;
-                }
-                SyncMode::LinkedList => ()
+            4 => {
+                self.block_size = value & 0xffff;
+                self.num_blocks = value >> 16;
             }
             8 => self.control = DmaChannelControlRegister::from_bits_retain(value),
             _ => panic!("invalid register given: {register}")
@@ -51,7 +49,7 @@ impl DmaChannel {
         match register {
             0 => self.base_address,
             4 => match self.control.sync_mode() {
-                SyncMode::Burst => self.num_words,
+                SyncMode::Burst => self.block_size,
                 SyncMode::Slice => self.block_size & 0xffff | (self.num_blocks & 0xffff) << 16,
                 SyncMode::LinkedList => 0
             }
@@ -109,49 +107,74 @@ impl Dma {
             todo!("transfer to ram");
         } else {
             // from ram
-            if dma_channel.control.sync_mode() != SyncMode::LinkedList {
-                let mut current_address = dma_channel.base_address & 0x1fffff;
+            match dma_channel.control.sync_mode() {
+                SyncMode::LinkedList => {
+                    let mut current_address = dma_channel.base_address & 0x1ffffc;
 
-                for _ in 0..dma_channel.num_words {
-                    let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
-                    gpu.command_fifo.push_back(word);
+                    let mut total_word_count = 0;
 
-                    if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
-                        current_address -= 4;
-                    } else {
-                        current_address += 4;
+                    loop {
+                        let packet = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
+                        let mut word_count = packet >> 24;
+                        total_word_count += word_count;
+
+                        while word_count > 0 {
+                            current_address += 4;
+
+                            let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
+
+                            word_count -= 1;
+
+                            gpu.process_commands(word);
+                        }
+
+                        current_address = packet & 0xffffff;
+
+                        if current_address == 0xffffff {
+                            break;
+                        }
+
+                        current_address &= !(0x3);
+                    }
+
+                    return total_word_count;
+                }
+                SyncMode::Burst => {
+                    let mut current_address = dma_channel.base_address & 0x1fffff;
+
+                    let num_words = dma_channel.block_size;
+
+                    for _ in 0..num_words {
+                        let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
+                        gpu.process_commands(word);
+
+                        if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                            current_address -= 4;
+                        } else {
+                            current_address += 4;
+                        }
                     }
                 }
-            } else {
-                let mut current_address = dma_channel.base_address & 0x1ffffc;
+                SyncMode::Slice => {
+                    let block_size = if dma_channel.block_size == 0 { 0x10000 } else { dma_channel.block_size };
 
-                let mut total_word_count = 0;
+                    for _ in 0..dma_channel.num_blocks {
+                        for _ in 0..block_size {
+                            let word =  unsafe { *(&ram[dma_channel.current_slice_address as usize] as *const u8 as *const u32) };
 
-                loop {
-                    let packet = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
-                    let mut word_count = packet >> 24;
+                            gpu.process_commands(word);
 
-                    while word_count > 0 {
-                        current_address += 4;
-
-                        let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
-                        word_count -= 1;
-
-                        gpu.command_fifo.push_back(word);
+                            if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                                dma_channel.current_slice_address -= 4;
+                            } else {
+                                dma_channel.current_slice_address += 4;
+                            }
+                        }
                     }
+                    dma_channel.blocks_remaining -= 1;
 
-                    current_address = packet & 0xffffff;
-
-                    if current_address == 0xffffff {
-                        break;
-                    }
-
-                    current_address &= !(0x3);
-
-                    total_word_count += word_count;
+                    return dma_channel.blocks_remaining;
                 }
-
-                return total_word_count;
             }
         }
 
@@ -175,8 +198,8 @@ impl Dma {
 
         let mut current_address = channel.base_address & 0x1ffffc;
 
-        for i in 0..channel.num_words {
-            let value = if i == channel.num_words -1 {
+        for i in 0..channel.block_size {
+            let value = if i == channel.block_size -1 {
                 0xffffff
             } else {
                 current_address - 4
@@ -231,7 +254,16 @@ impl Dma {
         } else {
             match address {
                 0x1f8010f0 => self.dma_control = DmaControlRegister::from_bits_retain(value),
-                0x1f8010f4 => self.dicr = DmaInterruptRegister::from_bits_retain(value),
+                0x1f8010f4 => {
+                    let mut bits = self.dicr.bits();
+
+                    bits &= 0xff00_0000;
+                    bits &= !(value & 0x7f00_0000);
+                    bits |= value & 0xff_803f;
+
+
+                    self.dicr = DmaInterruptRegister::from_bits_retain(bits)
+                }
                 _ => panic!("invalid dma address given: 0x{:x}", address)
             }
 
@@ -252,7 +284,7 @@ impl Dma {
             };
 
             let mut num_words = match dma_channel.control.sync_mode() {
-                SyncMode::Burst => dma_channel.num_words,
+                SyncMode::Burst => dma_channel.block_size,
                 SyncMode::Slice => dma_channel.block_size * dma_channel.num_blocks,
                 SyncMode::LinkedList => 0 // calculate this after the end of the linked list transfer
             };
@@ -261,10 +293,9 @@ impl Dma {
                 0 => self.start_mdec_in_transfer(),
                 1 => self.start_mdec_out_transfer(),
                 2 =>  {
-                    if dma_channel.control.sync_mode() == SyncMode::LinkedList {
-                        num_words = self.start_gpu_transfer(ram, gpu);
-                    } else {
-                        self.start_gpu_transfer(ram, gpu);
+                    match dma_channel.control.sync_mode() {
+                        SyncMode::LinkedList => num_words = self.start_gpu_transfer(ram, gpu),
+                        SyncMode::Burst | SyncMode::Slice => { self.start_gpu_transfer(ram, gpu); },
                     }
                 }
                 3 => self.start_cdrom_transfer(),

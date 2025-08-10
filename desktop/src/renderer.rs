@@ -53,6 +53,5 @@ impl Renderer {
 
             unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
         }
-
     }
 }
