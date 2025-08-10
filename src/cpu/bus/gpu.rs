@@ -417,6 +417,8 @@ impl GPU {
     }
 
     fn cpu_to_vram_transfer(&mut self) {
+        // this is a dumb hack because i dont pop the actual command in execute_command, so i do it here
+        self.current_command_buffer.pop_front().unwrap();
         self.transfer_type = Some(TransferType::ToVram);
 
         let destination = self.current_command_buffer.pop_front().unwrap();
@@ -427,6 +429,9 @@ impl GPU {
 
         self.transfer_width = dimensions & 0x3ff;
         self.transfer_height = (dimensions >> 16) & 0x1ff;
+
+        self.read_y = 0;
+        self.read_x = 0;
 
         if self.transfer_width == 0 {
             self.transfer_width = 0x400;
@@ -454,7 +459,7 @@ impl GPU {
             _ => {
                 match command {
                     0x0 => (), // NOP
-                    0x1 => self.command_fifo = VecDeque::with_capacity(16),
+                    0x1 => (), // TODO: invalidate cache
                     0x3..=0x1e => (), // NOP
                     0xe1 => self.texpage(word),
                     0xe2 => self.texture_window(word),
@@ -466,8 +471,6 @@ impl GPU {
                 }
             }
         }
-
-
     }
 
     fn draw_line(&mut self) {
@@ -522,7 +525,6 @@ impl GPU {
                     if self.transfer_type.is_some() {
                         self.transfer_to_vram((word >> 16) as u16);
                     }
-
                     continue;
                 }
             }
