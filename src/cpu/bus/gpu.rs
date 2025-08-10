@@ -9,6 +9,15 @@ const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
+
+#[derive(Copy, Clone, PartialEq)]
+enum RectangleSize {
+    Variable,
+    Single,
+    EightxEight,
+    SixteenxSixteen
+}
+
 #[derive(Copy, Clone, PartialEq)]
 enum TransferType {
     FromVram,
@@ -37,7 +46,7 @@ impl Polygon {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
@@ -124,7 +133,10 @@ pub struct GPU {
     read_x: u32,
     read_y: u32,
     vram: Box<[u8]>,
-    previous_time: u128
+    previous_time: u128,
+    is_semitransparent: bool,
+    modulate: bool,
+    rectangle_size: RectangleSize
 }
 
 impl GPU {
@@ -168,7 +180,10 @@ impl GPU {
             read_x: 0,
             read_y: 0,
             vram: vec![0; 1024 * 512 * 2].into_boxed_slice(),
-            previous_time: 0
+            previous_time: 0,
+            is_semitransparent: false,
+            modulate: false,
+            rectangle_size: RectangleSize::Single
         }
     }
 
@@ -242,7 +257,9 @@ impl GPU {
         if upper_bits == 0x1 {
             // render polygon command
             let is_textured = (word >> 26) & 1 == 1;
+            let is_semitransparent = (word >> 25) & 1 == 1;
             let is_shaded = (word >> 28) & 1 == 1;
+            let modulate = (word >> 24) & 1 == 1;
 
             let num_vertices = if (word >> 27) & 1 == 1 { 4 } else { 3 };
 
@@ -258,11 +275,38 @@ impl GPU {
             self.num_vertices = num_vertices;
             self.is_shaded = is_shaded;
             self.is_textured = is_textured;
+            self.is_semitransparent = is_semitransparent;
+            self.modulate = modulate;
 
             return num_vertices * multiplier + 1;
         }
 
-        if upper_bits == 4 {
+        if upper_bits == 0x3 {
+            let mut num_words = 2;
+            self.is_textured = (word >> 26) & 1 == 1;
+            self.is_semitransparent = (word >> 25) & 1 == 1;
+            self.modulate = (word >> 24) &1 == 1;
+
+            self.rectangle_size = match (word >> 27) & 0x3 {
+                0 => RectangleSize::Variable,
+                1 => RectangleSize::Single,
+                2 => RectangleSize::EightxEight,
+                3 => RectangleSize::SixteenxSixteen,
+                _ => unreachable!()
+            };
+
+            if self.is_textured {
+                num_words += 1;
+            }
+
+            if self.rectangle_size == RectangleSize::Variable {
+                num_words += 1;
+            }
+
+            return num_words;
+        }
+
+        if upper_bits == 0x4 {
             return 4;
         }
 
@@ -340,11 +384,11 @@ impl GPU {
 
             let word = self.current_command_buffer[command_index];
 
-            let mut x = word as i16 as i32;
-            let mut y = (word >> 16) as i16 as i32;
+            let x = word as i16 as i32;
+            let y = (word >> 16) as i16 as i32;
 
-            x = (x << 21) >> 21;
-            y = (y << 21) >> 21;
+            // x = (x << 21) >> 21;
+            // y = (y << 21) >> 21;
 
             vertex.x = x + self.x_offset;
             vertex.y = y + self.y_offset;
@@ -382,7 +426,84 @@ impl GPU {
 
     fn render_rectangle(&mut self) {
         self.commands_ready = true;
-        todo!("render rectangle");
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let color = Self::parse_color(word);
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let x = word as i16 as i32;
+        let y = (word >> 16) as i16 as i32;
+
+        let mut u: Option<u32> = None;
+        let mut v: Option<u32> = None;
+
+        if self.is_textured {
+            let word = self.current_command_buffer.pop_front().unwrap();
+
+            u = Some(word & 0xff);
+            v = Some((word >> 8) & 0xff);
+        }
+
+        let (width, height) = match self.rectangle_size {
+            RectangleSize::Variable => {
+                let word = self.current_command_buffer.pop_front().unwrap();
+
+                let width = (word & 0x3ff) as i32;
+                let height = ((word >> 16) & 0x1ff) as i32;
+
+                (width, height)
+            }
+            RectangleSize::EightxEight => (8, 8),
+            RectangleSize::SixteenxSixteen => (16, 16),
+            RectangleSize::Single => (1, 1)
+        };
+
+        // calculate the other vertices and push this to polygons!
+
+        let v0 = Vertex {
+            x,
+            y,
+            u,
+            v,
+            color,
+            texpage: Some(self.texpage)
+        };
+
+        let v1 = Vertex {
+            x: x + width,
+            y,
+            u,
+            v,
+            color,
+            texpage: Some(self.texpage)
+        };
+
+        let v2 = Vertex {
+            x,
+            y: y + height,
+            u,
+            v,
+            color,
+            texpage: Some(self.texpage)
+        };
+
+        let v3 = Vertex {
+            x: x + width,
+            y: y + height,
+            u,
+            v,
+            color,
+            texpage: Some(self.texpage)
+        };
+
+        let vertices = vec![v0, v1, v2, v3];
+
+        self.polygons.push(Polygon::new(vertices, false));
+
+        self.num_vertices = 0;
+
     }
 
     fn set_drawing_offset(&mut self, word: u32) {
@@ -419,6 +540,7 @@ impl GPU {
     fn cpu_to_vram_transfer(&mut self) {
         // this is a dumb hack because i dont pop the actual command in execute_command, so i do it here
         self.current_command_buffer.pop_front().unwrap();
+
         self.transfer_type = Some(TransferType::ToVram);
 
         let destination = self.current_command_buffer.pop_front().unwrap();
