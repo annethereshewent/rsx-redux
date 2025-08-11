@@ -164,7 +164,12 @@ pub struct GPU {
     horizontal_flip: bool,
     dma_direction: DmaDirection,
     horizontal_bits1: u32,
-    horizontal_bit2: u32
+    horizontal_bit2: u32,
+    display_start_x: u32,
+    display_start_y: u32,
+    display_range_x: (u32, u32),
+    display_range_y: (u32, u32),
+    display_on: bool
 }
 
 impl GPU {
@@ -220,7 +225,12 @@ impl GPU {
             horizontal_flip: false,
             dma_direction: DmaDirection::Off,
             horizontal_bit2: 0,
-            horizontal_bits1: 0
+            horizontal_bits1: 0,
+            display_start_x: 0,
+            display_start_y: 0,
+            display_range_x: (0, 0),
+            display_range_y: (0, 0),
+            display_on: true
         }
     }
 
@@ -738,6 +748,9 @@ impl GPU {
         let command = word >> 24;
         match command {
             0x0 => self.reset_gpu(word),
+            0x1 => self.current_command_buffer.clear(),
+            0x2 => self.irq_enabled = false,
+            0x3 => self.display_on = word & 1 == 1,
             0x4 => self.dma_direction = match word & 0x3 {
                 0 => DmaDirection::Off,
                 1 => DmaDirection::Fifo,
@@ -745,10 +758,27 @@ impl GPU {
                 3 => DmaDirection::ToCPU,
                 _ => unreachable!()
             },
+            0x5 => self.display_area_start(word),
+            0x6 => self.display_range_horizontal(word),
+            0x7 => self.display_range_vertical(word),
             0x8 => self.display_mode(word),
-            _ => todo!("command 0x{:x}", command)
+            _ => todo!("gp1 0x{:x}", command) // todo!("command 0x{:x}", command)
         }
     }
+
+    fn display_range_horizontal(&mut self, word: u32) {
+        self.display_range_x = (word & 0xfff, (word >> 12) & 0x1ff);
+    }
+
+    fn display_range_vertical(&mut self, word: u32) {
+        self.display_range_y = (word & 0x3ff, (word >> 10) & 0x3ff);
+    }
+
+    fn display_area_start(&mut self, word: u32) {
+        self.display_start_x = word & 0x3ff;
+        self.display_start_y = (word >> 10) & 0x1ff;
+    }
+
     /*
     0-1   Horizontal Resolution 1     (0=256, 1=320, 2=512, 3=640) ;GPUSTAT.17-18
     2     Vertical Resolution         (0=240, 1=480, when Bit5=1)  ;GPUSTAT.19
@@ -759,7 +789,7 @@ impl GPU {
     7     Flip screen horizontally    (0=Off, 1=On, v1 only)       ;GPUSTAT.14
     8-23  Not used (zero)
     */
-    pub fn display_mode(&mut self, word: u32) {
+    fn display_mode(&mut self, word: u32) {
         self.display_width = if (word >> 6) & 0x1 == 1 {
             368
         }  else {
@@ -787,8 +817,6 @@ impl GPU {
         if !self.interlaced {
             self.display_height = 240;
         }
-
-        println!("set display height to {}", self.display_height);
 
         self.video_mode = match (word >> 3) & 0x1 {
             0 => DisplayMode::Ntsc,
@@ -910,7 +938,7 @@ impl GPU {
             (self.video_mode as u32) << 20 |
             (self.display_depth as u32) << 21 |
             (self.interlaced as u32) << 22 |
-            1 << 23 | // TODO: display enable
+            (self.display_on as u32) << 23 | // TODO: display enable
             (self.irq_enabled as u32) << 24 |
             0x7 << 26 |
             (self.dma_direction as u32) << 29 |
