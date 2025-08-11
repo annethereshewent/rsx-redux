@@ -70,7 +70,7 @@ impl Renderer {
                 let g = vertex.color.g as f32 / 255.0;
                 let b = vertex.color.b as f32 / 255.0;
 
-                vertices[i] = [normalized_x, normalized_y, u as f32, v as f32, r, g, b, 1.0];
+                vertices[i] = [normalized_x, normalized_y, u as f32, v as f32, r, g, b, vertex.color.a as u32 as f32];
             }
 
             let byte_len = vertices.len() * std::mem::size_of::<[f32; 8]>();

@@ -143,7 +143,8 @@ pub struct GPU {
     num_vertices: usize,
     is_shaded: bool,
     is_textured: bool,
-    clut_index: usize,
+    clut_x: usize,
+    clut_y: usize,
     transfer_x: u32,
     transfer_y: u32,
     transfer_width: u32,
@@ -204,7 +205,8 @@ impl GPU {
             num_vertices: 0,
             is_shaded: false,
             is_textured: false,
-            clut_index: 0,
+            clut_x: 0,
+            clut_y: 0,
             transfer_height: 0,
             transfer_width: 0,
             transfer_x: 0,
@@ -495,9 +497,9 @@ impl GPU {
                 *v = (word >> 16) & 0xff;
 
                 if i == 0 {
-                    self.clut_index = (word >> 16) as usize;
+                    (self.clut_x, self.clut_y) = Self::parse_clut((word >> 16));
                 } else if i == 1 {
-                    self.texpage = Self::parse_texpage(word);
+                    vertex.texpage = Some(Self::parse_texpage(word));
                 }
 
                 command_index += 1;
@@ -533,6 +535,13 @@ impl GPU {
 
         self.commands_ready = true;
         self.num_vertices = 0;
+    }
+
+    fn parse_clut(word: u32) -> (usize, usize) {
+        let x = (word & 0x3f) << 4;
+        let y = (word >> 6) & 0x1ff;
+
+        (x as usize, y as usize)
     }
 
     fn push_rectangle(&mut self) {
