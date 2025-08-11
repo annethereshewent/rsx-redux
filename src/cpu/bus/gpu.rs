@@ -442,7 +442,7 @@ impl GPU {
         }
     }
 
-    fn render_polygon(&mut self) {
+    fn push_polygon(&mut self) {
         let mut command_index = 0;
 
         let mut vertices: Vec<Vertex> = Vec::new();
@@ -511,7 +511,7 @@ impl GPU {
         if vertices.len() > 3 {
             // split up into two polygons
             let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
-            let vertices2 = vec![vertices[2], vertices[1], vertices[3]];
+            let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
 
             polygons.push(Polygon {
                 vertices: vertices1,
@@ -535,7 +535,7 @@ impl GPU {
         self.num_vertices = 0;
     }
 
-    fn render_rectangle(&mut self) {
+    fn push_rectangle(&mut self) {
         self.commands_ready = true;
 
         let word = self.current_command_buffer.pop_front().unwrap();
@@ -702,9 +702,9 @@ impl GPU {
         let upper = word >> 29;
 
         match upper {
-            1 => self.render_polygon(),
+            1 => self.push_polygon(),
             2 => unreachable!("shouldn't happen"),
-            3 => self.render_rectangle(),
+            3 => self.push_rectangle(),
             4 => self.vram_to_vram_transfer(),
             5 => self.cpu_to_vram_transfer(),
             6 => self.vram_to_cpu_transfer(),
