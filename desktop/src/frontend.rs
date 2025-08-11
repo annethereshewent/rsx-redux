@@ -78,7 +78,10 @@ impl Frontend {
         let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
-        unsafe { color_attachment.setPixelFormat(metal_layer.pixelFormat()) };
+        unsafe {
+            color_attachment.setPixelFormat(metal_layer.pixelFormat());
+            color_attachment.setBlendingEnabled(false);
+        }
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
 

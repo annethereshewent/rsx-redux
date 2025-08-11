@@ -95,7 +95,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c10c2894a6fed806ade6027bcd50662746363a9589d3ec9d9bef30a4e4bc166"
 dependencies = [
  "bitflags 2.9.1",
+ "block2",
  "dispatch2",
+ "libc",
  "objc2",
 ]
 
@@ -210,6 +212,7 @@ name = "rsx-redux-desktop"
 version = "0.1.0"
 dependencies = [
  "objc2",
+ "objc2-core-foundation",
  "objc2-foundation",
  "objc2-metal",
  "objc2-quartz-core",

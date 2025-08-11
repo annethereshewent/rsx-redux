@@ -73,7 +73,7 @@ pub struct Color {
     pub a: bool
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Vertex {
     pub x: i32,
     pub y: i32,
@@ -126,10 +126,10 @@ pub struct GPU {
     pub gpuread: u32,
     words_left: usize,
     is_polyline: bool,
-    x1: u32,
-    x2: u32,
-    y1: u32,
-    y2: u32,
+    pub x1: u32,
+    pub x2: u32,
+    pub y1: u32,
+    pub y2: u32,
     x_offset: i32,
     y_offset: i32,
     texture_window_mask_x: u32,
@@ -240,8 +240,6 @@ impl GPU {
                 let lower = self.transfer_to_cpu();
                 let upper = self.transfer_to_cpu();
 
-                // println!("transferring 0x{:x}", lower as u32 | (upper as u32) << 16);
-
                 return lower as u32 | (upper as u32) << 16;
             }
         }
@@ -324,7 +322,6 @@ impl GPU {
             timers[1].in_xblank = true;
             self.frame_finished = true;
 
-            // println!("set vblank interrupt");
             interrupt_stat.insert(InterruptRegister::VBLANK);
 
             scheduler.schedule(EventType::Vblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
@@ -364,7 +361,12 @@ impl GPU {
             self.is_semitransparent = is_semitransparent;
             self.modulate = modulate;
 
-            return num_vertices * multiplier + 1;
+            // return num_vertices * multiplier + 1;
+            if !is_shaded {
+                return num_vertices * multiplier + 1;
+            }
+
+            return num_vertices * multiplier;
         }
 
         if upper_bits == 0x3 {
@@ -406,8 +408,6 @@ impl GPU {
     fn parse_texpage(word: u32) -> Texpage {
         let mut texpage = Texpage::new();
 
-        // println!("wrote 0x{:x} to draw mode aka parse_texpage", word);
-
         texpage.x_base = word & 0xf;
         texpage.y_base1 = (word >> 4) & 0x1;
         texpage.semi_transparency = (word >> 5) & 0x3;
@@ -429,7 +429,7 @@ impl GPU {
         texpage
     }
 
-    fn parse_color(word: u32) -> Color {
+    fn parse_color(&self, word: u32) -> Color {
         let r = word as u8;
         let g = (word >> 8) as u8;
         let b = (word >> 16) as u8;
@@ -438,7 +438,7 @@ impl GPU {
             r,
             g,
             b,
-            a: true
+            a: if self.set_while_drawing { true } else { false }
         }
     }
 
@@ -455,7 +455,7 @@ impl GPU {
                 y: 0,
                 u: if self.is_textured { Some(0) } else { None },
                 v: if self.is_textured { Some(0) } else { None },
-                color: Self::parse_color(color0),
+                color: self.parse_color(color0),
                 texpage: None
             };
 
@@ -497,19 +497,39 @@ impl GPU {
                 if i == 0 {
                     self.clut_index = (word >> 16) as usize;
                 } else if i == 1 {
-                    // println!("yes!");
                     self.texpage = Self::parse_texpage(word);
                 }
 
                 command_index += 1;
-            } else {
-                // println!("not textured sorry :(");
             }
 
             vertices.push(vertex);
         }
 
-        self.polygons.push(Polygon::new(vertices, false));
+        let mut polygons: Vec<Polygon> = Vec::new();
+
+        if vertices.len() > 3 {
+            // split up into two polygons
+            let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
+            let vertices2 = vec![vertices[2], vertices[1], vertices[3]];
+
+            polygons.push(Polygon {
+                vertices: vertices1,
+                is_line: false
+            });
+
+            polygons.push(Polygon {
+                vertices: vertices2,
+                is_line: false
+            });
+        } else {
+            polygons.push(Polygon {
+                vertices,
+                is_line: false
+            });
+        }
+
+        self.polygons.append(&mut polygons);
 
         self.commands_ready = true;
         self.num_vertices = 0;
@@ -520,7 +540,7 @@ impl GPU {
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
-        let color = Self::parse_color(word);
+        let color = self.parse_color(word);
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
@@ -589,9 +609,11 @@ impl GPU {
             texpage: Some(self.texpage)
         };
 
-        let vertices = vec![v0, v1, v2, v3];
+        let vertices1 = vec![v0, v1, v2];
+        let vertices2 = vec![v2, v1, v3];
 
-        self.polygons.push(Polygon::new(vertices, false));
+        self.polygons.push(Polygon::new(vertices1, false));
+        self.polygons.push(Polygon::new(vertices2, false));
 
         self.num_vertices = 0;
 
@@ -672,11 +694,12 @@ impl GPU {
         todo!("vram to vram");
     }
 
+    pub fn cross_product(v: &Vec<Vertex>) -> i32 {
+        (v[1].x - v[0].x) * (v[2].y - v[0].y) - (v[1].y - v[0].y) * (v[2].x - v[0].x)
+    }
     fn execute_command(&mut self, word: u32) {
         let command = word >> 24;
         let upper = word >> 29;
-
-        // println!("got command 0x{:x}", command);
 
         match upper {
             1 => self.render_polygon(),
@@ -846,8 +869,6 @@ impl GPU {
     }
 
     pub fn process_gp0_commands(&mut self, word: u32) {
-        // println!("received word 0x{:x}", word);
-
         if let Some(transfer_type) = self.transfer_type {
             if transfer_type == TransferType::ToVram {
                 self.transfer_to_vram(word as u16);
@@ -907,7 +928,6 @@ impl GPU {
     }
 
     pub fn read_stat(&self) -> u32 {
-        // println!("display height = {}", self.display_height);
         let vertical_bits = match self.display_height {
             240 => 0,
             480 => 1,

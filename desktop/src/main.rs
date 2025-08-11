@@ -2,17 +2,24 @@ use std::{env, fs};
 
 use frontend::Frontend;
 use objc2::{rc::Retained, runtime::ProtocolObject};
+use objc2_core_foundation::CGSize;
 use rsx_redux::cpu::CPU;
 
 pub mod frontend;
 pub mod renderer;
 
 use objc2_metal::{
+    MTLClearColor,
     MTLCommandBuffer,
     MTLCommandEncoder,
     MTLCommandQueue,
+    MTLCullMode,
+    MTLLoadAction,
     MTLRenderCommandEncoder,
-    MTLRenderPassDescriptor
+    MTLRenderPassDescriptor,
+    MTLStoreAction,
+    MTLViewport,
+    MTLWinding
 };
 use objc2_quartz_core::CAMetalDrawable;
 
@@ -45,17 +52,35 @@ fn main() {
                     drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
                     command_buffer = frontend.renderer.command_queue.commandBuffer();
 
+                    unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
+
                     let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
 
                     unsafe {
                         color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
+                        color_attachment.setLoadAction(MTLLoadAction::Clear);
+                        color_attachment.setStoreAction(MTLStoreAction::Store);
+
+                        color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
                     }
 
                     encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
                 }
 
                 if let Some(encoder_ref) = &mut encoder {
-                    frontend.renderer.render_polygons(&mut cpu.bus.gpu.polygons, encoder_ref);
+                    encoder_ref.setCullMode(MTLCullMode::None);
+                    encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
+
+                    let width = cpu.bus.gpu.display_width as f64;
+                    let height = cpu.bus.gpu.display_height as f64;
+
+                    let vp = MTLViewport {
+                        originX: 0.0, originY: 0.0,
+                        width, height,
+                        znear: 0.0, zfar: 1.0,
+                    };
+                    encoder_ref.setViewport(vp);
+                    frontend.renderer.render_polygons(&mut cpu.bus.gpu, width, height, encoder_ref);
                 }
             }
 
