@@ -762,7 +762,7 @@ impl GPU {
             0x6 => self.display_range_horizontal(word),
             0x7 => self.display_range_vertical(word),
             0x8 => self.display_mode(word),
-            _ => todo!("gp1 0x{:x}", command) // todo!("command 0x{:x}", command)
+            _ => todo!("gp1 0x{:x}", command)
         }
     }
 

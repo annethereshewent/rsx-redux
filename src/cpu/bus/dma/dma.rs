@@ -8,9 +8,7 @@ pub struct DmaChannel {
     pub base_address: u32,
     pub block_size: u32,
     pub num_blocks: u32,
-    pub control: DmaChannelControlRegister,
-    pub blocks_remaining: u32,
-    pub current_slice_address: u32
+    pub control: DmaChannelControlRegister
 }
 
 const MDEC_IN: usize = 0;
@@ -27,9 +25,7 @@ impl DmaChannel {
             base_address: 0,
             block_size: 0,
             num_blocks: 0,
-            control: DmaChannelControlRegister::from_bits_retain(0),
-            blocks_remaining: 0,
-            current_slice_address: 0
+            control: DmaChannelControlRegister::from_bits_retain(0)
         }
     }
 
@@ -158,22 +154,21 @@ impl Dma {
                 SyncMode::Slice => {
                     let block_size = if dma_channel.block_size == 0 { 0x10000 } else { dma_channel.block_size };
 
+                    let mut current_address = dma_channel.base_address;
+
                     for _ in 0..dma_channel.num_blocks {
                         for _ in 0..block_size {
-                            let word =  unsafe { *(&ram[dma_channel.current_slice_address as usize] as *const u8 as *const u32) };
+                            let word =  unsafe { *(&ram[(current_address & 0x1ffffc) as usize] as *const u8 as *const u32) };
 
                             gpu.process_gp0_commands(word);
 
                             if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
-                                dma_channel.current_slice_address -= 4;
+                                current_address -= 4;
                             } else {
-                                dma_channel.current_slice_address += 4;
+                                current_address += 4;
                             }
                         }
                     }
-                    dma_channel.blocks_remaining -= 1;
-
-                    return dma_channel.blocks_remaining;
                 }
             }
         }
