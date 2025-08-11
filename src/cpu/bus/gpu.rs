@@ -9,6 +9,25 @@ const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
+#[derive(Copy, Clone, PartialEq)]
+enum DmaDirection {
+    Off,
+    Fifo,
+    ToGP0,
+    ToCPU
+}
+
+#[derive(Copy, Clone, PartialEq)]
+enum DisplayMode {
+    Ntsc = 0,
+    Pal = 1
+}
+
+#[derive(Copy, Clone, PartialEq)]
+enum DisplayDepth {
+    Bit15 = 0,
+    Bit24 = 1
+}
 
 #[derive(Copy, Clone, PartialEq)]
 enum RectangleSize {
@@ -136,7 +155,16 @@ pub struct GPU {
     previous_time: u128,
     is_semitransparent: bool,
     modulate: bool,
-    rectangle_size: RectangleSize
+    rectangle_size: RectangleSize,
+    pub irq_enabled: bool,
+    pub display_width: u32,
+    pub display_height: u32,
+    video_mode: DisplayMode,
+    display_depth: DisplayDepth,
+    horizontal_flip: bool,
+    dma_direction: DmaDirection,
+    horizontal_bits1: u32,
+    horizontal_bit2: u32
 }
 
 impl GPU {
@@ -183,7 +211,16 @@ impl GPU {
             previous_time: 0,
             is_semitransparent: false,
             modulate: false,
-            rectangle_size: RectangleSize::Single
+            rectangle_size: RectangleSize::Single,
+            irq_enabled: false,
+            display_height: 240,
+            display_width: 320,
+            video_mode: DisplayMode::Ntsc,
+            display_depth: DisplayDepth::Bit15,
+            horizontal_flip: false,
+            dma_direction: DmaDirection::Off,
+            horizontal_bit2: 0,
+            horizontal_bits1: 0
         }
     }
 
@@ -193,7 +230,7 @@ impl GPU {
                 let lower = self.transfer_to_cpu();
                 let upper = self.transfer_to_cpu();
 
-                println!("transferring 0x{:x}", lower as u32 | (upper as u32) << 16);
+                // println!("transferring 0x{:x}", lower as u32 | (upper as u32) << 16);
 
                 return lower as u32 | (upper as u32) << 16;
             }
@@ -276,6 +313,8 @@ impl GPU {
         } else {
             timers[1].in_xblank = true;
             self.frame_finished = true;
+
+            // println!("set vblank interrupt");
             interrupt_stat.insert(InterruptRegister::VBLANK);
 
             scheduler.schedule(EventType::Vblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
@@ -356,6 +395,8 @@ impl GPU {
 
     fn parse_texpage(word: u32) -> Texpage {
         let mut texpage = Texpage::new();
+
+        // println!("wrote 0x{:x} to draw mode aka parse_texpage", word);
 
         texpage.x_base = word & 0xf;
         texpage.y_base1 = (word >> 4) & 0x1;
@@ -446,10 +487,13 @@ impl GPU {
                 if i == 0 {
                     self.clut_index = (word >> 16) as usize;
                 } else if i == 1 {
-                    vertex.texpage = Some(Self::parse_texpage(word));
+                    // println!("yes!");
+                    self.texpage = Self::parse_texpage(word);
                 }
 
                 command_index += 1;
+            } else {
+                // println!("not textured sorry :(");
             }
 
             vertices.push(vertex);
@@ -622,6 +666,8 @@ impl GPU {
         let command = word >> 24;
         let upper = word >> 29;
 
+        // println!("got command 0x{:x}", command);
+
         match upper {
             1 => self.render_polygon(),
             2 => unreachable!("shouldn't happen"),
@@ -688,7 +734,92 @@ impl GPU {
         2 * ((x & 0x3ff) + 1024 * (y & 0x1ff)) as usize
     }
 
-    pub fn process_commands(&mut self, word: u32) {
+    pub fn process_gp1_commands(&mut self, word: u32) {
+        let command = word >> 24;
+        match command {
+            0x0 => self.reset_gpu(word),
+            0x4 => self.dma_direction = match word & 0x3 {
+                0 => DmaDirection::Off,
+                1 => DmaDirection::Fifo,
+                2 => DmaDirection::ToGP0,
+                3 => DmaDirection::ToCPU,
+                _ => unreachable!()
+            },
+            0x8 => self.display_mode(word),
+            _ => todo!("command 0x{:x}", command)
+        }
+    }
+    /*
+    0-1   Horizontal Resolution 1     (0=256, 1=320, 2=512, 3=640) ;GPUSTAT.17-18
+    2     Vertical Resolution         (0=240, 1=480, when Bit5=1)  ;GPUSTAT.19
+    3     Video Mode                  (0=NTSC/60Hz, 1=PAL/50Hz)    ;GPUSTAT.20
+    4     Display Area Color Depth    (0=15bit, 1=24bit)           ;GPUSTAT.21
+    5     Vertical Interlace          (0=Off, 1=On)                ;GPUSTAT.22
+    6     Horizontal Resolution 2     (0=256/320/512/640, 1=368)   ;GPUSTAT.16
+    7     Flip screen horizontally    (0=Off, 1=On, v1 only)       ;GPUSTAT.14
+    8-23  Not used (zero)
+    */
+    pub fn display_mode(&mut self, word: u32) {
+        self.display_width = if (word >> 6) & 0x1 == 1 {
+            368
+        }  else {
+            match word & 0x3 {
+                0 => 256,
+                1 => 320,
+                2 => 512,
+                3 => 640,
+                _ => unreachable!()
+            }
+        };
+
+        self.horizontal_bits1 = word & 0x3;
+        self.horizontal_bit2 = (word >> 6) & 0x1;
+
+
+        self.interlaced = (word >> 5) & 0x1 == 1;
+
+        self.display_height = match (word >> 2) & 0x1 {
+            0 => 240,
+            1 => 480,
+            _ => unreachable!()
+        };
+
+        if !self.interlaced {
+            self.display_height = 240;
+        }
+
+        println!("set display height to {}", self.display_height);
+
+        self.video_mode = match (word >> 3) & 0x1 {
+            0 => DisplayMode::Ntsc,
+            1 => DisplayMode::Pal,
+            _ => unreachable!()
+        };
+
+        self.display_depth = match (word >> 4) & 0x1 {
+            0 => DisplayDepth::Bit15,
+            1 => DisplayDepth::Bit24,
+            _ => unreachable!()
+        };
+
+        self.horizontal_flip = (word >> 7) & 0x1 == 1;
+    }
+
+    pub fn reset_gpu(&mut self, _: u32) {
+        self.current_command_buffer.clear();
+        self.transfer_type = None;
+
+        self.texture_window_mask_x = 0;
+        self.texture_window_mask_y = 0;
+        self.texture_window_offset_x = 0;
+        self.texture_window_offset_y = 0;
+
+        self.texpage = Texpage::new();
+    }
+
+    pub fn process_gp0_commands(&mut self, word: u32) {
+        // println!("received word 0x{:x}", word);
+
         if let Some(transfer_type) = self.transfer_type {
             if transfer_type == TransferType::ToVram {
                 self.transfer_to_vram(word as u16);
@@ -748,15 +879,44 @@ impl GPU {
     }
 
     pub fn read_stat(&self) -> u32 {
-        self.even_flag << 31 |
+        // println!("display height = {}", self.display_height);
+        let vertical_bits = match self.display_height {
+            240 => 0,
+            480 => 1,
+            _ => 0
+        };
+
+        let bit31 = if self.current_line < VBLANK_LINE_START {
+            self.even_flag
+        } else {
+            0
+        };
+
+        let value = self.even_flag << 31 |
             self.texpage.x_base |
             self.texpage.y_base1 << 4 |
             self.texpage.semi_transparency << 5 |
             (self.texpage.texture_page_colors as u32) << 7 |
             (self.texpage.dither as u32) << 9 |
             (self.texpage.draw_to_display_area as u32) << 10 |
+            (self.set_while_drawing as u32) << 11 |
+            (self.check_before_drawing as u32) << 12 |
+            (self.interlaced as u32) << 13 |
+            (self.horizontal_flip as u32) << 14 |
             self.texpage.y_base2 << 15 |
-            0x7 << 26
+            self.horizontal_bit2 << 16 |
+            self.horizontal_bits1 << 17 |
+            vertical_bits << 19 |
+            (self.video_mode as u32) << 20 |
+            (self.display_depth as u32) << 21 |
+            (self.interlaced as u32) << 22 |
+            1 << 23 | // TODO: display enable
+            (self.irq_enabled as u32) << 24 |
+            0x7 << 26 |
+            (self.dma_direction as u32) << 29 |
+            bit31 << 31;
+
+        value
     }
 
     pub fn cap_fps(&mut self) {

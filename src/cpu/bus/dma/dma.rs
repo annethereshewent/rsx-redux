@@ -125,7 +125,7 @@ impl Dma {
 
                             word_count -= 1;
 
-                            gpu.process_commands(word);
+                            gpu.process_gp0_commands(word);
                         }
 
                         current_address = packet & 0xffffff;
@@ -146,7 +146,7 @@ impl Dma {
 
                     for _ in 0..num_words {
                         let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
-                        gpu.process_commands(word);
+                        gpu.process_gp0_commands(word);
 
                         if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
                             current_address -= 4;
@@ -162,7 +162,7 @@ impl Dma {
                         for _ in 0..block_size {
                             let word =  unsafe { *(&ram[dma_channel.current_slice_address as usize] as *const u8 as *const u32) };
 
-                            gpu.process_commands(word);
+                            gpu.process_gp0_commands(word);
 
                             if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
                                 dma_channel.current_slice_address -= 4;

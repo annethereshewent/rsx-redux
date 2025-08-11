@@ -6,6 +6,8 @@ impl CPU {
 
         let upper = instruction >> 26;
 
+        let mut taken = false;
+
         let command = match upper {
             0x0 => match instruction & 0x3f {
                 0x0 => "SLL",
@@ -39,18 +41,42 @@ impl CPU {
                 _ => panic!("unknown instruction received: 0x{:x}", instruction & 0x3f)
             }
             0x1 => match instr.rt() {
-                0x0 => "BLTZ",
-                0x1 => "BGEZ",
-                0x10 => "BLTZAL",
-                0x11 => "BGEZAL",
+                0x0 => {
+                    taken = (self.r[instr.rs()] as i32) < 0;
+                    "BLTZ"
+                }
+                0x1 => {
+                    taken = (self.r[instr.rs()] as i32) >= 0;
+                    "BGEZ"
+                }
+                0x10 => {
+                    taken = (self.r[instr.rs()] as i32) < 0;
+                    "BLTZAL"
+                }
+                0x11 => {
+                    taken = (self.r[instr.rs()] as i32) >= 0;
+                    "BGEZAL"
+                }
                 _ => panic!("unknown value for BcondZ given: 0x{:x}", instr.rt())
             },
             0x2 => "J",
             0x3 => "JAL",
-            0x4 => "BEQ",
-            0x5 => "BNE",
-            0x6 => "BLEZ",
-            0x7 => "BGTZ",
+            0x4 => {
+                taken = self.r[instr.rs()] == self.r[instr.rt()];
+                "BEQ"
+            }
+            0x5 => {
+                taken = self.r[instr.rs()] != self.r[instr.rt()];
+                "BNE"
+            }
+            0x6 => {
+                taken = (self.r[instr.rs()] as i32) <= 0;
+                "BLEZ"
+            }
+            0x7 => {
+                taken = (self.r[instr.rs()] as i32) > 0;
+                "BGTZ"
+            }
             0x8 => "ADDI",
             0x9 => "ADDIU",
             0xa => "SLTI",
@@ -85,6 +111,8 @@ impl CPU {
             0x3b => "SWC3",
             _ => panic!("invalid value given to disassembler: 0x{:x}", upper)
         };
+
+        let taken_str = format!("(Taken? {})", if taken  { "Yes ✅" } else { "No ❌" });
 
         // see https://psx-spx.consoledev.net/cpuspecifications/#cpu-opcode-encoding
         if upper == 0 {
@@ -127,12 +155,12 @@ impl CPU {
 
         if upper & 0b111110 == 0b100 {
             let destination = ((self.pc as i32) + (instr.signed_immediate16() << 2)) as u32;
-            return format!("{command} r{}, r{}, 0x{:x}", instr.rs(), instr.rt(), destination);
+            return format!("{command} r{}, r{}, 0x{:x} {}", instr.rs(), instr.rt(), destination, taken_str);
         }
 
         if upper & 0b111110 == 0b110 {
             let destination = ((self.pc as i32) + (instr.signed_immediate16() << 2)) as u32;
-            return format!("{command} r{}, 0x{:x}", instr.rs(), destination);
+            return format!("{command} r{}, 0x{:x} {}", instr.rs(), destination, taken_str);
         }
 
         if upper & 0b111000 == 0b1000 {

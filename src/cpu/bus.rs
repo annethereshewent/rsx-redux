@@ -170,8 +170,8 @@ impl Bus {
             ),
             0x1f801114 => self.timers[1].write_counter_register(value as u16, &mut self.scheduler),
             0x1f801118 => self.timers[1].counter_target = value as u16,
-            0x1f801810 => self.gpu.process_commands(value),
-            0x1f801814 => (), // read only
+            0x1f801810 => self.gpu.process_gp0_commands(value),
+            0x1f801814 => self.gpu.process_gp1_commands(value),
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
