@@ -16,6 +16,7 @@ pub struct MetalVertex {
     color: [f32; 4],
     page: [u32; 2],
     depth: u32,
+    _padding: u32,
     clut: [u32; 2]
 }
 
@@ -37,6 +38,7 @@ impl MetalVertex {
             color: [0.0; 4],
             page: [0; 2],
             depth: 0,
+            _padding: 0,
             clut: [0; 2]
         }
     }
@@ -69,8 +71,6 @@ impl Renderer {
                 texture_offset_x: gpu.texture_window_offset_x,
                 texture_offset_y: gpu.texture_window_offset_y
             };
-
-            println!("{:x?}", fragment_uniform);
 
             if let Some(_) = polygon.texpage {
                 fragment_uniform.has_texture = true;
@@ -114,8 +114,8 @@ impl Renderer {
             for i in 0..polygon.vertices.len() {
                 let vertex = &polygon.vertices[i];
 
-                let u = vertex.u.unwrap_or(0);
-                let v = vertex.v.unwrap_or(0);
+                let u = vertex.u;
+                let v = vertex.v;
 
                 let metal_vert = &mut vertices[i];
 
@@ -128,11 +128,13 @@ impl Renderer {
                 metal_vert.color[3] = vertex.color.a as f32 / 255.0;
 
 
-                let normalized_u = u as f32;
-                let normalized_v = v as f32;
+                let u_f32 = u as f32 / 1024.0;
+                let v_f32 = v as f32 / 512.0;
 
-                metal_vert.uv[0] = normalized_u;
-                metal_vert.uv[1] = normalized_v;
+                println!("u,v = {u},{v}, x,y = {},{}", vertex.x, vertex.y);
+
+                metal_vert.uv[0] = u_f32;
+                metal_vert.uv[1] = v_f32;
                 if let Some(texpage) = polygon.texpage {
                     metal_vert.clut = [polygon.clut.0, polygon.clut.1];
                     metal_vert.depth = match texpage.texture_page_colors {
@@ -144,6 +146,8 @@ impl Renderer {
                     metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];
                 }
             }
+
+            println!("finished with vertices");
 
             let byte_len = vertices.len() * std::mem::size_of::<MetalVertex>();
 
@@ -174,11 +178,8 @@ impl Renderer {
             size: MTLSize { width: 1024, height: 512, depth: 1}
         };
 
-        println!("uploading vram");
-
         unsafe {
             if let Some (texture) = &mut self.texture {
-                println!("found a texture!");
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
                     0,

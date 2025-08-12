@@ -62,7 +62,7 @@ impl Frontend {
         });
 
         let window = video_subsystem
-            .window("RSX-redux", (320 * 2) as u32, (240 * 2) as u32)
+            .window("RSX-redux", 640 as u32, 480 as u32)
             .position_centered()
             .build()
             .unwrap();
@@ -144,7 +144,7 @@ impl Frontend {
         let clut = unsafe { attributes.objectAtIndexedSubscript(5) };
         clut.setFormat(MTLVertexFormat::UInt2);
         unsafe {
-            clut.setOffset(44);
+            clut.setOffset(48);
             clut.setBufferIndex(0);
         }
 
@@ -152,7 +152,7 @@ impl Frontend {
 
         unsafe { layout.setStride((std::mem::size_of::<MetalVertex>()) as usize) };
 
-        assert_eq!(size_of::<MetalVertex>(), 52);
+        assert_eq!(size_of::<MetalVertex>(), 56);
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 

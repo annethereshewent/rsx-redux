@@ -81,8 +81,8 @@ pub struct Color {
 pub struct Vertex {
     pub x: i32,
     pub y: i32,
-    pub u: Option<u32>,
-    pub v: Option<u32>,
+    pub u: u32,
+    pub v: u32,
     pub color: Color
 }
 
@@ -449,65 +449,6 @@ impl GPU {
         }
     }
 
-    fn build_texture(
-            &mut self, vertices:
-            &mut Vec<Vertex>,
-            texpage: &Texpage,
-        ) -> (Option<Vec<u8>>, u32, u32, u8, u8)
-    {
-        let mut min_u = 0x100;
-        let mut min_v = 0x100;
-        let mut max_u = 0;
-        let mut max_v = 0;
-
-        let mut buf: Vec<u8> = Vec::new();
-
-        for vertex in vertices {
-            let vertex_u = vertex.u.unwrap();
-            let vertex_v = vertex.v.unwrap();
-
-            if vertex_u < min_u {
-                min_u = vertex_u;
-            }
-            if vertex_u > max_u {
-                max_u = vertex_u
-            }
-            if vertex_v < min_v {
-                min_v = vertex_v;
-            }
-            if vertex_v > max_v {
-                max_v = vertex_v;
-            }
-        }
-
-        for v in min_v..max_v {
-            for u in min_u..max_u {
-                let texel = match texpage.texture_page_colors {
-                    TexturePageColors::Bit15 => self.get_texel_15bpp(u, v, texpage),
-                    TexturePageColors::Bit4 => self.get_texel_4bpp(u, v, texpage),
-                    TexturePageColors::Bit8 => self.get_texel_8bpp(u, v, texpage)
-                };
-
-                buf.push(texel.r);
-                buf.push(texel.g);
-                buf.push(texel.b);
-                buf.push(texel.a);
-            }
-        }
-
-        (Some(buf), max_u - min_u, max_v - min_v, min_u as u8, min_v as u8)
-    }
-
-    fn get_texel_15bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
-        todo!("15bpp texels");
-
-        let texture_address = (2 * u + 2048 * v) as usize;
-
-        let texel = unsafe { *(&self.vram[texture_address] as *const u8 as *const u16 )};
-
-        Self::convert_to_rgb888(texel)
-    }
-
     fn convert_to_rgb888(texel: u16) -> Color {
         let mut r = (texel & 0x1f) as u8;
         let mut g = ((texel >> 5) & 0x1f) as u8;
@@ -540,7 +481,7 @@ impl GPU {
         let u_base = texpage.x_base * 64;
         let v_base = texpage.y_base1 * 256;
 
-        let offset_u = 2 * u_base + u/2;
+        let offset_u = u_base + u;
         let offset_v = v_base + v;
 
         let texture_address = 2 * (offset_u + 1024 * offset_v);
@@ -548,9 +489,9 @@ impl GPU {
         let mut texel_index = self.vram[texture_address as usize];
 
         if u & 1 == 0 {
-            texel_index &= 0xff
+            texel_index &= 0xf
         } else {
-            texel_index = (texel_index >> 4) & 0xff;
+            texel_index = (texel_index >> 4) & 0xf;
         }
 
         let address = 2 * self.clut_x + 2048 * self.clut_y + texel_index as usize * 2;
@@ -584,8 +525,8 @@ impl GPU {
             let mut vertex = Vertex {
                 x: 0,
                 y: 0,
-                u: if self.is_textured { Some(0) } else { None },
-                v: if self.is_textured { Some(0) } else { None },
+                u: 0,
+                v: 0,
                 color: self.parse_color(color0)
             };
 
@@ -613,13 +554,9 @@ impl GPU {
             if self.is_textured {
                 let word = self.current_command_buffer[command_index];
 
-                let u = vertex.u.as_mut().unwrap();
+                vertex.u = word & 0xff;
 
-                *u = word & 0xff;
-
-                let v = vertex.v.as_mut().unwrap();
-
-                *v = (word >> 8) & 0xff;
+                vertex.v = (word >> 8) & 0xff;
 
                 if i == 0 {
                     (self.clut_x, self.clut_y) = Self::parse_clut(word >> 16);
@@ -634,16 +571,6 @@ impl GPU {
         }
 
         let mut polygons: Vec<Polygon> = Vec::new();
-
-        let mut texture = None;
-        let mut width = 0;
-        let mut height = 0;
-        let mut u_base = 0;
-        let mut v_base = 0;
-
-        if self.is_textured {
-            (texture, width, height, u_base, v_base) = self.build_texture(&mut vertices, &texpage.unwrap());
-        }
 
         if vertices.len() > 3 {
             // split up into two polygons
@@ -688,12 +615,6 @@ impl GPU {
     fn push_rectangle(&mut self) {
         self.commands_ready = true;
 
-        let mut texture: Option<Vec<u8>> = None;
-        let mut tex_width = 0;
-        let mut tex_height = 0;
-        let mut u_base = 0;
-        let mut v_base = 0;
-
         let word = self.current_command_buffer.pop_front().unwrap();
 
         let color = self.parse_color(word);
@@ -703,14 +624,14 @@ impl GPU {
         let x = word as i16 as i32;
         let y = (word >> 16) as i16 as i32;
 
-        let mut u: Option<u32> = None;
-        let mut v: Option<u32> = None;
+        let mut u = 0;
+        let mut v = 0;
 
         if self.is_textured {
             let word = self.current_command_buffer.pop_front().unwrap();
 
-            u = Some(word & 0xff);
-            v = Some((word >> 8) & 0xff);
+            u = word & 0xff;
+            v = (word >> 8) & 0xff;
         }
 
         let (width, height) = match self.rectangle_size {
@@ -740,7 +661,7 @@ impl GPU {
         let v1 = Vertex {
             x: x + width,
             y,
-            u,
+            u: u + width as u32,
             v,
             color
         };
@@ -749,24 +670,19 @@ impl GPU {
             x,
             y: y + height,
             u,
-            v,
+            v: v + height as u32 ,
             color
         };
 
         let v3 = Vertex {
             x: x + width,
             y: y + height,
-            u,
-            v,
+            u: u + width as u32,
+            v: v + height as u32,
             color
         };
 
-        let mut vertices = vec![v0, v1, v2, v3];
-
-        if self.is_textured {
-            let texpage = self.texpage.clone();
-            (texture, tex_width, tex_height, u_base, v_base) = self.build_texture(&mut vertices, &texpage);
-        }
+        let vertices = vec![v0, v1, v2, v3];
 
         let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
         let vertices2 = vec![vertices[1], vertices[2], vertices[3]];

@@ -20,7 +20,7 @@ struct VertexIn {
 
 struct VertexOut {
     float4 position [[position]];
-    float2 uv;
+    float2 uv [[center_no_perspective]];
     float4 color;
     uint2 page;
     uint depth;
@@ -62,9 +62,10 @@ let texel = unsafe { *(&self.vram[address] as *const u8 as *const u16) };
 Self::convert_to_rgb888(texel)
 */
 float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
-    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX | uniforms.textureMaskX);
-    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY | uniforms.textureMaskY);
-    uint offsetU = in.page[0] + u /2;
+    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+
+    uint offsetU = in.page[0] + u / 2;
     uint offsetV = in.page[1] + v;
 
     uint texelIndex = vram.read(uint2(offsetU, offsetV)).r;
