@@ -65,10 +65,12 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-    uint offsetU = in.page[0] + u / 2;
+    uint offsetU = in.page[0] + u / 4;
     uint offsetV = in.page[1] + v;
 
-    uint texelIndex = vram.read(uint2(offsetU, offsetV)).r;
+    uint halfWord = vram.read(uint2(offsetU, offsetV)).r;
+
+    uint texelIndex = ((u >> 1) & 1) == 0 ? halfWord & 0xff : (halfWord >> 8) & 0xff;
 
     if ((u & 1) == 0) {
         texelIndex &= 0xf;
@@ -82,17 +84,14 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    uint a = 255;
+    // normally would be 255, but it's easier just to divide everything by 31
+    uint a = 31;
 
     if (texel == 0) {
         a = 0;
     }
 
-    r = r << 3 | r >> 2;
-    g = g << 3 | g >> 2;
-    b = b << 3 | b >> 2;
-
-    return float4(r, g, b, a) / 255.0;
+    return float4(r, g, b, a) / 31.0;
 }
 
 // Fragment

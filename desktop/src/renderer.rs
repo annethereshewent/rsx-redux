@@ -127,11 +127,8 @@ impl Renderer {
                 metal_vert.color[2] = vertex.color.b as f32 / 255.0;
                 metal_vert.color[3] = vertex.color.a as f32 / 255.0;
 
-
-                let u_f32 = u as f32 / 1024.0;
-                let v_f32 = v as f32 / 512.0;
-
-                println!("u,v = {u},{v}, x,y = {},{}", vertex.x, vertex.y);
+                let u_f32 = u as f32;
+                let v_f32 = v as f32;
 
                 metal_vert.uv[0] = u_f32;
                 metal_vert.uv[1] = v_f32;
@@ -146,8 +143,6 @@ impl Renderer {
                     metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];
                 }
             }
-
-            println!("finished with vertices");
 
             let byte_len = vertices.len() * std::mem::size_of::<MetalVertex>();
 
@@ -174,7 +169,7 @@ impl Renderer {
     pub fn upload_vram(&mut self, vram: &[u8]) {
         let bytes_per_row = 2048 as usize;
         let region = MTLRegion {
-            origin: MTLOrigin { x: 0, y:0, z: 0},
+            origin: MTLOrigin { x: 0, y: 0, z: 0},
             size: MTLSize { width: 1024, height: 512, depth: 1}
         };
 
