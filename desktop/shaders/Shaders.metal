@@ -3,6 +3,10 @@ using namespace metal;
 
 struct FragmentUniforms {
     bool hasTexture;
+    uint textureMaskX;
+    uint textureMaskY;
+    uint textureOffsetX;
+    uint textureOffsetY;
 };
 
 struct VertexIn {
@@ -57,13 +61,15 @@ let texel = unsafe { *(&self.vram[address] as *const u8 as *const u16) };
 
 Self::convert_to_rgb888(texel)
 */
-float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram) {
-    uint offsetU = in.page[0] + int(in.uv[0] / 2);
-    uint offsetV = in.page[1] + int(in.uv[1]);
+float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
+    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX | uniforms.textureMaskX);
+    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY | uniforms.textureMaskY);
+    uint offsetU = in.page[0] + u /2;
+    uint offsetV = in.page[1] + v;
 
     uint texelIndex = vram.read(uint2(offsetU, offsetV)).r;
 
-    if ((int(in.uv[0]) & 1) == 0) {
+    if ((u & 1) == 0) {
         texelIndex &= 0xf;
     } else {
         texelIndex = (texelIndex >> 4) & 0xf;
@@ -95,7 +101,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 )
 {
     if (uniforms.hasTexture) {
-        float4 texColor = getTexColor4bpp(in, vram);
+        float4 texColor = getTexColor4bpp(in, vram, uniforms);
         float4 finalColor = texColor * in.color;
         return texColor;
     } else {

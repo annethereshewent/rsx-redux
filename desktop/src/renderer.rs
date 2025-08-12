@@ -19,6 +19,16 @@ pub struct MetalVertex {
     clut: [u32; 2]
 }
 
+#[repr(C)]
+#[derive(Debug)]
+struct FragmentUniform {
+    has_texture: bool,
+    texture_mask_x: u32,
+    texture_mask_y: u32,
+    texture_offset_x: u32,
+    texture_offset_y: u32
+}
+
 impl MetalVertex {
     pub fn new() -> Self {
         Self {
@@ -52,17 +62,25 @@ impl Renderer {
 
         for polygon in gpu.polygons.drain(..) {
             let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
-            let mut fragment_uniform = [false];
+            let mut fragment_uniform = FragmentUniform {
+                has_texture: false,
+                texture_mask_x: gpu.texture_window_mask_x,
+                texture_mask_y: gpu.texture_window_mask_y,
+                texture_offset_x: gpu.texture_window_offset_x,
+                texture_offset_y: gpu.texture_window_offset_y
+            };
+
+            println!("{:x?}", fragment_uniform);
 
             if let Some(_) = polygon.texpage {
-                fragment_uniform[0] = true;
+                fragment_uniform.has_texture = true;
                 if gpu.vram_dirty {
                     self.upload_vram(&gpu.vram);
                     gpu.vram_dirty = false;
                 }
             }
 
-            unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(fragment_uniform.as_ptr() as *mut c_void).unwrap() , 1, 1) };
+            unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() , 1, 1) };
 
             let cross_product = GPU::cross_product(&polygon.vertices);
             let v = &polygon.vertices;
