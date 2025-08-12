@@ -108,7 +108,16 @@ impl Renderer {
                 let g = vertex.color.g as f32 / 255.0;
                 let b = vertex.color.b as f32 / 255.0;
 
-                vertices[i] = [normalized_x, normalized_y, u as f32, v as f32, r, g, b, vertex.color.a as u32 as f32];
+                vertices[i] = [
+                    normalized_x,
+                    normalized_y,
+                    (u as f32 - polygon.u_base as f32) / polygon.texture_width as f32,
+                    (v as f32 - polygon.v_base as f32) / polygon.texture_height as f32,
+                    r,
+                    g,
+                    b,
+                    vertex.color.a as u32 as f32 / 255.0
+                ];
             }
 
             let byte_len = vertices.len() * std::mem::size_of::<[f32; 8]>();

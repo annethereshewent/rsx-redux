@@ -57,7 +57,9 @@ pub struct Polygon {
     pub texpage: Option<Texpage>,
     pub texture: Option<Vec<u8>>,
     pub texture_width: usize,
-    pub texture_height: usize
+    pub texture_height: usize,
+    pub u_base: u8,
+    pub v_base: u8
 }
 
 impl Polygon {
@@ -68,7 +70,9 @@ impl Polygon {
             texture: None,
             texpage: None,
             texture_height: 0,
-            texture_width: 0
+            texture_width: 0,
+            u_base: 0,
+            v_base: 0
         }
     }
 }
@@ -78,7 +82,7 @@ pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
-    pub a: bool
+    pub a: u8
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -447,7 +451,7 @@ impl GPU {
             r,
             g,
             b,
-            a: if self.set_while_drawing { true } else { false }
+            a: 255
         }
     }
 
@@ -455,7 +459,7 @@ impl GPU {
             &mut self, vertices:
             &mut Vec<Vertex>,
             texpage: &Texpage,
-        ) -> (Option<Vec<u8>>, u32, u32)
+        ) -> (Option<Vec<u8>>, u32, u32, u8, u8)
     {
         let mut min_u = 0x100;
         let mut min_v = 0x100;
@@ -493,11 +497,11 @@ impl GPU {
                 buf.push(texel.r);
                 buf.push(texel.g);
                 buf.push(texel.b);
-                buf.push(texel.a as u8 * 0xff);
+                buf.push(texel.a);
             }
         }
 
-        (Some(buf), max_u - min_u, max_v - min_v)
+        (Some(buf), max_u - min_u, max_v - min_v, min_u as u8, min_v as u8)
     }
 
     fn get_tex_addr_15bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
@@ -514,7 +518,15 @@ impl GPU {
         let mut r = (texel & 0x1f) as u8;
         let mut g = ((texel >> 5) & 0x1f) as u8;
         let mut b = ((texel >> 10) & 0x1f) as u8;
-        let a = (texel >> 15) & 1 == 1;
+
+
+        let a = if texel & 0x7fff == 0 {
+            0
+        } else if texel & 0x8000 != 0 {
+            128
+        } else {
+            255
+        };
 
         r = r << 3 | r >> 2;
         g = g << 3 | g >> 2;
@@ -630,9 +642,11 @@ impl GPU {
         let mut texture = None;
         let mut width = 0;
         let mut height = 0;
+        let mut u_base = 0;
+        let mut v_base = 0;
 
         if self.is_textured {
-            (texture, width, height) = self.build_texture(&mut vertices, &texpage.unwrap());
+            (texture, width, height, u_base, v_base) = self.build_texture(&mut vertices, &texpage.unwrap());
         }
 
         if vertices.len() > 3 {
@@ -646,7 +660,9 @@ impl GPU {
                 texture: texture.clone(),
                 texpage: texpage.clone(),
                 texture_width: width as usize,
-                texture_height: height as usize
+                texture_height: height as usize,
+                u_base,
+                v_base
             });
 
             polygons.push(Polygon {
@@ -655,7 +671,9 @@ impl GPU {
                 texture,
                 texpage,
                 texture_width: width as usize,
-                texture_height: height as usize
+                texture_height: height as usize,
+                u_base,
+                v_base
             });
         } else {
             polygons.push(Polygon {
@@ -664,7 +682,9 @@ impl GPU {
                 texture,
                 texpage,
                 texture_width: width as usize,
-                texture_height: height as usize
+                texture_height: height as usize,
+                u_base,
+                v_base
             });
         }
 
@@ -687,6 +707,8 @@ impl GPU {
         let mut texture: Option<Vec<u8>> = None;
         let mut tex_width = 0;
         let mut tex_height = 0;
+        let mut u_base = 0;
+        let mut v_base = 0;
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
@@ -759,7 +781,7 @@ impl GPU {
 
         if self.is_textured {
             let texpage = self.texpage.clone();
-            (texture, tex_width, tex_height) = self.build_texture(&mut vertices, &texpage);
+            (texture, tex_width, tex_height, u_base, v_base) = self.build_texture(&mut vertices, &texpage);
         }
 
         let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
@@ -771,7 +793,9 @@ impl GPU {
             texpage: Some(self.texpage.clone()),
             texture: texture.clone(),
             texture_height: tex_height as usize,
-            texture_width: tex_width as usize
+            texture_width: tex_width as usize,
+            u_base,
+            v_base
         });
         self.polygons.push(Polygon {
             vertices: vertices2,
@@ -779,7 +803,9 @@ impl GPU {
             texpage: Some(self.texpage.clone()),
             texture,
             texture_height: tex_height as usize,
-            texture_width: tex_width as usize
+            texture_width: tex_width as usize,
+            u_base,
+            v_base
         });
 
         self.num_vertices = 0;

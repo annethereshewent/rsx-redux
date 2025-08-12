@@ -80,7 +80,14 @@ impl Frontend {
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
             color_attachment.setPixelFormat(metal_layer.pixelFormat());
-            color_attachment.setBlendingEnabled(false);
+            color_attachment.setBlendingEnabled(true);
+            color_attachment.setRgbBlendOperation(objc2_metal::MTLBlendOperation::Add);
+            color_attachment.setAlphaBlendOperation(objc2_metal::MTLBlendOperation::Add);
+            // straight (non‑premultiplied) alpha
+            color_attachment.setSourceRGBBlendFactor(objc2_metal::MTLBlendFactor::SourceAlpha);
+            color_attachment.setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+            color_attachment.setSourceAlphaBlendFactor(objc2_metal::MTLBlendFactor::One);
+            color_attachment.setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
         }
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
