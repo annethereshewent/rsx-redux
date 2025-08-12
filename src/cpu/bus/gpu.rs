@@ -538,9 +538,6 @@ impl GPU {
         let u_base = texpage.x_base * 64;
         let v_base = texpage.y_base1 * 256;
 
-        println!("u_base = {u_base} v_base = {v_base}");
-        println!("clut_x = {} clut_y = {}", self.clut_x, self.clut_y);
-
         let offset_u = 2 * u_base + u/2;
         let offset_v = v_base + v;
 
@@ -682,8 +679,6 @@ impl GPU {
     fn parse_clut(word: u32) -> (usize, usize) {
         let x = (word & 0x3f) * 16;
         let y = (word >> 6) & 0x1ff;
-
-        println!("got {x},{y} for the clut");
 
         (x as usize, y as usize)
     }
