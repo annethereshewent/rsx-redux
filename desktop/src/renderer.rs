@@ -4,7 +4,7 @@ use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
 use objc2_metal::{MTLCommandQueue, MTLDevice, MTLPrimitiveType, MTLRenderCommandEncoder, MTLRenderPipelineState, MTLResourceOptions};
 use objc2_quartz_core::CAMetalLayer;
-use rsx_redux::cpu::bus::gpu::GPU;
+use rsx_redux::cpu::bus::gpu::{GPU, Color};
 use std::cmp;
 
 pub struct Renderer {
@@ -19,8 +19,6 @@ impl Renderer {
     pub fn render_polygons(
         &mut self,
         gpu: &mut GPU,
-        width: f64,
-        height: f64,
         encoder: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>
     ) {
         let drawing_width = gpu.x2 - gpu.x1 + 1;
@@ -28,6 +26,11 @@ impl Renderer {
 
         'outer: for polygon in gpu.polygons.drain(..) {
             let mut vertices: Vec<[f32; 8]> = vec![[0.0; 8]; polygon.vertices.len()];
+
+            if let Some(texture) = polygon.texture {
+                self.upload_texture(&texture, polygon.texture_width, polygon.texture_height);
+            }
+
             for i in 0..polygon.vertices.len() {
                 let cross_product = GPU::cross_product(&polygon.vertices);
                 let v = &polygon.vertices;
@@ -91,5 +94,10 @@ impl Renderer {
 
             unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
         }
+    }
+
+
+    fn upload_texture(&mut self, texture: &[Color], texture_width: usize, texture_height: usize) {
+
     }
 }

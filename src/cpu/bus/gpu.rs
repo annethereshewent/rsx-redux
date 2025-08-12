@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{cmp, collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, timer::{counter_mode_register::CounterModeRegister, ClockSource, Timer}};
 
@@ -53,14 +53,22 @@ enum TexturePageColors {
 #[derive(Debug)]
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
-    pub is_line: bool
+    pub is_line: bool,
+    pub texpage: Option<Texpage>,
+    pub texture: Option<Vec<Color>>,
+    pub texture_width: usize,
+    pub texture_height: usize
 }
 
 impl Polygon {
     pub fn new(vertices: Vec<Vertex>, is_line: bool) -> Self {
         Self {
             vertices,
-            is_line
+            is_line,
+            texture: None,
+            texpage: None,
+            texture_height: 0,
+            texture_width: 0
         }
     }
 }
@@ -79,8 +87,7 @@ pub struct Vertex {
     pub y: i32,
     pub u: Option<u32>,
     pub v: Option<u32>,
-    pub color: Color,
-    pub texpage: Option<Texpage>
+    pub color: Color
 }
 
 
@@ -444,8 +451,135 @@ impl GPU {
         }
     }
 
+    fn build_texture(
+            &mut self, vertices:
+            &mut Vec<Vertex>,
+            texpage: &Texpage,
+        ) -> (Option<Vec<Color>>, u32, u32)
+    {
+        let mut min_u = 0x100;
+        let mut min_v = 0x100;
+        let mut max_u = 0;
+        let mut max_v = 0;
+
+        let mut buf: Vec<Color> = Vec::new();
+
+        for vertex in vertices {
+            let vertex_u = vertex.u.unwrap();
+            let vertex_v = vertex.v.unwrap();
+
+            println!("vertex_u = {vertex_u} vertex_v = {vertex_v}");
+
+            if vertex_u < min_u {
+                min_u = vertex_u;
+            }
+            if vertex_u > max_u {
+                max_u = vertex_u
+            }
+            if vertex_v < min_v {
+                min_v = vertex_v;
+            }
+            if vertex_v > max_v {
+                max_v = vertex_v;
+            }
+        }
+
+        let tex_base_x = texpage.x_base * 64;
+        let tex_base_y = texpage.y_base1 * 256;
+
+        println!("min_u = {min_u} max_u = {max_u} min_v = {min_v} max_v = {max_v}");
+
+        for v in min_v..max_v {
+            for u in min_u..max_u {
+                let texel = match texpage.texture_page_colors {
+                    TexturePageColors::Bit15 => self.get_tex_addr_15bpp(u, v, texpage),
+                    TexturePageColors::Bit4 => self.get_tex_addr_4bpp(u, v, texpage),
+                    TexturePageColors::Bit8 => self.get_tex_addr_8bpp(u, v, texpage)
+                };
+
+                buf.push(texel);
+            }
+        }
+
+        (Some(buf), max_u - min_u, max_v - min_v)
+    }
+
+    fn get_tex_addr_15bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
+        todo!("15bpp texels");
+        println!("getting 15bpp textures!");
+        let texture_address = (2 * u + 2048 * v) as usize;
+
+        let texel = unsafe { *(&self.vram[texture_address] as *const u8 as *const u16 )};
+
+        Self::convert_to_rgb888(texel)
+    }
+
+    fn convert_to_rgb888(texel: u16) -> Color {
+        let mut r = (texel & 0x1f) as u8;
+        let mut g = ((texel >> 5) & 0x1f) as u8;
+        let mut b = ((texel >> 10) & 0x1f) as u8;
+        let a = (texel >> 15) & 1 == 1;
+
+        r = r << 3 | r >> 2;
+        g = g << 3 | g >> 2;
+        b = b << 3 | b >> 2;
+
+        Color {
+            r,
+            g,
+            b,
+            a
+        }
+    }
+
+    fn get_tex_addr_4bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
+        println!("getting 4bpp texels!");
+        // let texture_address = (u/2 + 2048 * v) as usize;
+
+        let u_base = texpage.x_base * 64;
+        let v_base = texpage.y_base1 * 256;
+
+        let offset_u = 2 * u_base + u/2;
+        let offset_v = v_base + v;
+
+        let texture_address = 2 * (offset_u + 1024 * offset_v);
+
+        println!("texture address = 0x{:x}", texture_address);
+
+        let mut texel_index = self.vram[texture_address as usize];
+
+        println!("texel index = {texel_index}");
+
+        if u & 1 == 0 {
+            texel_index &= 0xff
+        } else {
+            texel_index = (texel_index >> 4) & 0xff;
+        }
+
+        println!("texel address = 0x{:x}", 2 * (texel_index as usize + self.clut_x + self.clut_y * 1024));
+
+        let texel = unsafe { *(&self.vram[Self::get_vram_address(texel_index as u32 + self.clut_x as u32, self.clut_y as u32)] as *const u8 as *const u16) };
+
+        println!("texel = 0x{:x}", texel);
+
+        Self::convert_to_rgb888(texel)
+    }
+
+    fn get_tex_addr_8bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
+        todo!("8bpp texels");
+        let texture_address = (u + 2048 * v) as usize;
+
+        let texel_index = self.vram[texture_address];
+
+        let texel = unsafe { *(&self.vram[Self::get_vram_address(texel_index as u32 + self.clut_x as u32, self.clut_y as u32)] as *const u8 as *const u16) };
+
+        Self::convert_to_rgb888(texel)
+    }
+
     fn push_polygon(&mut self) {
         let mut command_index = 0;
+
+        let mut texpage: Option<Texpage> = None;
 
         let mut vertices: Vec<Vertex> = Vec::new();
 
@@ -457,8 +591,7 @@ impl GPU {
                 y: 0,
                 u: if self.is_textured { Some(0) } else { None },
                 v: if self.is_textured { Some(0) } else { None },
-                color: self.parse_color(color0),
-                texpage: None
+                color: self.parse_color(color0)
             };
 
             if i == 0 || self.is_shaded {
@@ -477,9 +610,6 @@ impl GPU {
             let x = word as i16 as i32;
             let y = (word >> 16) as i16 as i32;
 
-            // x = (x << 21) >> 21;
-            // y = (y << 21) >> 21;
-
             vertex.x = x + self.x_offset;
             vertex.y = y + self.y_offset;
 
@@ -488,18 +618,20 @@ impl GPU {
             if self.is_textured {
                 let word = self.current_command_buffer[command_index];
 
+                println!("got texture word 0x{:x}", word);
+
                 let u = vertex.u.as_mut().unwrap();
 
                 *u = word & 0xff;
 
-                let v = vertex.u.as_mut().unwrap();
+                let v = vertex.v.as_mut().unwrap();
 
-                *v = (word >> 16) & 0xff;
+                *v = (word >> 8) & 0xff;
 
                 if i == 0 {
-                    (self.clut_x, self.clut_y) = Self::parse_clut((word >> 16));
+                    (self.clut_x, self.clut_y) = Self::parse_clut(word >> 16);
                 } else if i == 1 {
-                    vertex.texpage = Some(Self::parse_texpage(word));
+                    texpage = Some(Self::parse_texpage(word >> 16))
                 }
 
                 command_index += 1;
@@ -510,6 +642,14 @@ impl GPU {
 
         let mut polygons: Vec<Polygon> = Vec::new();
 
+        let mut texture = None;
+        let mut width = 0;
+        let mut height = 0;
+
+        if self.is_textured {
+            (texture, width, height) = self.build_texture(&mut vertices, &texpage.unwrap());
+        }
+
         if vertices.len() > 3 {
             // split up into two polygons
             let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
@@ -517,17 +657,29 @@ impl GPU {
 
             polygons.push(Polygon {
                 vertices: vertices1,
-                is_line: false
+                is_line: false,
+                texture: texture.clone(),
+                texpage: texpage.clone(),
+                texture_width: width as usize,
+                texture_height: height as usize
             });
 
             polygons.push(Polygon {
                 vertices: vertices2,
-                is_line: false
+                is_line: false,
+                texture,
+                texpage,
+                texture_width: width as usize,
+                texture_height: height as usize
             });
         } else {
             polygons.push(Polygon {
                 vertices,
-                is_line: false
+                is_line: false,
+                texture,
+                texpage,
+                texture_width: width as usize,
+                texture_height: height as usize
             });
         }
 
@@ -587,8 +739,7 @@ impl GPU {
             y,
             u,
             v,
-            color,
-            texpage: Some(self.texpage)
+            color
         };
 
         let v1 = Vertex {
@@ -596,8 +747,7 @@ impl GPU {
             y,
             u,
             v,
-            color,
-            texpage: Some(self.texpage)
+            color
         };
 
         let v2 = Vertex {
@@ -605,8 +755,7 @@ impl GPU {
             y: y + height,
             u,
             v,
-            color,
-            texpage: Some(self.texpage)
+            color
         };
 
         let v3 = Vertex {
@@ -614,8 +763,7 @@ impl GPU {
             y: y + height,
             u,
             v,
-            color,
-            texpage: Some(self.texpage)
+            color
         };
 
         let vertices1 = vec![v0, v1, v2];

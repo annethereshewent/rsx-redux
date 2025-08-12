@@ -80,7 +80,7 @@ fn main() {
                         znear: 0.0, zfar: 1.0,
                     };
                     encoder_ref.setViewport(vp);
-                    frontend.renderer.render_polygons(&mut cpu.bus.gpu, width, height, encoder_ref);
+                    frontend.renderer.render_polygons(&mut cpu.bus.gpu, encoder_ref);
                 }
             }
 
