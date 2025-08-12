@@ -44,7 +44,7 @@ enum TransferType {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum TexturePageColors {
+pub enum TexturePageColors {
     Bit4 = 0,
     Bit8 = 1,
     Bit15 = 2
@@ -55,11 +55,7 @@ pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,
     pub texpage: Option<Texpage>,
-    pub texture: Option<Vec<u8>>,
-    pub texture_width: usize,
-    pub texture_height: usize,
-    pub u_base: u8,
-    pub v_base: u8
+    pub clut: (u32, u32)
 }
 
 impl Polygon {
@@ -67,12 +63,8 @@ impl Polygon {
         Self {
             vertices,
             is_line,
-            texture: None,
             texpage: None,
-            texture_height: 0,
-            texture_width: 0,
-            u_base: 0,
-            v_base: 0
+            clut: (0, 0)
         }
     }
 }
@@ -99,11 +91,11 @@ pub struct Vertex {
 pub struct Texpage {
     pub x_base: u32,
     pub y_base1: u32,
-    semi_transparency: u32,
-    texture_page_colors: TexturePageColors,
-    dither: bool,
-    draw_to_display_area: bool,
-    y_base2: u32,
+    pub semi_transparency: u32,
+    pub texture_page_colors: TexturePageColors,
+    pub dither: bool,
+    pub draw_to_display_area: bool,
+    pub y_base2: u32,
     pub x_flip: bool,
     pub y_flip: bool,
     pub value: u32
@@ -472,8 +464,6 @@ impl GPU {
             let vertex_u = vertex.u.unwrap();
             let vertex_v = vertex.v.unwrap();
 
-            println!("vertex u,v = {vertex_u},{vertex_v}");
-
             if vertex_u < min_u {
                 min_u = vertex_u;
             }
@@ -487,8 +477,6 @@ impl GPU {
                 max_v = vertex_v;
             }
         }
-
-        println!("min_u = {min_u} min_v = {min_v}");
 
         for v in min_v..max_v {
             for u in min_u..max_u {
@@ -666,34 +654,22 @@ impl GPU {
             polygons.push(Polygon {
                 vertices: vertices1,
                 is_line: false,
-                texture: texture.clone(),
                 texpage: texpage.clone(),
-                texture_width: width as usize,
-                texture_height: height as usize,
-                u_base,
-                v_base
+                clut: (self.clut_x as u32, self.clut_y as u32)
             });
 
             polygons.push(Polygon {
                 vertices: vertices2,
                 is_line: false,
-                texture,
                 texpage,
-                texture_width: width as usize,
-                texture_height: height as usize,
-                u_base,
-                v_base
+                clut: (self.clut_x as u32, self.clut_y as u32)
             });
         } else {
             polygons.push(Polygon {
                 vertices,
                 is_line: false,
-                texture,
                 texpage,
-                texture_width: width as usize,
-                texture_height: height as usize,
-                u_base,
-                v_base
+                clut: (self.clut_x as u32, self.clut_y as u32)
             });
         }
 
@@ -802,21 +778,13 @@ impl GPU {
             vertices: vertices1,
             is_line: false,
             texpage: Some(self.texpage.clone()),
-            texture: texture.clone(),
-            texture_height: tex_height as usize,
-            texture_width: tex_width as usize,
-            u_base,
-            v_base
+            clut: (self.clut_x as u32, self.clut_y as u32)
         });
         self.polygons.push(Polygon {
             vertices: vertices2,
             is_line: false,
             texpage: Some(self.texpage.clone()),
-            texture,
-            texture_height: tex_height as usize,
-            texture_width: tex_width as usize,
-            u_base,
-            v_base
+            clut: (self.clut_x as u32, self.clut_y as u32)
         });
 
         self.num_vertices = 0;

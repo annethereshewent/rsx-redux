@@ -5,6 +5,7 @@ use std::os::raw::c_void;
 use std::process::exit;
 
 use objc2::rc::Retained;
+use objc2::runtime::ProtocolObject;
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::CPU;
 use sdl2::keyboard::Keycode;
@@ -13,10 +14,22 @@ use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use objc2_foundation::NSString;
 
 use objc2_metal::{
-    MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLCreateSystemDefaultDevice, MTLDevice as _, MTLDrawable, MTLLibrary, MTLPackedFloat3, MTLPixelFormat, MTLPrimitiveType, MTLRenderCommandEncoder, MTLRenderPipelineDescriptor, MTLRenderPipelineState, MTLVertexDescriptor, MTLVertexFormat
+    MTLCreateSystemDefaultDevice,
+    MTLDevice,
+    MTLLibrary,
+    MTLPixelFormat,
+    MTLRenderPipelineDescriptor,
+    MTLTexture,
+    MTLTextureDescriptor,
+    MTLTextureUsage,
+    MTLVertexDescriptor,
+    MTLVertexFormat
 };
 
-use crate::renderer::Renderer;
+const VRAM_WIDTH: usize = 1024;
+const VRAM_HEIGHT: usize = 512;
+
+use crate::renderer::{MetalVertex, Renderer};
 
 pub struct Frontend {
     window: Window,
@@ -112,9 +125,34 @@ impl Frontend {
         unsafe { color.setOffset(16) };
         unsafe { color.setBufferIndex(0) };
 
+        let page = unsafe { attributes.objectAtIndexedSubscript(3) };
+
+        page.setFormat(MTLVertexFormat::UInt2);
+        unsafe {
+            page.setOffset(32);
+            page.setBufferIndex(0);
+        }
+
+        let depth = unsafe { attributes.objectAtIndexedSubscript(4) };
+
+        depth.setFormat(MTLVertexFormat::UInt);
+        unsafe {
+            depth.setOffset(40);
+            depth.setBufferIndex(0);
+        }
+
+        let clut = unsafe { attributes.objectAtIndexedSubscript(5) };
+        clut.setFormat(MTLVertexFormat::UInt2);
+        unsafe {
+            clut.setOffset(44);
+            clut.setBufferIndex(0);
+        }
+
         let layout = unsafe { vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
 
-        unsafe { layout.setStride((8 * std::mem::size_of::<f32>()) as usize) };
+        unsafe { layout.setStride((std::mem::size_of::<MetalVertex>()) as usize) };
+
+        assert_eq!(size_of::<MetalVertex>(), 52);
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 
@@ -131,8 +169,10 @@ impl Frontend {
                 metal_layer,
                 metal_view,
                 command_queue,
+                texture: Self::create_texture(&device),
                 device,
-                pipeline_state
+                pipeline_state,
+
             }
         }
     }
@@ -153,5 +193,22 @@ impl Frontend {
                 _ => ()
             }
         }
+    }
+
+    pub fn create_texture(device: &Retained<ProtocolObject<dyn MTLDevice>>) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+        let descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::R16Uint,
+                VRAM_WIDTH,
+                VRAM_HEIGHT,
+                false
+            )
+        };
+
+        descriptor.setUsage(MTLTextureUsage::ShaderRead);
+
+        let mtl_texture = device.newTextureWithDescriptor(&descriptor);
+
+        mtl_texture
     }
 }

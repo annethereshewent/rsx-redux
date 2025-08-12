@@ -4,27 +4,38 @@ use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_metal::{
     MTLCommandQueue,
     MTLDevice,
-    MTLOrigin,
-    MTLPixelFormat,
     MTLPrimitiveType,
-    MTLRegion,
     MTLRenderCommandEncoder,
     MTLRenderPipelineState,
     MTLResourceOptions,
-    MTLSamplerAddressMode,
-    MTLSamplerDescriptor,
-    MTLSamplerMinMagFilter,
-    MTLSize,
-    MTLTexture,
-    MTLTextureDescriptor,
-    MTLTextureUsage
+    MTLTexture
 };
 use objc2_quartz_core::CAMetalLayer;
-use rsx_redux::cpu::bus::gpu::GPU;
+use rsx_redux::cpu::bus::gpu::{TexturePageColors, GPU};
 use std::cmp;
 
-struct FragmentUniforms {
-    has_texture: bool
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct MetalVertex {
+    position: [f32; 2],
+    uv: [f32; 2],
+    color: [f32; 4],
+    page: [u32; 2],
+    depth: u32,
+    clut: [u32; 2]
+}
+
+impl MetalVertex {
+    pub fn new() -> Self {
+        Self {
+            position: [0.0; 2],
+            uv: [0.0; 2],
+            color: [0.0; 4],
+            page: [0; 2],
+            depth: 0,
+            clut: [0; 2]
+        }
+    }
 }
 
 pub struct Renderer {
@@ -32,7 +43,8 @@ pub struct Renderer {
     pub metal_layer: Retained<CAMetalLayer>,
     pub command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pub device: Retained<ProtocolObject<dyn MTLDevice>>,
-    pub pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>
+    pub pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    pub texture: Option<Retained<ProtocolObject<dyn MTLTexture>>>
 }
 
 impl Renderer {
@@ -45,27 +57,14 @@ impl Renderer {
         let drawing_height = gpu.y2 - gpu.y1 + 1;
 
         for polygon in gpu.polygons.drain(..) {
-            let mut vertices: Vec<[f32; 8]> = vec![[0.0; 8]; polygon.vertices.len()];
+            let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
             let mut fragment_uniform = [false];
 
-            if let Some(texture) = polygon.texture {
-                let texture = self.get_texture(&texture, polygon.texture_width, polygon.texture_height);
-                let sd = MTLSamplerDescriptor::new();
-                sd.setMinFilter(MTLSamplerMinMagFilter::Nearest);
-                sd.setMagFilter(MTLSamplerMinMagFilter::Nearest);
-                sd.setSAddressMode(MTLSamplerAddressMode::ClampToEdge);
-                sd.setTAddressMode(MTLSamplerAddressMode::ClampToEdge);
-                let sampler = self.device.newSamplerStateWithDescriptor(&sd).unwrap();
-
-                unsafe {
-                    encoder.setFragmentTexture_atIndex(texture.as_deref(), 0);
-                    encoder.setFragmentSamplerState_atIndex(Some(&sampler), 0);
-                };
-
+            if let Some(_) = polygon.texpage {
                 fragment_uniform[0] = true;
-
-                unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(fragment_uniform.as_ptr() as *mut c_void).unwrap() , 1, 1) };
             }
+
+            unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(fragment_uniform.as_ptr() as *mut c_void).unwrap() , 1, 1) };
 
             let cross_product = GPU::cross_product(&polygon.vertices);
             let v = &polygon.vertices;
@@ -102,29 +101,36 @@ impl Renderer {
                 let u = vertex.u.unwrap_or(0);
                 let v = vertex.v.unwrap_or(0);
 
-                let normalized_x = (vertex.x as f32 / drawing_width as f32) * 2.0 - 1.0;
-                let normalized_y = 1.0 - (vertex.y as f32 / drawing_height as f32) * 2.0;
+                let metal_vert = &mut vertices[i];
 
-                let r = vertex.color.r as f32 / 255.0;
-                let g = vertex.color.g as f32 / 255.0;
-                let b = vertex.color.b as f32 / 255.0;
+                metal_vert.position[0] = (vertex.x as f32 / drawing_width as f32) * 2.0 - 1.0;
+                metal_vert.position[1] = 1.0 - (vertex.y as f32 / drawing_height as f32) * 2.0;
+
+                metal_vert.color[0] = vertex.color.r as f32 / 255.0;
+                metal_vert.color[1] = vertex.color.g as f32 / 255.0;
+                metal_vert.color[2] = vertex.color.b as f32 / 255.0;
+                metal_vert.color[3] = vertex.color.a as f32 / 255.0;
+
 
                 let normalized_u = u as f32 / 255.0;
                 let normalized_v = v as f32 / 255.0;
 
-                vertices[i] = [
-                    normalized_x,
-                    normalized_y,
-                    normalized_u,
-                    normalized_v,
-                    r,
-                    g,
-                    b,
-                    vertex.color.a as u32 as f32 / 255.0
-                ];
+                metal_vert.uv[0] = normalized_u;
+                metal_vert.uv[1] = normalized_v;
+                if let Some(texpage) = polygon.texpage {
+                    metal_vert.clut = [polygon.clut.0, polygon.clut.1];
+                    metal_vert.depth = match texpage.texture_page_colors {
+                        TexturePageColors::Bit4 => 0,
+                        TexturePageColors::Bit8 => 1,
+                        TexturePageColors::Bit15 => 2
+                    };
+
+                    metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];
+                }
             }
 
-            let byte_len = vertices.len() * std::mem::size_of::<[f32; 8]>();
+            let byte_len = vertices.len() * std::mem::size_of::<MetalVertex>();
+
             let buffer = unsafe {
                 self.device.newBufferWithBytes_length_options(
                     NonNull::new(
@@ -142,37 +148,5 @@ impl Renderer {
 
             unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
         }
-    }
-
-
-    fn get_texture(&mut self, texture: &[u8], width: usize, height: usize) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
-        let descriptor = unsafe {
-            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                MTLPixelFormat::RGBA8Unorm,
-                width,
-                height,
-                false
-            )
-        };
-
-        let mtl_texture = self.device.newTextureWithDescriptor(&descriptor);
-
-        if let Some(mtl_texture) = mtl_texture.as_ref() {
-            let region = MTLRegion {
-                origin: MTLOrigin { x: 0, y: 0, z: 0 },
-                size: MTLSize { width, height, depth: 1 }
-            };
-
-            unsafe {
-                mtl_texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                    region,
-                    0,
-                    NonNull::new(texture.as_ptr() as *mut c_void).unwrap(),
-                    4 * width
-                )
-            };
-        }
-
-        mtl_texture
     }
 }
