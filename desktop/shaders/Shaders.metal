@@ -3,7 +3,6 @@ using namespace metal;
 
 struct FragmentUniforms {
     bool hasTexture;
-    bool isShaded;
 };
 
 struct VertexIn {
@@ -27,16 +26,17 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
 }
 
 // Fragment
-fragment float4 fragment_main(VertexOut in [[stage_in]])
+fragment float4 fragment_main(VertexOut in [[stage_in]],
+                              texture2d<float> tex [[texture(0)]],
+                              constant FragmentUniforms& uniforms [[buffer(1)]],
+                              sampler textureSampler [[sampler(0)]])
 {
-    // if (uniforms.hasTexture) {
-    //     float4 texColor = tex.sample(textureSampler, in.uv);
-    //     float4 finalColor = texColor * in.color;
+    if (uniforms.hasTexture) {
+        float4 texColor = tex.sample(textureSampler, in.uv);
+        float4 finalColor = texColor * in.color;
 
-    //     return finalColor;
-    // } else {
-    //     return float4(in.color);
-    // }
-
-    return float4(in.color);
+        return finalColor;
+    } else {
+        return float4(in.color);
+    }
 }

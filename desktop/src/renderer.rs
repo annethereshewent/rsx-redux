@@ -1,11 +1,31 @@
 use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
-use objc2_core_foundation::CGSize;
-use objc2_metal::{MTLCommandQueue, MTLDevice, MTLPrimitiveType, MTLRenderCommandEncoder, MTLRenderPipelineState, MTLResourceOptions};
+use objc2_metal::{
+    MTLCommandQueue,
+    MTLDevice,
+    MTLOrigin,
+    MTLPixelFormat,
+    MTLPrimitiveType,
+    MTLRegion,
+    MTLRenderCommandEncoder,
+    MTLRenderPipelineState,
+    MTLResourceOptions,
+    MTLSamplerAddressMode,
+    MTLSamplerDescriptor,
+    MTLSamplerMinMagFilter,
+    MTLSize,
+    MTLTexture,
+    MTLTextureDescriptor,
+    MTLTextureUsage
+};
 use objc2_quartz_core::CAMetalLayer;
-use rsx_redux::cpu::bus::gpu::{GPU, Color};
+use rsx_redux::cpu::bus::gpu::GPU;
 use std::cmp;
+
+struct FragmentUniforms {
+    has_texture: bool
+}
 
 pub struct Renderer {
     pub metal_view: *mut c_void,
@@ -26,9 +46,24 @@ impl Renderer {
 
         'outer: for polygon in gpu.polygons.drain(..) {
             let mut vertices: Vec<[f32; 8]> = vec![[0.0; 8]; polygon.vertices.len()];
+            let mut fragment_uniform = [false];
 
             if let Some(texture) = polygon.texture {
-                self.upload_texture(&texture, polygon.texture_width, polygon.texture_height);
+                let texture = self.get_texture(&texture, polygon.texture_width, polygon.texture_height);
+                let sd = MTLSamplerDescriptor::new();
+                sd.setMinFilter(MTLSamplerMinMagFilter::Nearest);
+                sd.setMagFilter(MTLSamplerMinMagFilter::Nearest);
+                sd.setSAddressMode(MTLSamplerAddressMode::ClampToEdge);
+                sd.setTAddressMode(MTLSamplerAddressMode::ClampToEdge);
+                let sampler = self.device.newSamplerStateWithDescriptor(&sd).unwrap();
+
+                unsafe {
+                    encoder.setFragmentTexture_atIndex(texture.as_deref(), 0);
+                    encoder.setFragmentSamplerState_atIndex(Some(&sampler), 0);
+                    fragment_uniform[0] = true;
+                };
+
+                unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(fragment_uniform.as_ptr() as *mut c_void).unwrap() , 1, 1) };
             }
 
             for i in 0..polygon.vertices.len() {
@@ -97,7 +132,34 @@ impl Renderer {
     }
 
 
-    fn upload_texture(&mut self, texture: &[Color], texture_width: usize, texture_height: usize) {
+    fn get_texture(&mut self, texture: &[u8], width: usize, height: usize) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+        let descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::RGBA8Unorm,
+                width,
+                height,
+                false
+            )
+        };
 
+        let mtl_texture = self.device.newTextureWithDescriptor(&descriptor);
+
+        if let Some(mtl_texture) = mtl_texture.as_ref() {
+            let region = MTLRegion {
+                origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                size: MTLSize { width, height, depth: 1 }
+            };
+
+            unsafe {
+                mtl_texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(texture.as_ptr() as *mut c_void).unwrap(),
+                    4 * width
+                )
+            };
+        }
+
+        mtl_texture
     }
 }
