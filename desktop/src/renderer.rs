@@ -2,13 +2,7 @@ use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_metal::{
-    MTLCommandQueue,
-    MTLDevice,
-    MTLPrimitiveType,
-    MTLRenderCommandEncoder,
-    MTLRenderPipelineState,
-    MTLResourceOptions,
-    MTLTexture
+    MTLCommandQueue, MTLDevice, MTLOrigin, MTLPrimitiveType, MTLRegion, MTLRenderCommandEncoder, MTLRenderPipelineState, MTLResourceOptions, MTLSize, MTLTexture
 };
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::bus::gpu::{TexturePageColors, GPU};
@@ -62,6 +56,10 @@ impl Renderer {
 
             if let Some(_) = polygon.texpage {
                 fragment_uniform[0] = true;
+                if gpu.vram_dirty {
+                    self.upload_vram(&gpu.vram);
+                    gpu.vram_dirty = false;
+                }
             }
 
             unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(fragment_uniform.as_ptr() as *mut c_void).unwrap() , 1, 1) };
@@ -112,8 +110,8 @@ impl Renderer {
                 metal_vert.color[3] = vertex.color.a as f32 / 255.0;
 
 
-                let normalized_u = u as f32 / 255.0;
-                let normalized_v = v as f32 / 255.0;
+                let normalized_u = u as f32;
+                let normalized_v = v as f32;
 
                 metal_vert.uv[0] = normalized_u;
                 metal_vert.uv[1] = normalized_v;
@@ -145,8 +143,31 @@ impl Renderer {
             let primitive_type = MTLPrimitiveType::Triangle;
 
             encoder.setRenderPipelineState(&self.pipeline_state);
+            unsafe { encoder.setFragmentTexture_atIndex(self.texture.as_deref(), 0) };
 
             unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
+        }
+    }
+
+    pub fn upload_vram(&mut self, vram: &[u8]) {
+        let bytes_per_row = 2048 as usize;
+        let region = MTLRegion {
+            origin: MTLOrigin { x: 0, y:0, z: 0},
+            size: MTLSize { width: 1024, height: 512, depth: 1}
+        };
+
+        println!("uploading vram");
+
+        unsafe {
+            if let Some (texture) = &mut self.texture {
+                println!("found a texture!");
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(vram.as_ptr() as *mut c_void).unwrap(),
+                    bytes_per_row
+                )
+            }
         }
     }
 }

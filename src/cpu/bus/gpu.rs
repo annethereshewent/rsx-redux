@@ -155,7 +155,7 @@ pub struct GPU {
     transfer_type: Option<TransferType>,
     read_x: u32,
     read_y: u32,
-    vram: Box<[u8]>,
+    pub vram: Box<[u8]>,
     previous_time: u128,
     is_semitransparent: bool,
     modulate: bool,
@@ -173,7 +173,8 @@ pub struct GPU {
     display_start_y: u32,
     display_range_x: (u32, u32),
     display_range_y: (u32, u32),
-    display_on: bool
+    display_on: bool,
+    pub vram_dirty: bool
 }
 
 impl GPU {
@@ -235,7 +236,8 @@ impl GPU {
             display_start_y: 0,
             display_range_x: (0, 0),
             display_range_y: (0, 0),
-            display_on: true
+            display_on: true,
+            vram_dirty: false
         }
     }
 
@@ -912,6 +914,8 @@ impl GPU {
         let address = Self::get_vram_address(curr_x, curr_y);
 
         unsafe { *(&mut self.vram[address] as *mut u8 as *mut u16) = halfword };
+
+        self.vram_dirty = true;
 
         if self.read_x == self.transfer_width {
             self.read_x = 0;
