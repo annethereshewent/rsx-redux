@@ -1,4 +1,4 @@
-use std::{cmp, collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, timer::{counter_mode_register::CounterModeRegister, ClockSource, Timer}};
 
@@ -97,15 +97,15 @@ pub struct Vertex {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Texpage {
-    x_base: u32,
-    y_base1: u32,
+    pub x_base: u32,
+    pub y_base1: u32,
     semi_transparency: u32,
     texture_page_colors: TexturePageColors,
     dither: bool,
     draw_to_display_area: bool,
     y_base2: u32,
-    x_flip: bool,
-    y_flip: bool,
+    pub x_flip: bool,
+    pub y_flip: bool,
     pub value: u32
 }
 
@@ -472,6 +472,8 @@ impl GPU {
             let vertex_u = vertex.u.unwrap();
             let vertex_v = vertex.v.unwrap();
 
+            println!("vertex u,v = {vertex_u},{vertex_v}");
+
             if vertex_u < min_u {
                 min_u = vertex_u;
             }
@@ -486,12 +488,14 @@ impl GPU {
             }
         }
 
+        println!("min_u = {min_u} min_v = {min_v}");
+
         for v in min_v..max_v {
             for u in min_u..max_u {
                 let texel = match texpage.texture_page_colors {
-                    TexturePageColors::Bit15 => self.get_tex_addr_15bpp(u, v, texpage),
-                    TexturePageColors::Bit4 => self.get_tex_addr_4bpp(u, v, texpage),
-                    TexturePageColors::Bit8 => self.get_tex_addr_8bpp(u, v, texpage)
+                    TexturePageColors::Bit15 => self.get_texel_15bpp(u, v, texpage),
+                    TexturePageColors::Bit4 => self.get_texel_4bpp(u, v, texpage),
+                    TexturePageColors::Bit8 => self.get_texel_8bpp(u, v, texpage)
                 };
 
                 buf.push(texel.r);
@@ -504,7 +508,7 @@ impl GPU {
         (Some(buf), max_u - min_u, max_v - min_v, min_u as u8, min_v as u8)
     }
 
-    fn get_tex_addr_15bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
+    fn get_texel_15bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
         todo!("15bpp texels");
 
         let texture_address = (2 * u + 2048 * v) as usize;
@@ -540,11 +544,14 @@ impl GPU {
         }
     }
 
-    fn get_tex_addr_4bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
+    fn get_texel_4bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
         // let texture_address = (u/2 + 2048 * v) as usize;
 
         let u_base = texpage.x_base * 64;
         let v_base = texpage.y_base1 * 256;
+
+        println!("u_base = {u_base} v_base = {v_base}");
+        println!("clut_x = {} clut_y = {}", self.clut_x, self.clut_y);
 
         let offset_u = 2 * u_base + u/2;
         let offset_v = v_base + v;
@@ -559,12 +566,14 @@ impl GPU {
             texel_index = (texel_index >> 4) & 0xff;
         }
 
-        let texel = unsafe { *(&self.vram[Self::get_vram_address(texel_index as u32 + self.clut_x as u32, self.clut_y as u32)] as *const u8 as *const u16) };
+        let address = 2 * self.clut_x + 2048 * self.clut_y + texel_index as usize * 2;
+
+        let texel = unsafe { *(&self.vram[address] as *const u8 as *const u16) };
 
         Self::convert_to_rgb888(texel)
     }
 
-    fn get_tex_addr_8bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
+    fn get_texel_8bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
         todo!("8bpp texels");
         let texture_address = (u + 2048 * v) as usize;
 
@@ -695,8 +704,10 @@ impl GPU {
     }
 
     fn parse_clut(word: u32) -> (usize, usize) {
-        let x = (word & 0x3f) << 4;
+        let x = (word & 0x3f) * 16;
         let y = (word >> 6) & 0x1ff;
+
+        println!("got {x},{y} for the clut");
 
         (x as usize, y as usize)
     }
