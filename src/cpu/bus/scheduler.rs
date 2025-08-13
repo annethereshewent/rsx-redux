@@ -18,6 +18,8 @@ pub enum EventType {
     CDCheckIrqs,
     CDGetId,
     CDGetTOC,
+    CDSeek,
+    CDStat,
     Timer(usize)
 }
 

@@ -6,6 +6,7 @@ use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventT
 
 pub mod registers;
 
+// TODO: use actual numbers instead of these placeholder values.
 pub const CDROM_CYCLES: usize = 768;
 
 #[derive(Copy, Clone)]
@@ -41,7 +42,11 @@ pub struct CDRom {
     is_reading: bool,
     amm: u8,
     ass: u8,
-    asect: u8
+    asect: u8,
+    current_amm: u8,
+    current_ass: u8,
+    current_asect: u8,
+    next_event: Option<EventType>
 }
 
 impl CDRom {
@@ -66,7 +71,11 @@ impl CDRom {
             is_seeking: false,
             amm: 0,
             ass: 0,
-            asect: 0
+            asect: 0,
+            current_amm: 0,
+            current_asect: 0,
+            current_ass: 0,
+            next_event: None
         }
     }
 
@@ -214,6 +223,7 @@ impl CDRom {
         match self.command {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
+            0x15 => self.seek(scheduler),
             0x19 => self.commandx19(),
             0x1a => self.get_id(scheduler),
             0x1e => scheduler.schedule(EventType::CDGetTOC, 44100 * CDROM_CYCLES),
@@ -225,10 +235,49 @@ impl CDRom {
         self.controller_param_fifo.clear();
     }
 
+    fn bcd_to_u8(value: u8) -> u8 {
+        (value >> 4) * 10 + value & 0xf
+    }
+
+    pub fn cd_stat(&mut self, scheduler: &mut Scheduler) {
+        assert!(self.irqs == 0);
+
+        self.stat();
+
+        self.irq_latch = 0x2;
+
+        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+    }
+
+    pub fn seek_cd(&mut self, scheduler: &mut Scheduler) {
+        self.current_amm = self.amm;
+        self.current_ass = self.ass;
+        self.current_asect = self.asect;
+
+        if let Some(event) = self.next_event.take() {
+            match event {
+                EventType::CDStat => scheduler.schedule(event, 10 * CDROM_CYCLES),
+                _ => ()
+            }
+        }
+    }
+
+    fn seek(&mut self, scheduler: &mut Scheduler) {
+        self.stat();
+
+        self.is_playing = false;
+        self.is_reading = false;
+        self.is_seeking = true;
+
+        self.next_event = Some(EventType::CDStat);
+
+        scheduler.schedule(EventType::CDSeek, CDROM_CYCLES * 50);
+    }
+
     fn set_loc(&mut self) {
-        self.amm = self.controller_param_fifo.pop_front().unwrap();
-        self.ass = self.controller_param_fifo.pop_front().unwrap();
-        self.asect = self.controller_param_fifo.pop_front().unwrap();
+        self.amm = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
+        self.ass = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
+        self.asect = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
     }
 
     pub fn get_toc(&mut self, scheduler: &mut Scheduler) {
@@ -245,6 +294,8 @@ impl CDRom {
     }
 
     pub fn read_id(&mut self, scheduler: &mut Scheduler) {
+        assert!(self.irqs == 0);
+
         self.irq_latch = 0x2;
 
         let bytes = "SCEA".as_bytes();

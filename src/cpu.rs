@@ -368,7 +368,9 @@ impl CPU {
                 EventType::Timer(timer_id) => self.bus.timers[timer_id].on_overflow_or_target(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDCheckIrqs => self.bus.cdrom.process_irqs(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDGetId => self.bus.cdrom.read_id(&mut self.bus.scheduler),
-                EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler)
+                EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler),
+                EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
+                EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler)
             }
         }
 
