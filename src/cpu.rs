@@ -358,10 +358,7 @@ impl CPU {
                     cycles_left
                 ),
                 EventType::DmaFinished(channel) => self.bus.dma.finish_transfer(channel, &mut self.bus.interrupt_stat),
-                EventType::CDExecuteCommand => self.bus.cdrom.execute_command(
-                    &mut self.bus.scheduler,
-                    &mut self.bus.interrupt_stat
-                ),
+                EventType::CDExecuteCommand => self.bus.cdrom.execute_command(&mut self.bus.scheduler),
                 EventType::CDLatchInterrupts => self.bus.cdrom.transfer_interrupts(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDCheckCommands => self.bus.cdrom.check_commands(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDCommandTransfer => self.bus.cdrom.transfer_command(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
@@ -369,7 +366,9 @@ impl CPU {
                 EventType::CDResponseTransfer => self.bus.cdrom.transfer_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDResponseClear => self.bus.cdrom.clear_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::Timer(timer_id) => self.bus.timers[timer_id].on_overflow_or_target(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::CDCheckIrqs => self.bus.cdrom.process_irqs(&mut self.bus.scheduler, &mut self.bus.interrupt_stat)
+                EventType::CDCheckIrqs => self.bus.cdrom.process_irqs(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDGetId => self.bus.cdrom.read_id(&mut self.bus.scheduler),
+                EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler)
             }
         }
 

@@ -36,8 +36,12 @@ pub struct CDRom {
     controller_status: ControllerStatus,
     command_latch: Option<u8>,
     command: u8,
-    in_irq: bool,
-    is_first0x19: bool
+    is_playing: bool,
+    is_seeking: bool,
+    is_reading: bool,
+    amm: u8,
+    ass: u8,
+    asect: u8
 }
 
 impl CDRom {
@@ -57,8 +61,12 @@ impl CDRom {
             command: 0,
             command_latch: None,
             controller_response_fifo: VecDeque::with_capacity(16),
-            in_irq: false,
-            is_first0x19: false
+            is_playing: false,
+            is_reading: false,
+            is_seeking: false,
+            amm: 0,
+            ass: 0,
+            asect: 0
         }
     }
 
@@ -119,10 +127,10 @@ impl CDRom {
     1  Spindle Motor (0=Motor off, or in spin-up phase, 1=Motor on)
     0  Error         Invalid Command/parameters (followed by Error Byte)
      */
-    fn commandx19(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    fn commandx19(&mut self) {
         let subcommand = self.controller_param_fifo.pop_front().unwrap();
 
-        self.execute_subcommand(subcommand, scheduler, interrupt_register);
+        self.execute_subcommand(subcommand);
     }
 
     pub fn check_commands(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
@@ -134,9 +142,18 @@ impl CDRom {
         }
     }
 
+    pub fn stat(&mut self) {
+        let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
+
+        val |= (self.is_reading as u8) << 5;
+        val |= (self.is_seeking as u8) << 6;
+        val |= (self.is_playing as u8) << 7;
+
+        self.controller_response_fifo.push_back(val);
+    }
+
     pub fn process_irqs(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
-        if self.irqs & self.hntmask.enable_irq() & 0x1f != 0 {
-            self.in_irq = true;
+        if self.irqs & self.hntmask.enable_irq() != 0 {
             interrupt_register.insert(InterruptRegister::CDROM);
         }
 
@@ -174,7 +191,7 @@ impl CDRom {
     }
 
 
-    pub fn execute_subcommand(&mut self, subcommand: u8, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn execute_subcommand(&mut self, subcommand: u8) {
         match subcommand {
             0x20 => {
                 // get date
@@ -184,24 +201,59 @@ impl CDRom {
                 for byte in bytes {
                     self.controller_response_fifo.push_back(byte);
                 }
-
-                self.irq_latch = 3;
-
-                scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
             }
             _ => todo!("subcommand = 0x{:x}", subcommand)
         }
     }
 
-    pub fn execute_command(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
         self.controller_response_fifo.clear();
 
+        self.irq_latch = 3;
+
         match self.command {
-            0x19 => self.commandx19(scheduler, interrupt_register),
+            0x1 => self.stat(),
+            0x2 => self.set_loc(),
+            0x19 => self.commandx19(),
+            0x1a => self.get_id(scheduler),
+            0x1e => scheduler.schedule(EventType::CDGetTOC, 44100 * CDROM_CYCLES),
             _ => todo!("command byte 0x{:x}", self.command)
         }
 
+        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+
         self.controller_param_fifo.clear();
+    }
+
+    fn set_loc(&mut self) {
+        self.amm = self.controller_param_fifo.pop_front().unwrap();
+        self.ass = self.controller_param_fifo.pop_front().unwrap();
+        self.asect = self.controller_param_fifo.pop_front().unwrap();
+    }
+
+    pub fn get_toc(&mut self, scheduler: &mut Scheduler) {
+        self.irq_latch = 2;
+        self.stat();
+
+        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+    }
+
+    fn get_id(&mut self, scheduler: &mut Scheduler) {
+        self.stat();
+
+        scheduler.schedule(EventType::CDGetId, 50 * CDROM_CYCLES)
+    }
+
+    pub fn read_id(&mut self, scheduler: &mut Scheduler) {
+        self.irq_latch = 0x2;
+
+        let bytes = "SCEA".as_bytes();
+
+        for byte in bytes {
+            self.controller_response_fifo.push_back(*byte);
+        }
+
+        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
     }
 
     pub fn clear_response(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
