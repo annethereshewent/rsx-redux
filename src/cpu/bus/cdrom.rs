@@ -46,7 +46,12 @@ pub struct CDRom {
     current_amm: u8,
     current_ass: u8,
     current_asect: u8,
-    next_event: Option<EventType>
+    next_event: Option<EventType>,
+    double_speed: bool,
+    send_to_spu: bool,
+    sector_size: usize,
+    report_interrupts: bool,
+    xa_filter: bool
 }
 
 impl CDRom {
@@ -75,7 +80,12 @@ impl CDRom {
             current_amm: 0,
             current_asect: 0,
             current_ass: 0,
-            next_event: None
+            next_event: None,
+            double_speed: false,
+            xa_filter: false,
+            send_to_spu: false,
+            sector_size: 0x800,
+            report_interrupts: false
         }
     }
 
@@ -215,6 +225,23 @@ impl CDRom {
         }
     }
 
+    fn set_mode(&mut self) {
+        self.stat();
+
+        let byte = self.controller_param_fifo.pop_front().unwrap();
+
+        self.double_speed = (byte >> 7) & 1 == 1;
+        self.send_to_spu = (byte >> 6) & 1 == 1;
+        self.sector_size = if (byte >> 5) & 1 == 1 { 0x924 } else { 0x800 };
+
+        // ignore bit is bit 4, but purpose is unknown, so ignoring it for now.
+
+        self.xa_filter = (byte >> 3) & 1 == 1;
+        self.report_interrupts = (byte >> 2) & 1 == 1;
+
+        // bits 0 and 1 are audio related so no need to worry about them
+    }
+
     pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
         self.controller_response_fifo.clear();
 
@@ -223,6 +250,7 @@ impl CDRom {
         match self.command {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
+            0xe => self.set_mode(),
             0x15 => self.seek(scheduler),
             0x19 => self.commandx19(),
             0x1a => self.get_id(scheduler),
