@@ -1,7 +1,6 @@
 use cdrom::CDRom;
 use dma::dma::Dma;
 use gpu::GPU;
-use memmap2::{Mmap, MmapMut};
 use registers::{
     delay_register::DelayRegister,
     interrupt_register::InterruptRegister

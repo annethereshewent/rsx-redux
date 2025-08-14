@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use bus::{registers::interrupt_register::InterruptRegister, scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
 use instructions::Instruction;
-use memmap2::Mmap;
 
 pub mod bus;
 pub mod instructions;
@@ -35,8 +34,7 @@ pub struct CPU {
     ignored_load_delay: Option<usize>,
     branch_taken: bool,
     in_delay_slot: bool,
-    output: String,
-    num_instructions: usize
+    output: String
 }
 
 impl CPU {
@@ -212,8 +210,7 @@ impl CPU {
             ignored_load_delay: None,
             in_delay_slot: false,
             branch_taken: false,
-            output: "".to_string(),
-            num_instructions: 0
+            output: "".to_string()
         }
     }
 
@@ -232,6 +229,9 @@ impl CPU {
         let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits();
 
         if interrupts != 0 {
+            if self.bus.interrupt_stat.contains(InterruptRegister::CDROM) {
+                println!("CDROM interrupt is set to true");
+            }
             self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() | 1 << 10);
         } else {
             self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() & !(1 << 10));
@@ -360,12 +360,12 @@ impl CPU {
                 ),
                 EventType::DmaFinished(channel) => self.bus.dma.finish_transfer(channel, &mut self.bus.interrupt_stat),
                 EventType::CDExecuteCommand => self.bus.cdrom.execute_command(&mut self.bus.scheduler),
-                EventType::CDLatchInterrupts => self.bus.cdrom.transfer_interrupts(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDLatchInterrupts => self.bus.cdrom.transfer_interrupts(&mut self.bus.scheduler),
                 EventType::CDCheckCommands => self.bus.cdrom.check_commands(&mut self.bus.scheduler),
-                EventType::CDCommandTransfer => self.bus.cdrom.transfer_command(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::CDParamTransfer => self.bus.cdrom.transfer_params(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::CDResponseTransfer => self.bus.cdrom.transfer_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::CDResponseClear => self.bus.cdrom.clear_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDCommandTransfer => self.bus.cdrom.transfer_command(&mut self.bus.scheduler),
+                EventType::CDParamTransfer => self.bus.cdrom.transfer_params(&mut self.bus.scheduler),
+                EventType::CDResponseTransfer => self.bus.cdrom.transfer_response(&mut self.bus.scheduler),
+                EventType::CDResponseClear => self.bus.cdrom.clear_response(&mut self.bus.scheduler),
                 EventType::Timer(timer_id) => self.bus.timers[timer_id].on_overflow_or_target(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDCheckIrqs => self.bus.cdrom.process_irqs(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDGetId => self.bus.cdrom.read_id(&mut self.bus.scheduler),

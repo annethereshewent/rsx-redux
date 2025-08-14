@@ -10,6 +10,7 @@ pub mod registers;
 // TODO: use actual numbers instead of these placeholder values lmao
 pub const CDROM_CYCLES: usize = 768;
 pub const BYTES_PER_SECTOR: usize = 2352; // this one is verified to be a legit number per the CDROM standards
+pub const CD_READ_CYCLES: usize = 451584;
 
 #[derive(Debug, PartialEq)]
 enum CDMode {
@@ -52,8 +53,6 @@ impl CDSubheader {
     pub fn from_buf(bytes: &[u8]) -> CDSubheader {
         let file_num = bytes[0];
         let channel_num = bytes[1] & 0xf;
-
-        println!("read mode = 0b{:b}", bytes[2]);
 
         let read_mode = if (bytes[2] >> 1) & 1 == 1 {
             CDReadMode::Video
@@ -120,16 +119,6 @@ impl CDHeader {
     }
 }
 
-
-#[derive(Copy, Clone)]
-pub enum CDStatus {
-    Idle,
-    Seek,
-    Read,
-    Play,
-    GetStat
-}
-
 struct Msf {
     pub ass: u8,
     pub asect: u8,
@@ -161,7 +150,6 @@ pub struct CDRom {
     result_fifo: VecDeque<u8>,
     irq_latch: u8,
     irqs: u8,
-    status: CDStatus,
     controller_status: ControllerStatus,
     command_latch: Option<u8>,
     command: u8,
@@ -193,7 +181,6 @@ impl CDRom {
             parameter_fifo: VecDeque::with_capacity(16),
             result_fifo: VecDeque::with_capacity(16),
             irq_latch: 0,
-            status: CDStatus::Idle,
             controller_status: ControllerStatus::Idle,
             irqs: 0,
             controller_param_fifo: VecDeque::with_capacity(16),
@@ -219,7 +206,7 @@ impl CDRom {
     }
 
 
-    pub fn transfer_response(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn transfer_response(&mut self, scheduler: &mut Scheduler) {
         if self.result_fifo.len() < 16 && self.controller_response_fifo.len() > 0 {
             let value = self.controller_response_fifo.pop_front().unwrap();
             self.result_fifo.push_back(value);
@@ -317,13 +304,13 @@ impl CDRom {
         scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES);
     }
 
-    pub fn transfer_command(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn transfer_command(&mut self, scheduler: &mut Scheduler) {
         self.command = self.command_latch.take().unwrap();
 
         scheduler.schedule(EventType::CDExecuteCommand, CDROM_CYCLES * 10);
     }
 
-    pub fn transfer_params(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn transfer_params(&mut self, scheduler: &mut Scheduler) {
         if !self.parameter_fifo.is_empty() {
             let byte = self.parameter_fifo.pop_front().unwrap();
 
@@ -335,13 +322,11 @@ impl CDRom {
         }
     }
 
-    pub fn transfer_interrupts(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn transfer_interrupts(&mut self, scheduler: &mut Scheduler) {
         if self.irqs == 0 {
             self.irqs = self.irq_latch;
 
             self.controller_status = ControllerStatus::Idle;
-
-            println!("transferred irqs from latch, now letting cdrom check commands.");
             scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
         } else {
             scheduler.schedule(EventType::CDLatchInterrupts, CDROM_CYCLES);
@@ -384,8 +369,6 @@ impl CDRom {
     pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
         self.controller_response_fifo.clear();
 
-        println!("received command 0x{:x}", self.command);
-
         self.irq_latch = 3;
 
         match self.command {
@@ -400,7 +383,6 @@ impl CDRom {
             _ => todo!("command byte 0x{:x}", self.command)
         }
 
-        println!("scheduling response clear");
         scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
 
         self.controller_param_fifo.clear();
@@ -408,8 +390,6 @@ impl CDRom {
 
     pub fn cd_read_sector(&mut self, scheduler: &mut Scheduler) {
         let pointer = self.get_pointer();
-
-        println!("reading starting at address 0x{:x}", pointer);
 
         self.stat();
 
@@ -446,9 +426,7 @@ impl CDRom {
                 }
             }
             if self.is_reading {
-                scheduler.schedule(EventType::CDRead, if self.double_speed { 225_792 } else { 451_584 });
-            } else {
-                println!("drive is idle");
+                scheduler.schedule(EventType::CDRead, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES });
             }
         } else {
             panic!("no current msf selected!");
@@ -464,7 +442,7 @@ impl CDRom {
             self.sector_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
 
             self.stat();
-            self.irq_latch = 1;
+            self.irqs = 1;
         }
     }
 
@@ -475,7 +453,7 @@ impl CDRom {
             self.is_seeking = false;
             self.is_playing = false;
 
-            scheduler.schedule(EventType::CDRead, if self.double_speed { 225_792 } else { 451_584 } );
+            scheduler.schedule(EventType::CDRead, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES } );
 
         } else {
             self.is_seeking = true;
@@ -486,9 +464,9 @@ impl CDRom {
             self.next_event = Some(EventType::CDRead);
             scheduler.schedule(EventType::CDSeek, 25 * CDROM_CYCLES);
         }
+
+        self.stat();
     }
-
-
 
     fn get_pointer(&self) -> usize {
         if let Some(msf) = &self.current_msf {
@@ -532,8 +510,6 @@ impl CDRom {
 
     fn seek(&mut self, scheduler: &mut Scheduler) {
         self.stat();
-
-        println!("setting is_reading to false");
 
         self.is_playing = false;
         self.is_reading = false;
@@ -579,7 +555,7 @@ impl CDRom {
         scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
     }
 
-    pub fn clear_response(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn clear_response(&mut self, scheduler: &mut Scheduler) {
         if !self.result_fifo.is_empty() {
             self.result_fifo.pop_back();
 
@@ -607,7 +583,6 @@ impl CDRom {
             }
             0x1f801801 => match self.bank {
                 0 => {
-                    println!("writing to command latch value 0x{:x}", value);
                     self.command_latch = Some(value);
                 }
                 _ => todo!("bank = {}", self.bank)

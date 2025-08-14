@@ -269,6 +269,8 @@ impl Dma {
 
         let dma_channel = &mut self.channels[channel];
 
+        println!("doing dma for channel {channel}");
+
         if dma_channel.control.contains(DmaChannelControlRegister::START_TRANSFER) && !previous_enable && (self.dma_control.bits() >> shift) & 0x1 == 1 {
             let clocks = match channel {
                 0 | 1 | 2 | 6 => 1,
@@ -277,6 +279,10 @@ impl Dma {
                 5 => 20,
                 _ => panic!("Unknown DMA channel")
             };
+
+            if channel == 3 {
+                println!("it *should* start a cdrom transfer....");
+            }
 
             let mut num_words = match dma_channel.control.sync_mode() {
                 SyncMode::Burst => dma_channel.block_size,
