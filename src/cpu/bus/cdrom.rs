@@ -1,13 +1,125 @@
 use std::collections::VecDeque;
 
+use memmap2::Mmap;
 use registers::HntmaskRegister;
 
 use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
 
 pub mod registers;
 
-// TODO: use actual numbers instead of these placeholder values.
+// TODO: use actual numbers instead of these placeholder values lmao
 pub const CDROM_CYCLES: usize = 768;
+pub const BYTES_PER_SECTOR: usize = 2352; // this one is verified to be a legit number per the CDROM standards
+
+#[derive(Debug, PartialEq)]
+enum CDMode {
+    None,
+    Mode1,
+    Mode2
+}
+
+impl CDMode {
+    pub fn from(byte: u8) -> Self {
+        match byte {
+            1 => CDMode::Mode1,
+            2 => CDMode::Mode2,
+            _ => CDMode::None
+        }
+    }
+}
+
+
+#[derive(Debug)]
+enum CDReadMode {
+    Video,
+    Audio,
+    Data
+}
+
+enum Mode2Form {
+    Form1,
+    Form2
+}
+
+struct CDSubheader {
+    file_num: u8,
+    channel_num: u8,
+    read_mode: CDReadMode,
+    form: Mode2Form
+}
+
+impl CDSubheader {
+    pub fn from_buf(bytes: &[u8]) -> CDSubheader {
+        let file_num = bytes[0];
+        let channel_num = bytes[1] & 0xf;
+
+        println!("read mode = 0b{:b}", bytes[2]);
+
+        let read_mode = if (bytes[2] >> 1) & 1 == 1 {
+            CDReadMode::Video
+        } else if (bytes[2] >> 2) & 1 == 1 {
+            CDReadMode::Audio
+        } else if (bytes[2] >> 3) & 1 == 1 {
+            CDReadMode::Data
+        } else {
+            panic!("unknown mode received")
+        };
+
+        let form = if (bytes[2] >> 5) == 0 {
+            Mode2Form::Form1
+        } else {
+            Mode2Form::Form2
+        };
+
+        Self {
+            file_num,
+            channel_num,
+            read_mode,
+            form
+        }
+    }
+
+    pub fn new() -> Self {
+        Self {
+            file_num: 0,
+            channel_num: 0,
+            read_mode: CDReadMode::Data,
+            form: Mode2Form::Form1
+        }
+    }
+}
+
+struct CDHeader {
+    mm: u8,
+    ss: u8,
+    sect: u8,
+    mode: CDMode
+}
+
+impl CDHeader {
+    pub fn new() -> Self {
+        Self {
+            ss: 0,
+            sect: 0,
+            mm: 0,
+            mode: CDMode::None
+        }
+    }
+    pub fn from_buf(buf: &[u8]) -> CDHeader {
+        let mm = CDRom::bcd_to_u8(buf[0]);
+        let ss = CDRom::bcd_to_u8(buf[1]);
+        let sect = CDRom::bcd_to_u8(buf[2]);
+        let mode = CDMode::from(buf[3]);
+
+        Self {
+            mm,
+            ss,
+            sect,
+            mode
+        }
+    }
+}
+
 
 #[derive(Copy, Clone)]
 pub enum CDStatus {
@@ -16,6 +128,22 @@ pub enum CDStatus {
     Read,
     Play,
     GetStat
+}
+
+struct Msf {
+    pub ass: u8,
+    pub asect: u8,
+    pub amm: u8
+}
+
+impl Msf {
+    pub fn new() -> Self {
+        Self {
+            ass: 0,
+            amm: 0,
+            asect: 0
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -40,18 +168,19 @@ pub struct CDRom {
     is_playing: bool,
     is_seeking: bool,
     is_reading: bool,
-    amm: u8,
-    ass: u8,
-    asect: u8,
-    current_amm: u8,
-    current_ass: u8,
-    current_asect: u8,
+    current_msf: Option<Msf>,
+    msf: Msf,
     next_event: Option<EventType>,
     double_speed: bool,
     send_to_spu: bool,
     sector_size: usize,
     report_interrupts: bool,
-    xa_filter: bool
+    xa_filter: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    game_data: Option<Mmap>,
+    current_header: CDHeader,
+    subheader: CDSubheader,
+    sector_buffer: Vec<u8>
 }
 
 impl CDRom {
@@ -74,18 +203,18 @@ impl CDRom {
             is_playing: false,
             is_reading: false,
             is_seeking: false,
-            amm: 0,
-            ass: 0,
-            asect: 0,
-            current_amm: 0,
-            current_asect: 0,
-            current_ass: 0,
+            current_msf: None,
+            msf: Msf::new(),
             next_event: None,
             double_speed: false,
             xa_filter: false,
             send_to_spu: false,
             sector_size: 0x800,
-            report_interrupts: false
+            report_interrupts: false,
+            game_data: None,
+            current_header: CDHeader::new(),
+            subheader: CDSubheader::new(),
+            sector_buffer: vec![0; 0x930]
         }
     }
 
@@ -100,6 +229,15 @@ impl CDRom {
             scheduler.schedule(EventType::CDLatchInterrupts, 10 * CDROM_CYCLES);
         }
     }
+
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load_game_arm64(&mut self, game: Mmap) {
+        self.game_data = Some(game);
+    }
+
+
+
     fn read_hintsts(&self) -> u8 {
         self.irqs | 0x7 << 5
     }
@@ -152,7 +290,7 @@ impl CDRom {
         self.execute_subcommand(subcommand);
     }
 
-    pub fn check_commands(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn check_commands(&mut self, scheduler: &mut Scheduler) {
         if self.command_latch.is_some() {
             self.controller_status = ControllerStatus::Busy;
             scheduler.schedule(EventType::CDParamTransfer, 10 * CDROM_CYCLES);
@@ -203,6 +341,7 @@ impl CDRom {
 
             self.controller_status = ControllerStatus::Idle;
 
+            println!("transferred irqs from latch, now letting cdrom check commands.");
             scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
         } else {
             scheduler.schedule(EventType::CDLatchInterrupts, CDROM_CYCLES);
@@ -245,11 +384,14 @@ impl CDRom {
     pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
         self.controller_response_fifo.clear();
 
+        println!("received command 0x{:x}", self.command);
+
         self.irq_latch = 3;
 
         match self.command {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
+            0x6 => self.cd_read_command(scheduler),
             0xe => self.set_mode(),
             0x15 => self.seek(scheduler),
             0x19 => self.commandx19(),
@@ -258,9 +400,102 @@ impl CDRom {
             _ => todo!("command byte 0x{:x}", self.command)
         }
 
+        println!("scheduling response clear");
         scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
 
         self.controller_param_fifo.clear();
+    }
+
+    pub fn cd_read_sector(&mut self, scheduler: &mut Scheduler) {
+        let pointer = self.get_pointer();
+
+        println!("reading starting at address 0x{:x}", pointer);
+
+        self.stat();
+
+        if let Some(msf) = &mut self.current_msf {
+            // TODO: refactor this to allow for WASM builds to work as well
+            if let Some(game_data) = &mut self.game_data {
+                self.current_header = CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]);
+
+                if self.current_header.mode != CDMode::Mode2 {
+                    todo!("non mode 2 header")
+                }
+                self.subheader = CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]);
+
+                if self.current_header.mm != msf.amm || self.current_header.ss != msf.ass || self.current_header.sect != msf.asect {
+                    panic!("mismatch between header and current msf");
+                }
+
+                {
+                    msf.asect += 1;
+
+                    if msf.asect >= 75 {
+                        msf.asect -= 75;
+                        msf.ass += 1;
+
+                        if msf.ass >= 60 {
+                            msf.amm += 1;
+                        }
+                    }
+                }
+
+                match self.subheader.read_mode {
+                    CDReadMode::Data => self.read_data(),
+                    CDReadMode::Audio | CDReadMode::Video => todo!("read audio/video cds")
+                }
+            }
+            if self.is_reading {
+                scheduler.schedule(EventType::CDRead, if self.double_speed { 225_792 } else { 451_584 });
+            } else {
+                println!("drive is idle");
+            }
+        } else {
+            panic!("no current msf selected!");
+        }
+    }
+
+    fn read_data(&mut self) {
+        assert!(self.irqs == 0);
+
+        if let Some(game_data) = &self.game_data {
+            let pointer = self.get_pointer();
+
+            self.sector_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
+
+            self.stat();
+            self.irq_latch = 1;
+        }
+    }
+
+    fn cd_read_command(&mut self, scheduler: &mut Scheduler) {
+        if self.current_msf.is_some() {
+            // cd has been seeked and is able to be read
+            self.is_reading = true;
+            self.is_seeking = false;
+            self.is_playing = false;
+
+            scheduler.schedule(EventType::CDRead, if self.double_speed { 225_792 } else { 451_584 } );
+
+        } else {
+            self.is_seeking = true;
+            self.is_reading = false;
+            self.is_playing = false;
+            // request a seek
+
+            self.next_event = Some(EventType::CDRead);
+            scheduler.schedule(EventType::CDSeek, 25 * CDROM_CYCLES);
+        }
+    }
+
+
+
+    fn get_pointer(&self) -> usize {
+        if let Some(msf) = &self.current_msf {
+            return ((msf.amm * 60 + msf.ass) * 75 + msf.asect - 150) as usize * BYTES_PER_SECTOR
+        }
+
+        0
     }
 
     fn bcd_to_u8(value: u8) -> u8 {
@@ -278,13 +513,18 @@ impl CDRom {
     }
 
     pub fn seek_cd(&mut self, scheduler: &mut Scheduler) {
-        self.current_amm = self.amm;
-        self.current_ass = self.ass;
-        self.current_asect = self.asect;
+        let mut msf = Msf::new();
+
+        msf.amm = self.msf.amm;
+        msf.ass = self.msf.ass;
+        msf.asect = self.msf.asect;
+
+        self.current_msf = Some(msf);
 
         if let Some(event) = self.next_event.take() {
             match event {
-                EventType::CDStat => scheduler.schedule(event, 10 * CDROM_CYCLES),
+                EventType::CDStat => scheduler.schedule(event, 100 * CDROM_CYCLES),
+                EventType::CDRead => scheduler.schedule(event, if self.double_speed { 225792 } else { 451584 }),
                 _ => ()
             }
         }
@@ -292,6 +532,8 @@ impl CDRom {
 
     fn seek(&mut self, scheduler: &mut Scheduler) {
         self.stat();
+
+        println!("setting is_reading to false");
 
         self.is_playing = false;
         self.is_reading = false;
@@ -303,9 +545,11 @@ impl CDRom {
     }
 
     fn set_loc(&mut self) {
-        self.amm = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
-        self.ass = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
-        self.asect = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
+        self.current_msf = None;
+
+        self.msf.amm = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
+        self.msf.ass = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
+        self.msf.asect = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
     }
 
     pub fn get_toc(&mut self, scheduler: &mut Scheduler) {
@@ -363,6 +607,7 @@ impl CDRom {
             }
             0x1f801801 => match self.bank {
                 0 => {
+                    println!("writing to command latch value 0x{:x}", value);
                     self.command_latch = Some(value);
                 }
                 _ => todo!("bank = {}", self.bank)

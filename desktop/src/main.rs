@@ -1,6 +1,7 @@
-use std::{env, fs};
+use std::{env, fs, fs::File};
 
 use frontend::Frontend;
+use memmap2::Mmap;
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
 use rsx_redux::cpu::CPU;
@@ -24,17 +25,21 @@ use objc2_metal::{
 use objc2_quartz_core::CAMetalDrawable;
 
 fn main() {
-    let mut cpu = CPU::new();
-
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
         panic!("syntax: ./psx-redux <path_to_game>");
     }
 
+    let file = File::open(&args[1]).unwrap();
+
+    let game_data = unsafe  { Mmap::map(&file).unwrap() };
+
     let bios = fs::read("SCPH1001.bin").unwrap();
 
+    let mut cpu = CPU::new();
     cpu.bus.load_bios(bios);
+    cpu.bus.cdrom.load_game_arm64(game_data);
 
     let mut frontend = Frontend::new();
 

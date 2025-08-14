@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use bus::{registers::interrupt_register::InterruptRegister, scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
 use instructions::Instruction;
+use memmap2::Mmap;
 
 pub mod bus;
 pub mod instructions;
@@ -360,7 +361,7 @@ impl CPU {
                 EventType::DmaFinished(channel) => self.bus.dma.finish_transfer(channel, &mut self.bus.interrupt_stat),
                 EventType::CDExecuteCommand => self.bus.cdrom.execute_command(&mut self.bus.scheduler),
                 EventType::CDLatchInterrupts => self.bus.cdrom.transfer_interrupts(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::CDCheckCommands => self.bus.cdrom.check_commands(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDCheckCommands => self.bus.cdrom.check_commands(&mut self.bus.scheduler),
                 EventType::CDCommandTransfer => self.bus.cdrom.transfer_command(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDParamTransfer => self.bus.cdrom.transfer_params(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDResponseTransfer => self.bus.cdrom.transfer_response(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
@@ -370,7 +371,8 @@ impl CPU {
                 EventType::CDGetId => self.bus.cdrom.read_id(&mut self.bus.scheduler),
                 EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler),
                 EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
-                EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler)
+                EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
+                EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler)
             }
         }
 

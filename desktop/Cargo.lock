@@ -80,6 +80,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
 
 [[package]]
+name = "memmap2"
+version = "0.9.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "483758ad303d734cec05e5c12b41d7e93e6a6390c5e9dae6bdeb7c1259012d28"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "objc2"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -204,6 +213,7 @@ name = "rsx-redux"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.9.1",
+ "memmap2",
  "priority-queue",
 ]
 
@@ -211,6 +221,7 @@ dependencies = [
 name = "rsx-redux-desktop"
 version = "0.1.0"
 dependencies = [
+ "memmap2",
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",

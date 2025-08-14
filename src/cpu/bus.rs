@@ -1,6 +1,7 @@
 use cdrom::CDRom;
 use dma::dma::Dma;
 use gpu::GPU;
+use memmap2::{Mmap, MmapMut};
 use registers::{
     delay_register::DelayRegister,
     interrupt_register::InterruptRegister
@@ -40,7 +41,7 @@ pub struct Bus {
     pub scheduler: Scheduler,
     pub gpu: GPU,
     pub dma: Dma,
-    pub cdrom: CDRom
+    pub cdrom: CDRom,
 }
 
 impl Bus {
@@ -69,8 +70,7 @@ impl Bus {
             gpu: GPU::new(&mut scheduler),
             cdrom: CDRom::new(&mut scheduler),
             scheduler,
-            dma: Dma::new(),
-
+            dma: Dma::new()
         }
     }
 
