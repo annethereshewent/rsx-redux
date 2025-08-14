@@ -229,9 +229,6 @@ impl CPU {
         let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits();
 
         if interrupts != 0 {
-            if self.bus.interrupt_stat.contains(InterruptRegister::CDROM) {
-                println!("CDROM interrupt is set to true");
-            }
             self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() | 1 << 10);
         } else {
             self.cop0.cause = CauseRegister::from_bits_retain( self.cop0.cause.bits() & !(1 << 10));
@@ -243,15 +240,6 @@ impl CPU {
 
         mask != 0 && self.cop0.sr.contains(StatusRegister::IEC)
     }
-
-    // fn prepare_interrupt(&mut self) {
-    //     let mut cop0_bits = self.cop0.cause.bits();
-
-    //     cop0_bits &= !0x7f;
-
-    //     cop0_bits |= 1 << 10;
-    //     self.cop0.cause = CauseRegister::from_bits_retain(cop0_bits);
-    // }
 
     pub fn store8(&mut self, address: u32, value: u8) {
         if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {

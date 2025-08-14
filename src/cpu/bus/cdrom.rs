@@ -168,7 +168,9 @@ pub struct CDRom {
     game_data: Option<Mmap>,
     current_header: CDHeader,
     subheader: CDSubheader,
-    sector_buffer: Vec<u8>
+    sector_buffer: Vec<u8>,
+    output_buffer: Vec<u8>,
+    reading_buffer: bool
 }
 
 impl CDRom {
@@ -201,7 +203,9 @@ impl CDRom {
             game_data: None,
             current_header: CDHeader::new(),
             subheader: CDSubheader::new(),
-            sector_buffer: vec![0; 0x930]
+            sector_buffer: vec![0; 0x930],
+            output_buffer: vec![0; 0x930],
+            reading_buffer: false
         }
     }
 
@@ -238,6 +242,7 @@ impl CDRom {
             0x1f801800 => self.read_hsts(),
             0x1f801801 => self.read_response(),
             0x1f801803 => match self.bank {
+                0 | 2 => self.hntmask.bits(),
                 1 | 3 => self.read_hintsts(),
                 _ => todo!("address: 0x{:x}, bank = {}", address, self.bank)
             }
@@ -578,6 +583,14 @@ impl CDRom {
     pub fn write(&mut self, address: usize, value: u8) {
         match address {
             0x1f801803 => match self.bank {
+                0 => {
+                    if (value >> 7) & 1 == 1 {
+                        self.reading_buffer = true;
+                    } else if (value >> 6) & 1 == 1 {
+                        self.output_buffer.clear();
+                        self.output_buffer.clone_from_slice(&self.sector_buffer[..0x930]);
+                    }
+                }
                 1 => self.write_control(value),
                 _ => todo!("bank = {}", self.bank)
             }
