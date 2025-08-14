@@ -1,13 +1,15 @@
 use std::collections::HashSet;
 
-use bus::{registers::interrupt_register::InterruptRegister, scheduler::EventType, Bus};
+use bus::{scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
+use gte::Gte;
 use instructions::Instruction;
 
 pub mod bus;
 pub mod instructions;
 pub mod disassembler;
 pub mod cop0;
+pub mod gte;
 
 pub const RA_REGISTER: usize = 31;
 
@@ -29,6 +31,7 @@ pub struct CPU {
     instructions: [fn(&mut CPU, Instruction); 0x40],
     special_instructions: [fn(&mut CPU, Instruction); 0x40],
     cop0: COP0,
+    gte: Gte,
     found: HashSet<u32>,
     pub debug_on: bool,
     ignored_load_delay: Option<usize>,
@@ -210,7 +213,8 @@ impl CPU {
             ignored_load_delay: None,
             in_delay_slot: false,
             branch_taken: false,
-            output: "".to_string()
+            output: "".to_string(),
+            gte: Gte::new()
         }
     }
 

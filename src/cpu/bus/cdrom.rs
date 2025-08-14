@@ -440,13 +440,10 @@ impl CDRom {
 
     pub fn cd_read_sector(&mut self, scheduler: &mut Scheduler) {
         if !self.is_reading {
-            println!("cd rom is paused, setting to idle");
             return;
         }
 
         let pointer = self.get_pointer();
-
-        println!("pointer = 0x{:x}", pointer);
 
         self.stat();
 
@@ -490,8 +487,6 @@ impl CDRom {
 
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
-
-            println!("copying from disk starting at offset 0x{:x}", pointer);
 
             self.sector_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
 

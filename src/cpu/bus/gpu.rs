@@ -449,69 +449,6 @@ impl GPU {
         }
     }
 
-    fn convert_to_rgb888(texel: u16) -> Color {
-        let mut r = (texel & 0x1f) as u8;
-        let mut g = ((texel >> 5) & 0x1f) as u8;
-        let mut b = ((texel >> 10) & 0x1f) as u8;
-
-
-        let a = if texel & 0x7fff == 0 {
-            0
-        } else if texel & 0x8000 != 0 {
-            128
-        } else {
-            255
-        };
-
-        r = r << 3 | r >> 2;
-        g = g << 3 | g >> 2;
-        b = b << 3 | b >> 2;
-
-        Color {
-            r,
-            g,
-            b,
-            a
-        }
-    }
-
-    fn get_texel_4bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
-        // let texture_address = (u/2 + 2048 * v) as usize;
-
-        let u_base = texpage.x_base * 64;
-        let v_base = texpage.y_base1 * 256;
-
-        let offset_u = u_base + u;
-        let offset_v = v_base + v;
-
-        let texture_address = 2 * (offset_u + 1024 * offset_v);
-
-        let mut texel_index = self.vram[texture_address as usize];
-
-        if u & 1 == 0 {
-            texel_index &= 0xf
-        } else {
-            texel_index = (texel_index >> 4) & 0xf;
-        }
-
-        let address = 2 * self.clut_x + 2048 * self.clut_y + texel_index as usize * 2;
-
-        let texel = unsafe { *(&self.vram[address] as *const u8 as *const u16) };
-
-        Self::convert_to_rgb888(texel)
-    }
-
-    fn get_texel_8bpp(&self, u: u32, v: u32, texpage: &Texpage) -> Color {
-        todo!("8bpp texels");
-        let texture_address = (u + 2048 * v) as usize;
-
-        let texel_index = self.vram[texture_address];
-
-        let texel = unsafe { *(&self.vram[Self::get_vram_address(texel_index as u32 + self.clut_x as u32, self.clut_y as u32)] as *const u8 as *const u16) };
-
-        Self::convert_to_rgb888(texel)
-    }
-
     fn push_polygon(&mut self) {
         let mut command_index = 0;
 

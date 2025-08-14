@@ -31,6 +31,14 @@ impl Instruction {
     pub fn immediate26(&self) -> u32 {
         self.0 & 0x3ffffff
     }
+
+    pub fn cop2_command(&self) -> u32 {
+        self.0 & 0x3ff_ffff
+    }
+
+    pub fn cop_code(&self) -> u32 {
+        (self.0 >> 21) & 0x1f
+    }
 }
 
 impl CPU {
@@ -199,16 +207,33 @@ impl CPU {
         }
     }
 
-    pub fn cop1(&mut self, instruction: Instruction) {
-        todo!("cop1");
+    pub fn cop1(&mut self, _instruction: Instruction) {
+        panic!("cop1 nonexistent in playstation");
     }
 
     pub fn cop2(&mut self, instruction: Instruction) {
-        todo!("cop2");
+
+        match instruction.cop_code() {
+            0x0 => {
+                let value = self.gte.read_data(instruction.rd());
+
+                self.update_load(instruction.rt(), value);
+            }
+            0x2 => {
+                let value = self.gte.read_control(instruction.rd());
+
+                self.update_load(instruction.rt(), value);
+            }
+            0x4 => self.gte.write_data(instruction.rd(), self.r[instruction.rt()]),
+            0x6 => self.gte.write_control(instruction.rd(), self.r[instruction.rt()]),
+            _ => self.gte.execute_command(instruction)
+        }
+
+
     }
 
-    pub fn cop3(&mut self, instruction: Instruction) {
-        todo!("cop3");
+    pub fn cop3(&mut self, _instruction: Instruction) {
+        panic!("cop3 nonexistent in playstation");
     }
 
     pub fn lb(&mut self, instruction: Instruction) {
@@ -359,7 +384,11 @@ impl CPU {
     }
 
     pub fn lwc2(&mut self, instruction: Instruction) {
-        todo!("lwc2");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        let value = self.bus.mem_read32(address);
+
+        self.gte.write_data(instruction.rd(), value);
     }
 
     pub fn lwc3(&mut self, instruction: Instruction) {
@@ -375,7 +404,9 @@ impl CPU {
     }
 
     pub fn swc2(&mut self, instruction: Instruction) {
-        todo!("swc2");
+        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
+        self.bus.mem_write32(address, self.gte.read_control(instruction.rd()));
     }
 
     pub fn swc3(&mut self, instruction: Instruction) {
