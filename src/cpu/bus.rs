@@ -165,6 +165,7 @@ impl Bus {
                 &mut self.scheduler,
                 &mut self.main_ram,
                 &mut self.gpu,
+                &mut self.cdrom,
                 &mut self.interrupt_stat
             ),
             0x1f801114 => self.timers[1].write_counter_register(value as u16, &mut self.scheduler),

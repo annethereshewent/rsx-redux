@@ -119,6 +119,7 @@ impl CDHeader {
     }
 }
 
+#[derive(Debug)]
 struct Msf {
     pub ass: u8,
     pub asect: u8,
@@ -156,7 +157,7 @@ pub struct CDRom {
     is_playing: bool,
     is_seeking: bool,
     is_reading: bool,
-    current_msf: Option<Msf>,
+    current_msf: Msf,
     msf: Msf,
     next_event: Option<EventType>,
     double_speed: bool,
@@ -169,8 +170,10 @@ pub struct CDRom {
     current_header: CDHeader,
     subheader: CDSubheader,
     sector_buffer: Vec<u8>,
-    output_buffer: Vec<u8>,
-    reading_buffer: bool
+    output_buffer: [u8; 0x930],
+    buffer_index: usize,
+    reading_buffer: bool,
+    pre_seek: bool
 }
 
 impl CDRom {
@@ -192,7 +195,7 @@ impl CDRom {
             is_playing: false,
             is_reading: false,
             is_seeking: false,
-            current_msf: None,
+            current_msf: Msf::new(),
             msf: Msf::new(),
             next_event: None,
             double_speed: false,
@@ -204,8 +207,10 @@ impl CDRom {
             current_header: CDHeader::new(),
             subheader: CDSubheader::new(),
             sector_buffer: vec![0; 0x930],
-            output_buffer: vec![0; 0x930],
-            reading_buffer: false
+            buffer_index: 0,
+            output_buffer: [0; 0x930],
+            reading_buffer: false,
+            pre_seek: false
         }
     }
 
@@ -235,6 +240,35 @@ impl CDRom {
 
     fn read_response(&mut self) -> u8 {
         if self.result_fifo.is_empty() { 0 } else { self.result_fifo.pop_front().unwrap() }
+    }
+
+    pub fn read_data_buffer(&mut self) -> u32 {
+        (self.read_data_buffer_byte() as u32) |
+            (self.read_data_buffer_byte() as u32) << 8 |
+            (self.read_data_buffer_byte() as u32) << 16 |
+            (self.read_data_buffer_byte() as u32) << 24
+    }
+
+    fn read_data_buffer_byte(&mut self) -> u8 {
+        if !self.output_buffer_empty() {
+            let offset = if self.sector_size == 0x924 {
+                0xc
+            } else {
+                0x18
+            };
+
+            let value = self.output_buffer[self.buffer_index + offset];
+
+            self.buffer_index += 1;
+
+            return value;
+        }
+
+        panic!("data buffer is empty, shouldnt happen");
+    }
+
+    fn output_buffer_empty(&self) -> bool {
+        self.buffer_index >= self.sector_size
     }
 
     pub fn read(&mut self, address: usize) -> u8 {
@@ -371,6 +405,16 @@ impl CDRom {
         // bits 0 and 1 are audio related so no need to worry about them
     }
 
+    fn pause(&mut self, scheduler: &mut Scheduler) {
+        self.stat();
+
+        self.is_playing = false;
+        self.is_seeking = false;
+        self.is_reading = false;
+
+        scheduler.schedule(EventType::CDStat, 100 * CDROM_CYCLES);
+    }
+
     pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
         self.controller_response_fifo.clear();
 
@@ -380,6 +424,7 @@ impl CDRom {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
             0x6 => self.cd_read_command(scheduler),
+            0x9 => self.pause(scheduler),
             0xe => self.set_mode(),
             0x15 => self.seek(scheduler),
             0x19 => self.commandx19(),
@@ -394,48 +439,50 @@ impl CDRom {
     }
 
     pub fn cd_read_sector(&mut self, scheduler: &mut Scheduler) {
+        if !self.is_reading {
+            println!("cd rom is paused, setting to idle");
+            return;
+        }
+
         let pointer = self.get_pointer();
+
+        println!("pointer = 0x{:x}", pointer);
 
         self.stat();
 
-        if let Some(msf) = &mut self.current_msf {
-            // TODO: refactor this to allow for WASM builds to work as well
-            if let Some(game_data) = &mut self.game_data {
-                self.current_header = CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]);
+        // TODO: refactor this to allow for WASM builds to work as well
+        if let Some(game_data) = &mut self.game_data {
+            self.current_header = CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]);
 
-                if self.current_header.mode != CDMode::Mode2 {
-                    todo!("non mode 2 header")
-                }
-                self.subheader = CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]);
+            if self.current_header.mode != CDMode::Mode2 {
+                todo!("non mode 2 header")
+            }
+            self.subheader = CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]);
 
-                if self.current_header.mm != msf.amm || self.current_header.ss != msf.ass || self.current_header.sect != msf.asect {
-                    panic!("mismatch between header and current msf");
-                }
+            if self.current_header.mm != self.current_msf.amm || self.current_header.ss != self.current_msf.ass || self.current_header.sect != self.current_msf.asect {
+                panic!("mismatch between header and current msf");
+            }
 
-                {
-                    msf.asect += 1;
+            match self.subheader.read_mode {
+                CDReadMode::Data => self.read_data(),
+                CDReadMode::Audio | CDReadMode::Video => todo!("read audio/video cds")
+            }
 
-                    if msf.asect >= 75 {
-                        msf.asect -= 75;
-                        msf.ass += 1;
+            self.current_msf.asect += 1;
 
-                        if msf.ass >= 60 {
-                            msf.amm += 1;
-                        }
-                    }
-                }
+            if self.current_msf.asect >= 75 {
+                self.current_msf.asect -= 75;
+                self.current_msf.ass += 1;
 
-                match self.subheader.read_mode {
-                    CDReadMode::Data => self.read_data(),
-                    CDReadMode::Audio | CDReadMode::Video => todo!("read audio/video cds")
+                if self.current_msf.ass >= 60 {
+                    self.current_msf.amm += 1;
                 }
             }
-            if self.is_reading {
-                scheduler.schedule(EventType::CDRead, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES });
-            }
-        } else {
-            panic!("no current msf selected!");
         }
+        if self.is_reading {
+            scheduler.schedule(EventType::CDRead, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES });
+            }
+
     }
 
     fn read_data(&mut self) {
@@ -443,6 +490,8 @@ impl CDRom {
 
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
+
+            println!("copying from disk starting at offset 0x{:x}", pointer);
 
             self.sector_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
 
@@ -452,7 +501,7 @@ impl CDRom {
     }
 
     fn cd_read_command(&mut self, scheduler: &mut Scheduler) {
-        if self.current_msf.is_some() {
+        if !self.pre_seek {
             // cd has been seeked and is able to be read
             self.is_reading = true;
             self.is_seeking = false;
@@ -465,7 +514,6 @@ impl CDRom {
             self.is_reading = false;
             self.is_playing = false;
             // request a seek
-
             self.next_event = Some(EventType::CDRead);
             scheduler.schedule(EventType::CDSeek, 25 * CDROM_CYCLES);
         }
@@ -474,11 +522,7 @@ impl CDRom {
     }
 
     fn get_pointer(&self) -> usize {
-        if let Some(msf) = &self.current_msf {
-            return ((msf.amm * 60 + msf.ass) * 75 + msf.asect - 150) as usize * BYTES_PER_SECTOR
-        }
-
-        0
+        return ((self.current_msf.amm * 60 + self.current_msf.ass) * 75 + self.current_msf.asect - 150) as usize * BYTES_PER_SECTOR
     }
 
     fn bcd_to_u8(value: u8) -> u8 {
@@ -498,16 +542,18 @@ impl CDRom {
     pub fn seek_cd(&mut self, scheduler: &mut Scheduler) {
         let mut msf = Msf::new();
 
+        self.pre_seek = false;
+
         msf.amm = self.msf.amm;
         msf.ass = self.msf.ass;
         msf.asect = self.msf.asect;
 
-        self.current_msf = Some(msf);
+        self.current_msf = msf;
 
         if let Some(event) = self.next_event.take() {
             match event {
                 EventType::CDStat => scheduler.schedule(event, 100 * CDROM_CYCLES),
-                EventType::CDRead => scheduler.schedule(event, if self.double_speed { 225792 } else { 451584 }),
+                EventType::CDRead => scheduler.schedule(event, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES }),
                 _ => ()
             }
         }
@@ -526,11 +572,11 @@ impl CDRom {
     }
 
     fn set_loc(&mut self) {
-        self.current_msf = None;
-
         self.msf.amm = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
         self.msf.ass = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
         self.msf.asect = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
+
+        self.pre_seek = true;
     }
 
     pub fn get_toc(&mut self, scheduler: &mut Scheduler) {
@@ -586,9 +632,9 @@ impl CDRom {
                 0 => {
                     if (value >> 7) & 1 == 1 {
                         self.reading_buffer = true;
-                    } else if (value >> 6) & 1 == 1 {
-                        self.output_buffer.clear();
-                        self.output_buffer.clone_from_slice(&self.sector_buffer[..0x930]);
+                    } else {
+                        self.buffer_index = 0;
+                        self.output_buffer.copy_from_slice(&self.sector_buffer[..0x930]);
                     }
                 }
                 1 => self.write_control(value),

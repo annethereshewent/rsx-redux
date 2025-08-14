@@ -1,4 +1,4 @@
-use crate::cpu::bus::{gpu::GPU, registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
+use crate::cpu::bus::{cdrom::CDRom, gpu::GPU, registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
 
 use super::{dma_channel_control_register::{DmaChannelControlRegister, SyncMode}, dma_control_register::DmaControlRegister, dma_interrupt_register::DmaInterruptRegister};
 
@@ -176,8 +176,28 @@ impl Dma {
         0
     }
 
-    fn start_cdrom_transfer(&mut self) {
-        todo!("cdrom transfer");
+    fn start_cdrom_transfer(&mut self, ram: &mut [u8], cdrom: &mut CDRom) {
+        let channel = &mut self.channels[CDROM];
+
+        assert!(channel.control.sync_mode() == SyncMode::Burst);
+
+        let mut current_address = channel.base_address;
+
+        if channel.control.contains(DmaChannelControlRegister::TRANSFER_DIR) {
+            panic!("only transfers from cdrom to RAM are supported");
+        }
+
+        for _ in 0..channel.block_size {
+            let value = cdrom.read_data_buffer();
+
+            unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = value };
+
+            if channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                current_address -= 4;
+            } else {
+                current_address += 4;
+            }
+        }
     }
 
     fn start_spu_transfer(&mut self) {
@@ -190,6 +210,8 @@ impl Dma {
 
     fn start_otc_transfer(&mut self, ram: &mut [u8], interrupt_stat: &mut InterruptRegister) {
         let channel = &mut self.channels[OTC];
+
+        assert!(channel.control.sync_mode() == SyncMode::Burst);
 
         let mut current_address = channel.base_address & 0x1ffffc;
 
@@ -237,6 +259,7 @@ impl Dma {
         scheduler: &mut Scheduler,
         ram: &mut [u8],
         gpu: &mut GPU,
+        cdrom: &mut CDRom,
         interrupt_stat: &mut InterruptRegister
     ) {
         let channel = (address - 0x1f801080) / 0x10;
@@ -293,7 +316,7 @@ impl Dma {
                         SyncMode::Burst | SyncMode::Slice => { self.start_gpu_transfer(ram, gpu); },
                     }
                 }
-                3 => self.start_cdrom_transfer(),
+                3 => self.start_cdrom_transfer(ram, cdrom),
                 4 => self.start_spu_transfer(),
                 5 => self.start_pio_transfer(),
                 6 => self.start_otc_transfer(ram, interrupt_stat),
