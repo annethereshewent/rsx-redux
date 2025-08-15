@@ -214,6 +214,7 @@ impl CPU {
 
     pub fn cop2(&mut self, instruction: Instruction) {
         let cop_code = instruction.cop_code();
+
         match cop_code {
             0x0 => {
                 let value = self.gte.read_data(instruction.rd());
@@ -390,7 +391,7 @@ impl CPU {
 
         let value = self.bus.mem_read32(address);
 
-        self.gte.write_data(instruction.rd(), value);
+        self.gte.write_data(instruction.rt(), value);
     }
 
     pub fn lwc3(&mut self, instruction: Instruction) {
@@ -408,7 +409,9 @@ impl CPU {
     pub fn swc2(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.bus.mem_write32(address, self.gte.read_control(instruction.rd()));
+        let value = self.gte.read_data(instruction.rd());
+
+        self.store32(address, value);
     }
 
     pub fn swc3(&mut self, instruction: Instruction) {
