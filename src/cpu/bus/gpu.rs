@@ -123,7 +123,6 @@ pub struct GPU {
     pub current_line: usize,
     even_flag: u32,
     interlaced: bool,
-    pub command_fifo: VecDeque<u32>,
     pub current_command_buffer: VecDeque<u32>,
     texpage: Texpage,
     pub gpuread: u32,
@@ -187,7 +186,6 @@ impl GPU {
             current_line: 0,
             even_flag: 0,
             interlaced: false,
-            command_fifo: VecDeque::with_capacity(16),
             current_command_buffer: VecDeque::new(),
             texpage: Texpage::new(),
             gpuread: 0,
@@ -411,6 +409,10 @@ impl GPU {
             return 3;
         }
 
+        if (word >> 24) == 0x2 {
+            return 3;
+        }
+
         1
     }
 
@@ -438,7 +440,7 @@ impl GPU {
         texpage
     }
 
-    fn parse_color(&self, word: u32) -> Color {
+    fn parse_color(word: u32) -> Color {
         let r = word as u8;
         let g = (word >> 8) as u8;
         let b = (word >> 16) as u8;
@@ -466,7 +468,7 @@ impl GPU {
                 y: 0,
                 u: 0,
                 v: 0,
-                color: self.parse_color(color0)
+                color: Self::parse_color(color0)
             };
 
             if i == 0 || self.is_shaded {
@@ -556,7 +558,7 @@ impl GPU {
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
-        let color = self.parse_color(word);
+        let color = Self::parse_color(word);
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
@@ -721,6 +723,36 @@ impl GPU {
     pub fn cross_product(v: &Vec<Vertex>) -> i32 {
         (v[1].x - v[0].x) * (v[2].y - v[0].y) - (v[1].y - v[0].y) * (v[2].x - v[0].x)
     }
+
+    fn fill_vram(&mut self) {
+        let color = self.current_command_buffer.pop_front().unwrap();
+
+        let r = (color & 0xff) >> 3;
+        let g = ((color >> 8) & 0xff) >> 3;
+        let b = ((color >> 16) & 0xff) >> 3;
+
+        let pixel: u16 = r as u16 | (g as u16) << 5 | (b as u16) << 5;
+
+        panic!("got pixel 0x{:x}", pixel);
+
+        let destination = self.current_command_buffer.pop_front().unwrap();
+        let dimensions = self.current_command_buffer.pop_front().unwrap();
+
+        let start_x = destination & 0x3f0;
+        let start_y = (destination >> 16) & 0x3ff;
+
+        let w = ((dimensions & 0x3ff) + 0xf) & !0xf;
+        let h = (dimensions >> 16) & 0x1ff;
+
+        for y in 0..h {
+            for x in 0..w {
+                let address = Self::get_vram_address(start_x + x, start_y + y);
+
+
+            }
+        }
+    }
+
     fn execute_command(&mut self, word: u32) {
         let command = word >> 24;
         let upper = word >> 29;
@@ -739,6 +771,7 @@ impl GPU {
             _ => {
                 match command {
                     0x0 => (), // NOP
+                    0x2 => self.fill_vram(),
                     0x1 => (), // TODO: invalidate cache
                     0x3..=0x1e => (), // NOP
                     0xe1 => self.texpage(word),
@@ -747,6 +780,7 @@ impl GPU {
                     0xe4 => self.set_drawing_area(word, true),
                     0xe5 => self.set_drawing_offset(word),
                     0xe6 => self.mask_bit(word),
+                    0xe7..=0xff => (), // NOP
                     _ => todo!("command: 0x{:x}", command)
                 }
             }
