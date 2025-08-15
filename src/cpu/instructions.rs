@@ -153,6 +153,7 @@ impl CPU {
 
     pub fn addiu(&mut self, instruction: Instruction) {
         self.r[instruction.rt()] = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+
         self.ignored_load_delay = Some(instruction.rt());
     }
 
@@ -212,24 +213,22 @@ impl CPU {
     }
 
     pub fn cop2(&mut self, instruction: Instruction) {
+        // let cop_code = instruction.cop_code();
+        // match cop_code {
+        //     0x0 => {
+        //         let value = self.gte.read_data(instruction.rd());
 
-        match instruction.cop_code() {
-            0x0 => {
-                let value = self.gte.read_data(instruction.rd());
+        //         self.update_load(instruction.rt(), value);
+        //     }
+        //     0x2 => {
+        //         let value = self.gte.read_control(instruction.rd());
 
-                self.update_load(instruction.rt(), value);
-            }
-            0x2 => {
-                let value = self.gte.read_control(instruction.rd());
-
-                self.update_load(instruction.rt(), value);
-            }
-            0x4 => self.gte.write_data(instruction.rd(), self.r[instruction.rt()]),
-            0x6 => self.gte.write_control(instruction.rd(), self.r[instruction.rt()]),
-            _ => self.gte.execute_command(instruction)
-        }
-
-
+        //         self.update_load(instruction.rt(), value);
+        //     }
+        //     0x4 => self.gte.write_data(instruction.rd(), self.r[instruction.rt()]),
+        //     0x6 => self.gte.write_control(instruction.rd(), self.r[instruction.rt()]),
+        //     _ => if cop_code & 0x10 == 0x10 { self.gte.execute_command(instruction) }
+        // }
     }
 
     pub fn cop3(&mut self, _instruction: Instruction) {
@@ -326,7 +325,9 @@ impl CPU {
     pub fn sb(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.store8(address, self.r[instruction.rt()] as u8);
+        let value = self.r[instruction.rt()] as u8;
+
+        self.store8(address, value);
     }
 
     pub fn sh(&mut self, instruction: Instruction) {
@@ -354,8 +355,9 @@ impl CPU {
 
     pub fn sw(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+        let value = self.r[instruction.rt()];
 
-        self.store32(address, self.r[instruction.rt()]);
+        self.store32(address, value);
     }
 
     pub fn swr(&mut self, instruction: Instruction) {
@@ -384,11 +386,11 @@ impl CPU {
     }
 
     pub fn lwc2(&mut self, instruction: Instruction) {
-        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+        // let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        let value = self.bus.mem_read32(address);
+        // let value = self.bus.mem_read32(address);
 
-        self.gte.write_data(instruction.rd(), value);
+        // self.gte.write_data(instruction.rd(), value);
     }
 
     pub fn lwc3(&mut self, instruction: Instruction) {
@@ -404,9 +406,9 @@ impl CPU {
     }
 
     pub fn swc2(&mut self, instruction: Instruction) {
-        let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+        // let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.bus.mem_write32(address, self.gte.read_control(instruction.rd()));
+        // self.bus.mem_write32(address, self.gte.read_control(instruction.rd()));
     }
 
     pub fn swc3(&mut self, instruction: Instruction) {
@@ -486,6 +488,7 @@ impl CPU {
         self.ignored_load_delay = Some(instruction.rd());
 
         self.r[instruction.rd()] = self.hi;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn mthi(&mut self, instruction: Instruction) {
@@ -496,6 +499,7 @@ impl CPU {
         self.ignored_load_delay = Some(instruction.rd());
 
         self.r[instruction.rd()] = self.lo;
+        self.ignored_load_delay = Some(instruction.rd());
     }
 
     pub fn mtlo(&mut self, instruction: Instruction) {

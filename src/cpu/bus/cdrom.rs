@@ -490,7 +490,14 @@ impl CDRom {
 
             self.sector_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
 
-            self.stat();
+            let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
+
+            val |= (self.is_reading as u8) << 5;
+            val |= (self.is_seeking as u8) << 6;
+            val |= (self.is_playing as u8) << 7;
+
+            self.result_fifo.push_back(val);
+
             self.irqs = 1;
         }
     }
@@ -594,6 +601,10 @@ impl CDRom {
 
         let bytes = "SCEA".as_bytes();
 
+        self.controller_response_fifo.push_back(0x2);
+        self.controller_response_fifo.push_back(0x0);
+        self.controller_response_fifo.push_back(0x20);
+        self.controller_response_fifo.push_back(0x0);
         for byte in bytes {
             self.controller_response_fifo.push_back(*byte);
         }

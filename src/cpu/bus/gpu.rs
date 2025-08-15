@@ -174,7 +174,8 @@ pub struct GPU {
     display_range_x: (u32, u32),
     display_range_y: (u32, u32),
     display_on: bool,
-    pub vram_dirty: bool
+    pub vram_dirty: bool,
+    pub debug_on: bool
 }
 
 impl GPU {
@@ -237,7 +238,8 @@ impl GPU {
             display_range_x: (0, 0),
             display_range_y: (0, 0),
             display_on: true,
-            vram_dirty: false
+            vram_dirty: false,
+            debug_on: false
         }
     }
 
@@ -723,6 +725,10 @@ impl GPU {
         let command = word >> 24;
         let upper = word >> 29;
 
+        if self.debug_on {
+            println!("got word 0x{:x}", word);
+        }
+
         match upper {
             1 => self.push_polygon(),
             2 => unreachable!("shouldn't happen"),
@@ -893,6 +899,9 @@ impl GPU {
     }
 
     pub fn process_gp0_commands(&mut self, word: u32) {
+        if self.debug_on {
+            println!("received word 0x{:x}, words remaining = {}", word, self.words_left);
+        }
         if let Some(transfer_type) = self.transfer_type {
             if transfer_type == TransferType::ToVram {
                 self.transfer_to_vram(word as u16);
