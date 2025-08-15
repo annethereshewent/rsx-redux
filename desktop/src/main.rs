@@ -88,12 +88,12 @@ fn main() {
                     frontend.renderer.render_polygons(&mut cpu.bus.gpu, encoder_ref);
                 }
             }
+        }
 
-            if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
-                encoder.endEncoding();
-                command_buffer.presentDrawable(drawable.as_ref());
-                command_buffer.commit();
-            }
+        if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
+            encoder.endEncoding();
+            command_buffer.presentDrawable(drawable.as_ref());
+            command_buffer.commit();
         }
 
         cpu.bus.gpu.frame_finished = false;
