@@ -409,7 +409,7 @@ impl CPU {
     pub fn swc2(&mut self, instruction: Instruction) {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        let value = self.gte.read_data(instruction.rd());
+        let value = self.gte.read_data(instruction.rt());
 
         self.store32(address, value);
     }

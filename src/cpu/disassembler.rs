@@ -178,14 +178,19 @@ impl CPU {
         let upper_cop0 = instruction >> 28;
         let mid = (instruction >> 21) & 0x1f;
 
+        let processor_number = (instruction >> 26) & 0x3;
         match upper_cop0 {
             0x4 => match mid {
-                0x0 => return format!("MFC0 r{}, r{}", instr.rt(), instr.rd()),
-                0x4 => return format!("MTC0 r{}, r{}", instr.rt(), instr.rd()),
+                0x0 => return format!("MFC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
+                0x2 => return format!("CFC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
+                0x4 => return format!("MTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
+                0x6 => return format!("CTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
                 0x10 => return "RFE".to_string(),
-                _ => todo!("cop0 disassembly: 0b{:032b}, upper = 0b{:b} middle = 0b{:b}", instruction, upper_cop0, mid)
+                _ => format!("GTE 0x{:x}", instr.cop2_command())
             }
-            _ => todo!("cop0 disassembly: 0b{:032b}", instruction)
+            0xc => format!("LWC{} r{}, [r{} + 0x{:x}]", processor_number, instr.rt(), instr.rs(), instr.immediate16()),
+            0xe => format!("SWC{} r{}, [r{} + 0x{:x}]", processor_number, instr.rt(), instr.rs(), instr.immediate16()),
+            _ => panic!("invalid option for cop instruction given: 0x{:x}", upper_cop0)
         }
     }
 }
