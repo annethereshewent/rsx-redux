@@ -1,9 +1,10 @@
-use std::{env, fs, fs::File};
+use std::{env, ffi::c_void, fs::{self, File}, ptr::NonNull};
 
 use frontend::Frontend;
 use memmap2::Mmap;
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
+use renderer::FbVertex;
 use rsx_redux::cpu::CPU;
 
 pub mod frontend;
@@ -20,9 +21,31 @@ use objc2_metal::{
     MTLRenderPassDescriptor,
     MTLStoreAction,
     MTLViewport,
-    MTLWinding
+    MTLWinding,
+    MTLPrimitiveType,
+    MTLDevice,
+    MTLResourceOptions
 };
 use objc2_quartz_core::CAMetalDrawable;
+
+pub const VERTICES: [FbVertex; 4] = [
+    FbVertex {
+        position: [-1.0, 1.0],
+        uv: [0.0, 0.0]
+    },
+    FbVertex {
+        position: [1.0, 1.0],
+        uv: [1.0, 0.0]
+    },
+    FbVertex {
+        position: [-1.0, -1.0],
+        uv: [0.0, 1.0]
+    },
+    FbVertex {
+        position: [1.0, -1.0],
+        uv: [1.0, 1.0]
+    }
+];
 
 
 fn main() {
@@ -55,21 +78,15 @@ fn main() {
                 cpu.bus.gpu.commands_ready = false;
                 if encoder.is_none() {
                     let rpd = unsafe { MTLRenderPassDescriptor::new() };
-                    drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
                     command_buffer = frontend.renderer.command_queue.commandBuffer();
-
-                    unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
 
                     let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
 
-                    unsafe {
-                        color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
-                        color_attachment.setLoadAction(MTLLoadAction::Clear);
-                        color_attachment.setStoreAction(MTLStoreAction::Store);
+                    color_attachment.setLoadAction(MTLLoadAction::Clear);
+                    color_attachment.setStoreAction(MTLStoreAction::Store);
 
-                        color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
-                        color_attachment.setTexture(frontend.renderer.vram_write.as_deref());
-                    }
+                    color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+                    color_attachment.setTexture(frontend.renderer.vram_write.as_deref());
 
                     encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
                 }
@@ -94,10 +111,11 @@ fn main() {
                     frontend.renderer.render_polygons(&mut cpu.bus.gpu, encoder_ref);
                 }
 
-                if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), &mut command_buffer.take(), drawable.take()) {
-                    encoder.endEncoding();
+                if let (Some(encoder), Some(command_buffer)) = (encoder.take(), &mut command_buffer.take()) {
+                    let drawing_area = frontend.renderer.clip_drawing_area(&mut cpu.bus.gpu);
+                    encoder.setScissorRect(drawing_area);
 
-                    command_buffer.presentDrawable(drawable.as_ref());
+                    encoder.endEncoding();
 
                     if let Some(params) = &cpu.bus.gpu.transfer_params{
                         let halfwords = frontend.renderer.handle_cpu_transfer(command_buffer, params);
@@ -112,15 +130,64 @@ fn main() {
             }
         }
 
-        // let present_rp = unsafe { MTLRenderPassDescriptor::new() };
+        drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
 
-        // let color_attachment = unsafe { present_rp.colorAttachments().objectAtIndexedSubscript(0) };
+        let rpd = unsafe { MTLRenderPassDescriptor::new() };
 
-        // unsafe {
-        //     color_attachment.setTexture(Some(&drawable.unwrap().texture()));
-        //     color_attachment.setLoadAction(MTLLoadAction::Clear);
-        //     color_attachment.setStoreAction(MTLStoreAction::Store);
-        // }
+        command_buffer = frontend.renderer.command_queue.commandBuffer();
+
+        unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
+
+        let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+        color_attachment.setLoadAction(MTLLoadAction::Clear);
+        color_attachment.setStoreAction(MTLStoreAction::Store);
+
+        color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+        unsafe {
+            color_attachment.setTexture(Some(&drawable.unwrap().texture()));
+        }
+
+        if let Some(command_buffer) = &command_buffer {
+            if let Some(draw_encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd) {
+                draw_encoder.setCullMode(MTLCullMode::None);
+                draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
+
+                let width = cpu.bus.gpu.display_width as f64;
+                let height = cpu.bus.gpu.display_height as f64;
+
+                let vp = MTLViewport {
+                    originX: 0.0, originY: 0.0,
+                    width, height,
+                    znear: 0.0, zfar: 1.0,
+                };
+
+                draw_encoder.setViewport(vp);
+
+                draw_encoder.setRenderPipelineState(&frontend.renderer.fb_pipeline_state);
+
+                let byte_len = VERTICES.len() * std::mem::size_of::<FbVertex>();
+
+                let buffer = unsafe {
+                    frontend.renderer.device.newBufferWithBytes_length_options(
+                        NonNull::new(
+                            VERTICES.as_ptr() as *mut c_void).unwrap(),
+                            byte_len,
+                            MTLResourceOptions::empty())
+
+                }.unwrap();
+
+                unsafe {
+                    draw_encoder.setVertexBuffer_offset_atIndex(Some(&buffer), 0, 0);
+                    draw_encoder.setFragmentTexture_atIndex(frontend.renderer.vram_write.as_deref(), 0);
+                    draw_encoder.drawPrimitives_vertexStart_vertexCount(MTLPrimitiveType::TriangleStrip, 0, 4);
+                }
+
+                draw_encoder.endEncoding();
+                command_buffer.presentDrawable(&drawable.as_ref().unwrap());
+                command_buffer.commit();
+            }
+        }
 
         cpu.bus.gpu.frame_finished = false;
         cpu.bus.gpu.cap_fps();

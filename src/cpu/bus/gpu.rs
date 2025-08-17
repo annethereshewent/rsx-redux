@@ -829,11 +829,7 @@ impl GPU {
     }
 
     fn transfer_to_vram(&mut self, halfword: u16) {
-        let curr_x = self.transfer_x + self.read_x;
-
         self.read_x += 1;
-
-        let curr_y = self.transfer_y + self.read_y;
 
         self.vram_transfer_halfwords.push(halfword);
 
@@ -853,8 +849,6 @@ impl GPU {
                     height: self.transfer_height
                 }));
                 self.commands_ready = true;
-
-                self.vram_transfer_halfwords.clear();
 
                 self.read_y = 0;
                 self.transfer_width = 0;

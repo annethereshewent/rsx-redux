@@ -27,7 +27,7 @@ use objc2_metal::{
 const VRAM_WIDTH: usize = 1024;
 const VRAM_HEIGHT: usize = 512;
 
-use crate::renderer::{MetalVertex, Renderer};
+use crate::renderer::{FbVertex, MetalVertex, Renderer};
 
 pub struct Frontend {
     window: Window,
@@ -73,19 +73,33 @@ impl Frontend {
         let device = MTLCreateSystemDefaultDevice().unwrap();
 
         let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
+        let fb_source = NSString::from_str(&fs::read_to_string("shaders/ShadersFb.metal").unwrap());
 
         let library = device.newLibraryWithSource_options_error(source.deref(), None).unwrap();
+        let fb_library = device.newLibraryWithSource_options_error(fb_source.deref(), None).unwrap();
 
         let vertex_str = NSString::from_str("vertex_main");
         let fragment_str = NSString::from_str("fragment_main");
 
+        let vertex_fb_str = NSString::from_str("vertex_fb");
+        let fragment_fb_str = NSString::from_str("fragment_fb");
+
         let vertex_main_function = library.newFunctionWithName(&vertex_str);
         let fragment_main_function = library.newFunctionWithName(&fragment_str);
 
+        let vertex_fb_function = fb_library.newFunctionWithName(&vertex_fb_str);
+        let fragment_fb_function = fb_library.newFunctionWithName(&fragment_fb_str);
+
         let pipeline_descriptor = MTLRenderPipelineDescriptor::new();
+
+        let fb_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
 
         pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
         pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
+
+        fb_pipeline_descriptor.setVertexFunction(vertex_fb_function.as_deref());
+        fb_pipeline_descriptor.setFragmentFunction(fragment_fb_function.as_deref());
+
         let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
@@ -150,11 +164,36 @@ impl Frontend {
 
         unsafe { layout.setStride((std::mem::size_of::<MetalVertex>()) as usize) };
 
+
+        let fb_vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
+
+        let attributes = fb_vertex_descriptor.attributes();
+
+        let position = unsafe { attributes.objectAtIndexedSubscript(0) };
+
+        position.setFormat(MTLVertexFormat::Float2);
+        unsafe { position.setOffset(0) };
+        unsafe { position.setBufferIndex(0) };
+
+        let uv = unsafe { attributes.objectAtIndexedSubscript(1) };
+
+        uv.setFormat(MTLVertexFormat::Float2);
+        unsafe { uv.setOffset(8) };
+        unsafe { uv.setBufferIndex(0) };
+
+
         assert_eq!(size_of::<MetalVertex>(), 56);
+
+        let fb_layout = unsafe { fb_vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
+
+        unsafe { fb_layout.setStride((std::mem::size_of::<FbVertex>()) as usize) };
+
+        fb_pipeline_descriptor.setVertexDescriptor(Some(&fb_vertex_descriptor));
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 
         let pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor).unwrap();
+        let fb_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor).unwrap();
 
         unsafe { metal_layer.setDevice(Some(&device)) };
 
@@ -171,6 +210,7 @@ impl Frontend {
                 vram_write: Self::create_texture(&device, false),
                 device,
                 pipeline_state,
+                fb_pipeline_state
 
             }
         }

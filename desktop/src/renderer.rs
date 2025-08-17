@@ -18,7 +18,8 @@ use objc2_metal::{
     MTLTextureDescriptor,
     MTLPixelFormat,
     MTLTextureUsage,
-    MTLStorageMode
+    MTLStorageMode,
+    MTLScissorRect
 
 };
 use objc2_quartz_core::CAMetalLayer;
@@ -31,6 +32,16 @@ use rsx_redux::cpu::bus::gpu::{
 use std::cmp;
 
 #[repr(C)]
+#[derive(Debug)]
+struct FragmentUniform {
+    has_texture: bool,
+    texture_mask_x: u32,
+    texture_mask_y: u32,
+    texture_offset_x: u32,
+    texture_offset_y: u32
+}
+
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct MetalVertex {
     position: [f32; 2],
@@ -40,16 +51,6 @@ pub struct MetalVertex {
     depth: u32,
     _padding: u32,
     clut: [u32; 2]
-}
-
-#[repr(C)]
-#[derive(Debug)]
-struct FragmentUniform {
-    has_texture: bool,
-    texture_mask_x: u32,
-    texture_mask_y: u32,
-    texture_offset_x: u32,
-    texture_offset_y: u32
 }
 
 impl MetalVertex {
@@ -66,12 +67,20 @@ impl MetalVertex {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct FbVertex {
+    pub position: [f32; 2],
+    pub uv: [f32; 2]
+}
+
 pub struct Renderer {
     pub metal_view: *mut c_void,
     pub metal_layer: Retained<CAMetalLayer>,
     pub command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pub device: Retained<ProtocolObject<dyn MTLDevice>>,
     pub pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    pub fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     pub vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     pub vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>
 }
@@ -82,9 +91,6 @@ impl Renderer {
         gpu: &mut GPU,
         encoder: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>
     ) {
-        let drawing_width = gpu.x2 - gpu.x1 + 1;
-        let drawing_height = gpu.y2 - gpu.y1 + 1;
-
         for polygon in gpu.polygons.drain(..) {
             let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
             let mut fragment_uniform = FragmentUniform {
@@ -122,13 +128,10 @@ impl Renderer {
                 continue;
             }
 
-            if (max_x - min_x) >= 1024 {
+            if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
                 continue;
             }
 
-            if (max_y - min_y) >= 512 {
-                continue;
-            }
 
             for i in 0..polygon.vertices.len() {
                 let vertex = &polygon.vertices[i];
@@ -138,8 +141,8 @@ impl Renderer {
 
                 let metal_vert = &mut vertices[i];
 
-                metal_vert.position[0] = (vertex.x as f32 / drawing_width as f32) * 2.0 - 1.0;
-                metal_vert.position[1] = 1.0 - (vertex.y as f32 / drawing_height as f32) * 2.0;
+                metal_vert.position[0] = (vertex.x as f32 / gpu.display_width as f32) * 2.0 - 1.0;
+                metal_vert.position[1] = 1.0 - (vertex.y as f32 / gpu.display_height as f32) * 2.0;
 
                 metal_vert.color[0] = vertex.color.r as f32 / 255.0;
                 metal_vert.color[1] = vertex.color.g as f32 / 255.0;
@@ -305,6 +308,13 @@ impl Renderer {
         }
 
         halfwords
+    }
+
+    pub fn clip_drawing_area(&mut self, gpu: &mut GPU) -> MTLScissorRect {
+        let width = (gpu.x2 - gpu.x1 + 1) as usize;
+        let height = (gpu.y2 - gpu.y1 + 1) as usize;
+
+        MTLScissorRect { x: gpu.x1 as usize, y: gpu.y1 as usize, width, height }
     }
 
 }

@@ -38,29 +38,7 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
 
     return out;
 }
-/*
-let u_base = texpage.x_base * 64;
-let v_base = texpage.y_base1 * 256;
 
-let offset_u = 2 * u_base + u/2;
-let offset_v = v_base + v;
-
-let texture_address = 2 * (offset_u + 1024 * offset_v);
-
-let mut texel_index = self.vram[texture_address as usize];
-
-if u & 1 == 0 {
-    texel_index &= 0xff
-} else {
-    texel_index = (texel_index >> 4) & 0xff;
-}
-
-let address = 2 * self.clut_x + 2048 * self.clut_y + texel_index as usize * 2;
-
-let texel = unsafe { *(&self.vram[address] as *const u8 as *const u16) };
-
-Self::convert_to_rgb888(texel)
-*/
 float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
