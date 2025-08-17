@@ -21,7 +21,8 @@ use objc2_metal::{
     MTLTextureDescriptor,
     MTLTextureUsage,
     MTLVertexDescriptor,
-    MTLVertexFormat
+    MTLVertexFormat,
+    MTLStorageMode
 };
 
 const VRAM_WIDTH: usize = 1024;
@@ -101,6 +102,7 @@ impl Frontend {
         fb_pipeline_descriptor.setFragmentFunction(fragment_fb_function.as_deref());
 
         let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let fb_color_attachment = unsafe { fb_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
@@ -113,7 +115,12 @@ impl Frontend {
             color_attachment.setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
             color_attachment.setSourceAlphaBlendFactor(objc2_metal::MTLBlendFactor::One);
             color_attachment.setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+
+            fb_color_attachment.setPixelFormat(metal_layer.pixelFormat());
+            fb_color_attachment.setBlendingEnabled(false);
         }
+
+
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
 
@@ -167,20 +174,19 @@ impl Frontend {
 
         let fb_vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
 
-        let attributes = fb_vertex_descriptor.attributes();
+        let fb_attributes = fb_vertex_descriptor.attributes();
 
-        let position = unsafe { attributes.objectAtIndexedSubscript(0) };
+        let fb_position = unsafe { fb_attributes.objectAtIndexedSubscript(0) };
 
-        position.setFormat(MTLVertexFormat::Float2);
-        unsafe { position.setOffset(0) };
-        unsafe { position.setBufferIndex(0) };
+        fb_position.setFormat(MTLVertexFormat::Float2);
+        unsafe { fb_position.setOffset(0) };
+        unsafe { fb_position.setBufferIndex(0) };
 
-        let uv = unsafe { attributes.objectAtIndexedSubscript(1) };
+        let fb_uv = unsafe { fb_attributes.objectAtIndexedSubscript(1) };
 
-        uv.setFormat(MTLVertexFormat::Float2);
-        unsafe { uv.setOffset(8) };
-        unsafe { uv.setBufferIndex(0) };
-
+        fb_uv.setFormat(MTLVertexFormat::Float2);
+        unsafe { fb_uv.setOffset(8) };
+        unsafe { fb_uv.setBufferIndex(0) };
 
         assert_eq!(size_of::<MetalVertex>(), 56);
 
@@ -237,7 +243,7 @@ impl Frontend {
     }
 
     pub fn create_texture(device: &Retained<ProtocolObject<dyn MTLDevice>>, is_read: bool) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
-        let pixel_format = if is_read { MTLPixelFormat::R16Uint } else { MTLPixelFormat::RGBA8Unorm };
+        let pixel_format = if is_read { MTLPixelFormat::R16Uint } else { MTLPixelFormat::BGRA8Unorm };
         let descriptor = unsafe {
             MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 pixel_format,
@@ -247,7 +253,13 @@ impl Frontend {
             )
         };
 
-        descriptor.setUsage(MTLTextureUsage::ShaderRead);
+        descriptor.setStorageMode(MTLStorageMode::Shared);
+
+        if is_read {
+            descriptor.setUsage(MTLTextureUsage::ShaderRead)
+        } else {
+            descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
+        }
 
         let mtl_texture = device.newTextureWithDescriptor(&descriptor);
 

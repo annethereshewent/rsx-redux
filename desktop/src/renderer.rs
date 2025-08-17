@@ -42,7 +42,7 @@ struct FragmentUniform {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct MetalVertex {
     position: [f32; 2],
     uv: [f32; 2],
@@ -181,8 +181,8 @@ impl Renderer {
             let primitive_type = MTLPrimitiveType::Triangle;
 
             encoder.setRenderPipelineState(&self.pipeline_state);
-            unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
 
+            unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
             unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
         }
     }
@@ -232,7 +232,7 @@ impl Renderer {
                                 region,
                                 0,
                                 NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
-                                1024 * 4
+                                params.width as usize * 4
                             );
                         }
                     }
@@ -243,7 +243,7 @@ impl Renderer {
                                 region,
                                 0,
                                 NonNull::new(params.halfwords.as_ptr() as *mut c_void).unwrap(),
-                                1024 * 2
+                                params.width as usize * 2
                             )
                         }
                     }
@@ -256,53 +256,55 @@ impl Renderer {
         }
     }
 
-    pub fn handle_cpu_transfer(&mut self, command_buffer: &mut Retained<ProtocolObject<dyn MTLCommandBuffer>>, params: &CPUTransferParams) -> Vec<u16> {
+    pub fn handle_cpu_transfer(&mut self, params: &CPUTransferParams) -> Vec<u16> {
         let mut halfwords = Vec::new();
 
         let row_bytes = params.width * 2;
 
-        let desc = unsafe {
-            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                MTLPixelFormat::R16Uint, params.width as _, params.height as _, false
-            )
-        };
+        if let Some(command_buffer) = self.command_queue.commandBuffer() {
+            let desc = unsafe {
+                MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                    MTLPixelFormat::R16Uint, params.width as _, params.height as _, false
+                )
+            };
 
-        desc.setUsage(MTLTextureUsage::ShaderRead);
-        desc.setStorageMode(MTLStorageMode::Shared);
+            desc.setUsage(MTLTextureUsage::ShaderRead);
+            desc.setStorageMode(MTLStorageMode::Shared);
 
-        let tmp: Retained<ProtocolObject<dyn MTLTexture>> =
-            self.device.newTextureWithDescriptor(&desc).expect("tmp tex");
+            let tmp: Retained<ProtocolObject<dyn MTLTexture>> =
+                self.device.newTextureWithDescriptor(&desc).expect("tmp tex");
 
-        if let Some(blit) = command_buffer.blitCommandEncoder(){
-            unsafe {
-                blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                    self.vram_read.as_ref().unwrap(), 0, 0,
-                    MTLOrigin { x: params.start_x as _, y: params.start_y as _, z: 0 },
-                    MTLSize   { width: params.width as _, height: params.height as _, depth: 1 },
-                    &tmp, 0, 0,
-                    MTLOrigin { x: 0, y: 0, z: 0 },
-                );
+            if let Some(blit) = command_buffer.blitCommandEncoder(){
+                unsafe {
+                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                        self.vram_read.as_ref().unwrap(), 0, 0,
+                        MTLOrigin { x: params.start_x as _, y: params.start_y as _, z: 0 },
+                        MTLSize   { width: params.width as _, height: params.height as _, depth: 1 },
+                        &tmp, 0, 0,
+                        MTLOrigin { x: 0, y: 0, z: 0 },
+                    );
 
-                blit.endEncoding();
-                command_buffer.commit();
-                command_buffer.waitUntilCompleted();
+                    blit.endEncoding();
+                    command_buffer.commit();
+                    command_buffer.waitUntilCompleted();
 
-                let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
+                    let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
 
-                tmp.getBytes_bytesPerRow_fromRegion_mipmapLevel(
-                    NonNull::new(bytes.as_mut_ptr().cast() as *mut c_void).unwrap(),
-                    row_bytes as _,
-                    MTLRegion {
-                        origin: MTLOrigin { x: 0, y: 0, z: 0 },
-                        size:   MTLSize   { width: params.width as _, height: params.height as usize, depth: 1 },
-                    },
-                    0,
-                );
+                    tmp.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                        NonNull::new(bytes.as_mut_ptr().cast() as *mut c_void).unwrap(),
+                        row_bytes as _,
+                        MTLRegion {
+                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                            size:   MTLSize   { width: params.width as _, height: params.height as usize, depth: 1 },
+                        },
+                        0,
+                    );
 
-                for i in (0..bytes.len()).step_by(2) {
-                    let halfword = bytes[i] as u16 | (bytes[i + 1] as u16) << 8;
+                    for i in (0..bytes.len()).step_by(2) {
+                        let halfword = bytes[i] as u16 | (bytes[i + 1] as u16) << 8;
 
-                    halfwords.push(halfword);
+                        halfwords.push(halfword);
+                    }
                 }
             }
         }

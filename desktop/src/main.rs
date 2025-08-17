@@ -24,7 +24,10 @@ use objc2_metal::{
     MTLWinding,
     MTLPrimitiveType,
     MTLDevice,
-    MTLResourceOptions
+    MTLResourceOptions,
+    MTLSamplerDescriptor,
+    MTLSamplerMinMagFilter,
+    MTLSamplerAddressMode
 };
 use objc2_quartz_core::CAMetalDrawable;
 
@@ -68,7 +71,7 @@ fn main() {
     let mut frontend = Frontend::new();
 
     let mut encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>> = None;
-    let mut drawable: Option<Retained<ProtocolObject<dyn CAMetalDrawable>>> = None;
+    // let mut drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
     let mut command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>> = None;
 
     loop {
@@ -76,27 +79,80 @@ fn main() {
             cpu.step();
             if cpu.bus.gpu.commands_ready {
                 cpu.bus.gpu.commands_ready = false;
-                if encoder.is_none() {
-                    let rpd = unsafe { MTLRenderPassDescriptor::new() };
-                    command_buffer = frontend.renderer.command_queue.commandBuffer();
-
-                    let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
-
-                    color_attachment.setLoadAction(MTLLoadAction::Clear);
-                    color_attachment.setStoreAction(MTLStoreAction::Store);
-
-                    color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
-                    color_attachment.setTexture(frontend.renderer.vram_write.as_deref());
-
-                    encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
+                if !cpu.bus.gpu.gpu_commands.is_empty() {
+                    frontend.renderer.process_commands(&mut cpu.bus.gpu);
                 }
 
-                if let Some(encoder_ref) = &mut encoder {
-                    if !cpu.bus.gpu.gpu_commands.is_empty() {
-                        frontend.renderer.process_commands(&mut cpu.bus.gpu);
+                if cpu.bus.gpu.polygons.len() > 0 {
+                    if encoder.is_none() {
+                        let rpd = unsafe { MTLRenderPassDescriptor::new() };
+                        command_buffer = frontend.renderer.command_queue.commandBuffer();
+
+                        let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+                        color_attachment.setLoadAction(MTLLoadAction::Clear);
+                        color_attachment.setStoreAction(MTLStoreAction::Store);
+
+                        color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+                        color_attachment.setTexture(frontend.renderer.vram_write.as_deref());
+
+                        encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
                     }
-                    encoder_ref.setCullMode(MTLCullMode::None);
-                    encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
+
+                    if let (Some(encoder_ref), Some(command_buffer)) = (&mut encoder.take(), &mut command_buffer.take()) {
+                        encoder_ref.setCullMode(MTLCullMode::None);
+                        encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
+
+                        let vp = MTLViewport {
+                            originX: 0.0, originY: 0.0,
+                            width: 1024.0, height: 512.0,
+                            znear: 0.0, zfar: 1.0,
+                        };
+
+                        encoder_ref.setViewport(vp);
+
+                        // let drawing_area = frontend.renderer.clip_drawing_area(&mut cpu.bus.gpu);
+                        // encoder_ref.setScissorRect(drawing_area);
+
+                        frontend.renderer.render_polygons(&mut cpu.bus.gpu, encoder_ref);
+
+                        encoder_ref.endEncoding();
+                        command_buffer.commit();
+                    }
+                }
+                if let Some(params) = &cpu.bus.gpu.transfer_params {
+                    let halfwords = frontend.renderer.handle_cpu_transfer(params);
+
+                    for halfword in halfwords {
+                        cpu.bus.gpu.gpuread_fifo.push_back(halfword);
+                    }
+                }
+            }
+        }
+
+        let drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
+
+        if let Some(drawable) = &drawable {
+            let rpd = unsafe { MTLRenderPassDescriptor::new() };
+
+            command_buffer = frontend.renderer.command_queue.commandBuffer();
+
+            unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
+
+            let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+            color_attachment.setLoadAction(MTLLoadAction::Load);
+            color_attachment.setStoreAction(MTLStoreAction::Store);
+
+            color_attachment.setClearColor(MTLClearColor { red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+            unsafe {
+                color_attachment.setTexture(Some(&drawable.texture()));
+            }
+
+            if let Some(command_buffer) = &command_buffer {
+                if let Some(draw_encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd) {
+                    draw_encoder.setCullMode(MTLCullMode::None);
+                    draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
 
                     let width = cpu.bus.gpu.display_width as f64;
                     let height = cpu.bus.gpu.display_height as f64;
@@ -107,85 +163,31 @@ fn main() {
                         znear: 0.0, zfar: 1.0,
                     };
 
-                    encoder_ref.setViewport(vp);
-                    frontend.renderer.render_polygons(&mut cpu.bus.gpu, encoder_ref);
-                }
+                    draw_encoder.setViewport(vp);
 
-                if let (Some(encoder), Some(command_buffer)) = (encoder.take(), &mut command_buffer.take()) {
-                    let drawing_area = frontend.renderer.clip_drawing_area(&mut cpu.bus.gpu);
-                    encoder.setScissorRect(drawing_area);
+                    draw_encoder.setRenderPipelineState(&frontend.renderer.fb_pipeline_state);
 
-                    encoder.endEncoding();
+                    let byte_len = VERTICES.len() * std::mem::size_of::<FbVertex>();
 
-                    if let Some(params) = &cpu.bus.gpu.transfer_params{
-                        let halfwords = frontend.renderer.handle_cpu_transfer(command_buffer, params);
+                    let buffer = unsafe {
+                        frontend.renderer.device.newBufferWithBytes_length_options(
+                            NonNull::new(
+                                VERTICES.as_ptr() as *mut c_void).unwrap(),
+                                byte_len,
+                                MTLResourceOptions::empty())
 
-                        for halfword in halfwords {
-                            cpu.bus.gpu.gpuread_fifo.push_back(halfword);
-                        }
-                    } else {
-                        command_buffer.commit();
+                    }.unwrap();
+
+                    unsafe {
+                        draw_encoder.setVertexBuffer_offset_atIndex(Some(&buffer), 0, 0);
+                        draw_encoder.setFragmentTexture_atIndex(frontend.renderer.vram_write.as_deref(), 0);
+                        draw_encoder.drawPrimitives_vertexStart_vertexCount(MTLPrimitiveType::TriangleStrip, 0, 4);
                     }
+
+                    draw_encoder.endEncoding();
+                    command_buffer.presentDrawable(drawable.as_ref());
+                    command_buffer.commit();
                 }
-            }
-        }
-
-        drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
-
-        let rpd = unsafe { MTLRenderPassDescriptor::new() };
-
-        command_buffer = frontend.renderer.command_queue.commandBuffer();
-
-        unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
-
-        let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
-
-        color_attachment.setLoadAction(MTLLoadAction::Clear);
-        color_attachment.setStoreAction(MTLStoreAction::Store);
-
-        color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
-        unsafe {
-            color_attachment.setTexture(Some(&drawable.unwrap().texture()));
-        }
-
-        if let Some(command_buffer) = &command_buffer {
-            if let Some(draw_encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd) {
-                draw_encoder.setCullMode(MTLCullMode::None);
-                draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
-
-                let width = cpu.bus.gpu.display_width as f64;
-                let height = cpu.bus.gpu.display_height as f64;
-
-                let vp = MTLViewport {
-                    originX: 0.0, originY: 0.0,
-                    width, height,
-                    znear: 0.0, zfar: 1.0,
-                };
-
-                draw_encoder.setViewport(vp);
-
-                draw_encoder.setRenderPipelineState(&frontend.renderer.fb_pipeline_state);
-
-                let byte_len = VERTICES.len() * std::mem::size_of::<FbVertex>();
-
-                let buffer = unsafe {
-                    frontend.renderer.device.newBufferWithBytes_length_options(
-                        NonNull::new(
-                            VERTICES.as_ptr() as *mut c_void).unwrap(),
-                            byte_len,
-                            MTLResourceOptions::empty())
-
-                }.unwrap();
-
-                unsafe {
-                    draw_encoder.setVertexBuffer_offset_atIndex(Some(&buffer), 0, 0);
-                    draw_encoder.setFragmentTexture_atIndex(frontend.renderer.vram_write.as_deref(), 0);
-                    draw_encoder.drawPrimitives_vertexStart_vertexCount(MTLPrimitiveType::TriangleStrip, 0, 4);
-                }
-
-                draw_encoder.endEncoding();
-                command_buffer.presentDrawable(&drawable.as_ref().unwrap());
-                command_buffer.commit();
             }
         }
 
