@@ -1,7 +1,5 @@
-use std::borrow::Borrow;
 use std::fs;
 use std::ops::Deref;
-use std::os::raw::c_void;
 use std::process::exit;
 
 use objc2::rc::Retained;
@@ -169,7 +167,8 @@ impl Frontend {
                 metal_layer,
                 metal_view,
                 command_queue,
-                texture: Self::create_texture(&device),
+                vram_read: Self::create_texture(&device, true),
+                vram_write: Self::create_texture(&device, false),
                 device,
                 pipeline_state,
 
@@ -197,10 +196,11 @@ impl Frontend {
         }
     }
 
-    pub fn create_texture(device: &Retained<ProtocolObject<dyn MTLDevice>>) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+    pub fn create_texture(device: &Retained<ProtocolObject<dyn MTLDevice>>, is_read: bool) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+        let pixel_format = if is_read { MTLPixelFormat::R16Uint } else { MTLPixelFormat::RGBA8Unorm };
         let descriptor = unsafe {
             MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                MTLPixelFormat::R16Uint,
+                pixel_format,
                 VRAM_WIDTH,
                 VRAM_HEIGHT,
                 false

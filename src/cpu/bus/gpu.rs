@@ -9,6 +9,39 @@ const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
+
+#[derive(Clone)]
+pub enum GPUCommand {
+    CPUtoVram(VRamTransferParams),
+    VRAMtoCPU(CPUTransferParams),
+    FillVRAM(FillVramParams)
+}
+
+#[derive(Clone)]
+pub struct VRamTransferParams {
+    pub halfwords: Vec<u16>,
+    pub start_x: u32,
+    pub start_y: u32,
+    pub width: u32,
+    pub height: u32
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct CPUTransferParams {
+    pub start_x: u32,
+    pub start_y: u32,
+    pub width: u32,
+    pub height: u32
+}
+
+#[derive(Copy, Clone)]
+pub struct FillVramParams {
+    pub start_x: u32,
+    pub start_y: u32,
+    pub width: u32,
+    pub height: u32
+}
+
 #[derive(Copy, Clone, PartialEq)]
 enum DmaDirection {
     Off,
@@ -154,7 +187,6 @@ pub struct GPU {
     transfer_type: Option<TransferType>,
     read_x: u32,
     read_y: u32,
-    pub vram: Box<[u8]>,
     previous_time: u128,
     is_semitransparent: bool,
     modulate: bool,
@@ -173,8 +205,11 @@ pub struct GPU {
     display_range_x: (u32, u32),
     display_range_y: (u32, u32),
     display_on: bool,
-    pub vram_dirty: bool,
-    pub debug_on: bool
+    pub debug_on: bool,
+    pub gpu_commands: Vec<GPUCommand>,
+    pub gpuread_fifo: VecDeque<u16>,
+    pub vram_transfer_halfwords: Vec<u16>,
+    pub transfer_params: Option<CPUTransferParams>
 }
 
 impl GPU {
@@ -217,7 +252,6 @@ impl GPU {
             transfer_type: None,
             read_x: 0,
             read_y: 0,
-            vram: vec![0; 1024 * 512 * 2].into_boxed_slice(),
             previous_time: 0,
             is_semitransparent: false,
             modulate: false,
@@ -236,8 +270,11 @@ impl GPU {
             display_range_x: (0, 0),
             display_range_y: (0, 0),
             display_on: true,
-            vram_dirty: false,
-            debug_on: false
+            debug_on: false,
+            gpu_commands: Vec::new(),
+            gpuread_fifo: VecDeque::new(),
+            vram_transfer_halfwords: Vec::new(),
+            transfer_params: None
         }
     }
 
@@ -255,26 +292,17 @@ impl GPU {
     }
 
     pub fn transfer_to_cpu(&mut self) -> u16 {
-        let curr_x = self.transfer_x + self.read_x;
-        let curr_y = self.transfer_y + self.read_y;
+        if !self.gpuread_fifo.is_empty() {
+            let value = self.gpuread_fifo.pop_front().unwrap();
 
-        let address = Self::get_vram_address(curr_x, curr_y);
-
-        let value = unsafe { *(&self.vram[address as usize] as *const u8 as *const u16) };
-
-        self.read_x += 1;
-
-        if self.read_x == self.transfer_width {
-            self.read_x = 0;
-
-            self.read_y += 1;
-
-            if self.read_y == self.transfer_height {
+            if self.gpuread_fifo.is_empty() {
                 self.transfer_type = None;
             }
+
+            return value
         }
 
-        value
+        panic!("shouldn't reach here");
     }
 
     pub fn handle_hblank_start(
@@ -680,11 +708,14 @@ impl GPU {
         let source = self.current_command_buffer.pop_front().unwrap();
         let dimensions = self.current_command_buffer.pop_front().unwrap();
 
-        self.transfer_x = source & 0x3ff;
-        self.transfer_y = (source >> 16) & 0x1ff;
+        let start_x = source & 0x3ff;
+        let start_y = (source >> 16) & 0x1ff;
 
-        self.transfer_width = dimensions & 0x3ff;
-        self.transfer_height = (dimensions >> 16) & 0x1ff;
+        let width = dimensions & 0x3ff;
+        let height = (dimensions >> 16) & 0x1ff;
+
+        self.gpu_commands.push(GPUCommand::VRAMtoCPU(CPUTransferParams { start_x, start_y, width, height  }));
+        self.commands_ready = true;
 
         self.read_y = 0;
         self.read_x = 0;
@@ -804,11 +835,7 @@ impl GPU {
 
         let curr_y = self.transfer_y + self.read_y;
 
-        let address = Self::get_vram_address(curr_x, curr_y);
-
-        unsafe { *(&mut self.vram[address] as *mut u8 as *mut u16) = halfword };
-
-        self.vram_dirty = true;
+        self.vram_transfer_halfwords.push(halfword);
 
         if self.read_x == self.transfer_width {
             self.read_x = 0;
@@ -817,6 +844,17 @@ impl GPU {
 
             if self.read_y == self.transfer_height {
                 self.transfer_type = None;
+
+                self.gpu_commands.push(GPUCommand::CPUtoVram(VRamTransferParams {
+                    halfwords: self.vram_transfer_halfwords.drain(..).collect(),
+                    start_x: self.transfer_x,
+                    start_y: self.transfer_y,
+                    width: self.transfer_width,
+                    height: self.transfer_height
+                }));
+                self.commands_ready = true;
+
+                self.vram_transfer_halfwords.clear();
 
                 self.read_y = 0;
                 self.transfer_width = 0;

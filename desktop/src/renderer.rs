@@ -2,10 +2,32 @@ use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_metal::{
-    MTLCommandQueue, MTLDevice, MTLOrigin, MTLPrimitiveType, MTLRegion, MTLRenderCommandEncoder, MTLRenderPipelineState, MTLResourceOptions, MTLSize, MTLTexture
+    MTLCommandEncoder,
+    MTLCommandBuffer,
+    MTLCommandQueue,
+    MTLDevice,
+    MTLOrigin,
+    MTLPrimitiveType,
+    MTLRegion,
+    MTLRenderCommandEncoder,
+    MTLRenderPipelineState,
+    MTLResourceOptions,
+    MTLSize,
+    MTLTexture,
+    MTLBlitCommandEncoder,
+    MTLTextureDescriptor,
+    MTLPixelFormat,
+    MTLTextureUsage,
+    MTLStorageMode
+
 };
 use objc2_quartz_core::CAMetalLayer;
-use rsx_redux::cpu::bus::gpu::{TexturePageColors, GPU};
+use rsx_redux::cpu::bus::gpu::{
+    CPUTransferParams,
+    GPUCommand,
+    TexturePageColors,
+    GPU
+};
 use std::cmp;
 
 #[repr(C)]
@@ -50,7 +72,8 @@ pub struct Renderer {
     pub command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
     pub device: Retained<ProtocolObject<dyn MTLDevice>>,
     pub pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    pub texture: Option<Retained<ProtocolObject<dyn MTLTexture>>>
+    pub vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    pub vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>
 }
 
 impl Renderer {
@@ -74,10 +97,6 @@ impl Renderer {
 
             if let Some(_) = polygon.texpage {
                 fragment_uniform.has_texture = true;
-                if gpu.vram_dirty {
-                    self.upload_vram(&gpu.vram);
-                    gpu.vram_dirty = false;
-                }
             }
 
             unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() , 1, 1) };
@@ -159,28 +178,133 @@ impl Renderer {
             let primitive_type = MTLPrimitiveType::Triangle;
 
             encoder.setRenderPipelineState(&self.pipeline_state);
-            unsafe { encoder.setFragmentTexture_atIndex(self.texture.as_deref(), 0) };
+            unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
 
             unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
         }
     }
 
-    pub fn upload_vram(&mut self, vram: &[u8]) {
-        let bytes_per_row = 2048 as usize;
-        let region = MTLRegion {
-            origin: MTLOrigin { x: 0, y: 0, z: 0},
-            size: MTLSize { width: 1024, height: 512, depth: 1}
-        };
+    pub fn process_commands(&mut self, gpu: &mut GPU) {
+        for command in gpu.gpu_commands.drain(..) {
+            match command {
+                GPUCommand::CPUtoVram(params) => {
+                    let mut rgba8_buffer: Vec<u8> = Vec::new();
 
-        unsafe {
-            if let Some (texture) = &mut self.texture {
-                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                    region,
-                    0,
-                    NonNull::new(vram.as_ptr() as *mut c_void).unwrap(),
-                    bytes_per_row
-                )
+                    let mut i = 0;
+                    for _ in 0..params.height {
+                        for _ in  0..params.width {
+                            let halfword = params.halfwords[i];
+
+                            let mut r = halfword & 0x1f;
+                            let mut g = (halfword >> 5) & 0x1f;
+                            let mut b = (halfword >> 10) & 0x1f;
+
+                            let a = if halfword == 0 {
+                                0
+                            } else {
+                                0xff
+                            };
+
+                            r = r << 3 | r >> 2;
+                            g = g << 3 | g >> 2;
+                            b = b << 3 | b >> 2;
+
+                            rgba8_buffer.push(r as u8);
+                            rgba8_buffer.push(g as u8);
+                            rgba8_buffer.push(b as u8);
+                            rgba8_buffer.push(a as u8);
+
+                            i += 1;
+                        }
+                    }
+
+                    let region = MTLRegion {
+                        origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
+                        size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                    };
+
+                    if let Some(texture) = &mut self.vram_write {
+                        unsafe {
+                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                                region,
+                                0,
+                                NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                                1024 * 4
+                            );
+                        }
+                    }
+
+                    if let Some(texture) = &mut self.vram_read {
+                        unsafe {
+                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                                region,
+                                0,
+                                NonNull::new(params.halfwords.as_ptr() as *mut c_void).unwrap(),
+                                1024 * 2
+                            )
+                        }
+                    }
+                }
+                GPUCommand::VRAMtoCPU(params) => {
+                    gpu.transfer_params = Some(params);
+                }
+                _  => todo!("VRAMFill")
             }
         }
     }
+
+    pub fn handle_cpu_transfer(&mut self, command_buffer: &mut Retained<ProtocolObject<dyn MTLCommandBuffer>>, params: &CPUTransferParams) -> Vec<u16> {
+        let mut halfwords = Vec::new();
+
+        let row_bytes = params.width * 2;
+
+        let desc = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::R16Uint, params.width as _, params.height as _, false
+            )
+        };
+
+        desc.setUsage(MTLTextureUsage::ShaderRead);
+        desc.setStorageMode(MTLStorageMode::Shared);
+
+        let tmp: Retained<ProtocolObject<dyn MTLTexture>> =
+            self.device.newTextureWithDescriptor(&desc).expect("tmp tex");
+
+        if let Some(blit) = command_buffer.blitCommandEncoder(){
+            unsafe {
+                blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                    self.vram_read.as_ref().unwrap(), 0, 0,
+                    MTLOrigin { x: params.start_x as _, y: params.start_y as _, z: 0 },
+                    MTLSize   { width: params.width as _, height: params.height as _, depth: 1 },
+                    &tmp, 0, 0,
+                    MTLOrigin { x: 0, y: 0, z: 0 },
+                );
+
+                blit.endEncoding();
+                command_buffer.commit();
+                command_buffer.waitUntilCompleted();
+
+                let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
+
+                tmp.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(bytes.as_mut_ptr().cast() as *mut c_void).unwrap(),
+                    row_bytes as _,
+                    MTLRegion {
+                        origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                        size:   MTLSize   { width: params.width as _, height: params.height as usize, depth: 1 },
+                    },
+                    0,
+                );
+
+                for i in (0..bytes.len()).step_by(2) {
+                    let halfword = bytes[i] as u16 | (bytes[i + 1] as u16) << 8;
+
+                    halfwords.push(halfword);
+                }
+            }
+        }
+
+        halfwords
+    }
+
 }

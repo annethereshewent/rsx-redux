@@ -24,6 +24,7 @@ use objc2_metal::{
 };
 use objc2_quartz_core::CAMetalDrawable;
 
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -67,12 +68,16 @@ fn main() {
                         color_attachment.setStoreAction(MTLStoreAction::Store);
 
                         color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+                        color_attachment.setTexture(frontend.renderer.vram_write.as_deref());
                     }
 
                     encoder = command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
                 }
 
                 if let Some(encoder_ref) = &mut encoder {
+                    if !cpu.bus.gpu.gpu_commands.is_empty() {
+                        frontend.renderer.process_commands(&mut cpu.bus.gpu);
+                    }
                     encoder_ref.setCullMode(MTLCullMode::None);
                     encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
 
@@ -84,17 +89,38 @@ fn main() {
                         width, height,
                         znear: 0.0, zfar: 1.0,
                     };
+
                     encoder_ref.setViewport(vp);
                     frontend.renderer.render_polygons(&mut cpu.bus.gpu, encoder_ref);
+                }
+
+                if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), &mut command_buffer.take(), drawable.take()) {
+                    encoder.endEncoding();
+
+                    command_buffer.presentDrawable(drawable.as_ref());
+
+                    if let Some(params) = &cpu.bus.gpu.transfer_params{
+                        let halfwords = frontend.renderer.handle_cpu_transfer(command_buffer, params);
+
+                        for halfword in halfwords {
+                            cpu.bus.gpu.gpuread_fifo.push_back(halfword);
+                        }
+                    } else {
+                        command_buffer.commit();
+                    }
                 }
             }
         }
 
-        if let (Some(encoder), Some(command_buffer), Some(drawable)) = (encoder.take(), command_buffer.take(), drawable.take()) {
-            encoder.endEncoding();
-            command_buffer.presentDrawable(drawable.as_ref());
-            command_buffer.commit();
-        }
+        // let present_rp = unsafe { MTLRenderPassDescriptor::new() };
+
+        // let color_attachment = unsafe { present_rp.colorAttachments().objectAtIndexedSubscript(0) };
+
+        // unsafe {
+        //     color_attachment.setTexture(Some(&drawable.unwrap().texture()));
+        //     color_attachment.setLoadAction(MTLLoadAction::Clear);
+        //     color_attachment.setStoreAction(MTLStoreAction::Store);
+        // }
 
         cpu.bus.gpu.frame_finished = false;
         cpu.bus.gpu.cap_fps();
