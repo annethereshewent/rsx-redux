@@ -50,6 +50,12 @@ use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
 #[repr(C)]
+struct Rect {
+    origin: [u32; 2],
+    size: [u32; 2]
+}
+
+#[repr(C)]
 #[derive(Debug)]
 struct FragmentUniform {
     has_texture: bool,
@@ -428,15 +434,9 @@ impl Renderer {
                         }
                     }
 
-                    let write_staging_texture = self.get_staging_texture(
-                        MTLPixelFormat::RGBA8Unorm,
-                        params.width,
-                        params.height
-                    );
-
-                    if let Some(texture) = &write_staging_texture {
+                    if let Some(texture) = &self.vram_write {
                         let region = MTLRegion {
-                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                            origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as  usize, z: 0 },
                             size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
                         };
                         unsafe {
@@ -449,16 +449,9 @@ impl Renderer {
                         }
                     }
 
-
-                    let read_staging_texture = self.get_staging_texture(
-                        MTLPixelFormat::R16Uint,
-                        params.width,
-                        params.height
-                    );
-
-                    if let Some(texture) = &read_staging_texture {
+                    if let Some(texture) = &self.vram_read {
                         let region = MTLRegion {
-                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                            origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
                             size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
                         };
                         unsafe {
@@ -470,45 +463,6 @@ impl Renderer {
                             )
                         }
                     }
-                    if let Some(command_buffer) = self.command_queue.commandBuffer() {
-                        if let Some(blit) = command_buffer.blitCommandEncoder() {
-                            if let (Some(texture), Some(staging_texture)) = (&mut self.vram_write, &write_staging_texture) {
-                                unsafe {
-                                    // holy fuck these method names
-                                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                                        &staging_texture,
-                                        0,
-                                        0,
-                                        MTLOrigin { x: 0, y: 0, z: 0 },
-                                        MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 },
-                                        &texture,
-                                        0,
-                                        0,
-                                        MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 }
-                                    )
-                                }
-                            }
-
-                            if let (Some(texture), Some(staging_texture)) = (&mut self.vram_read, &read_staging_texture) {
-                                unsafe {
-                                    // holy fuck these method names
-                                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                                        &staging_texture,
-                                        0,
-                                        0,
-                                        MTLOrigin { x: 0, y: 0, z: 0 },
-                                        MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 },
-                                        &texture,
-                                        0,
-                                        0,
-                                        MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 }
-                                    )
-                                }
-                            }
-                            blit.endEncoding();
-                        }
-                        command_buffer.commit();
-                    }
                 }
                 GPUCommand::VRAMtoCPU(params) => {
                     gpu.transfer_params = Some(params);
@@ -516,22 +470,6 @@ impl Renderer {
                 _  => todo!("VRAMFill")
             }
         }
-    }
-
-    fn get_staging_texture(&self, pixel_format: MTLPixelFormat, width: u32, height: u32) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
-        let texture_descriptor = unsafe {
-            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                pixel_format,
-                width as usize,
-                height as usize,
-                false
-            )
-        };
-
-        texture_descriptor.setStorageMode(MTLStorageMode::Shared);
-        texture_descriptor.setUsage(MTLTextureUsage::ShaderRead |  MTLTextureUsage::ShaderWrite);
-
-        self.device.newTextureWithDescriptor(&texture_descriptor)
     }
 
     pub fn handle_cpu_transfer(&mut self, params: &CPUTransferParams) -> Vec<u16> {
@@ -646,11 +584,93 @@ impl Renderer {
                     command_buffer.commit();
                 }
 
+                self.vram_writeback(gpu);
+
                 let halfwords = self.handle_cpu_transfer(params);
 
                 for halfword in halfwords {
                     gpu.gpuread_fifo.push_back(halfword);
                 }
+            }
+        }
+    }
+
+    fn vram_writeback(&mut self, gpu: &mut GPU) {
+        let origin = MTLOrigin { x: 0, y: 0, z: 0 };
+        let size   = MTLSize   { width: gpu.display_width as usize, height: gpu.display_height as usize, depth: 1 };
+
+        if let Some(command_buffer) = &self.command_buffer {
+            if let Some(blit) = &command_buffer.blitCommandEncoder() {
+                let desc = unsafe {
+                    MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                        MTLPixelFormat::R16Uint, gpu.display_width as _, gpu.display_height as _, false
+                    )
+                };
+
+                desc.setUsage(MTLTextureUsage::ShaderRead);
+                desc.setStorageMode(MTLStorageMode::Shared);
+
+                let tmp: Retained<ProtocolObject<dyn MTLTexture>> =
+                    self.device.newTextureWithDescriptor(&desc).expect("tmp tex");
+
+                unsafe {
+                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                        self.vram_read.as_ref().unwrap(), 0, 0,
+                        MTLOrigin { x: 0, y: 0, z: 0 },
+                        MTLSize   { width: gpu.display_width as _, height: gpu.display_height as _, depth: 1 },
+                        &tmp, 0, 0,
+                        MTLOrigin { x: 0, y: 0, z: 0 },
+                    );
+
+                    blit.endEncoding();
+                    command_buffer.commit();
+                    // command_buffer.waitUntilCompleted();
+
+                    let mut bytes: Vec<u8> = vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
+                    let row_bytes = gpu.display_width * 4;
+
+                    tmp.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                        NonNull::new(bytes.as_mut_ptr().cast() as *mut c_void).unwrap(),
+                        row_bytes as _,
+                        MTLRegion {
+                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                            size:   MTLSize   { width: gpu.display_width as _, height: gpu.display_height as usize, depth: 1 },
+                        },
+                        0,
+                    );
+
+                    let mut halfwords = Vec::new();
+                    for i in (0..bytes.len()).step_by(2) {
+                        let r = bytes[i];
+                        let g = bytes[i + 1];
+                        let b = bytes[i + 2];
+                        let a = bytes[i + 3];
+
+                        let mut halfword = (r as u16) & 0x1f | ((g as u16) & 0x1f) << 5 | ((b as u16) & 0x1f) << 10 | ((a > 0) as u16) << 15;
+
+                        if a == 0 {
+                            halfword = 0;
+                        }
+
+                        halfwords.push(halfword);
+                    }
+
+                    if let Some(texture) = &self.vram_read {
+                        let region = MTLRegion {
+                            origin,
+                            size
+                        };
+                        texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                            region,
+                            0,
+                            NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
+                            2 * gpu.display_width as usize
+                        )
+                    }
+
+
+                }
+
             }
         }
     }
@@ -763,7 +783,7 @@ impl Renderer {
             )
         };
 
-        descriptor.setStorageMode(MTLStorageMode::Private);
+        descriptor.setStorageMode(MTLStorageMode::Shared);
 
         if is_read {
             descriptor.setUsage(MTLTextureUsage::ShaderRead)
