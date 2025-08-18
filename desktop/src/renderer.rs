@@ -105,8 +105,7 @@ pub struct Renderer {
 impl Renderer {
     pub fn render_polygons(
         &mut self,
-        gpu: &mut GPU,
-        encoder: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>
+        gpu: &mut GPU
     ) {
         for polygon in gpu.polygons.drain(..) {
             let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
@@ -121,8 +120,6 @@ impl Renderer {
             if let Some(_) = polygon.texpage {
                 fragment_uniform.has_texture = true;
             }
-
-            unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() , 1, 1) };
 
             let cross_product = GPU::cross_product(&polygon.vertices);
             let v = &polygon.vertices;
@@ -193,14 +190,17 @@ impl Renderer {
 
             }.unwrap();
 
-            unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
+            if let Some(encoder) = &self.encoder {
+                unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() , 1, 1) };
+                unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
-            let primitive_type = MTLPrimitiveType::Triangle;
+                let primitive_type = MTLPrimitiveType::Triangle;
 
-            encoder.setRenderPipelineState(&self.pipeline_state);
+                encoder.setRenderPipelineState(&self.pipeline_state);
 
-            unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
-            unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
+                unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
+                unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
+            }
         }
     }
 
@@ -329,7 +329,7 @@ impl Renderer {
         halfwords
     }
 
-    pub fn clip_drawing_area(&mut self, gpu: &mut GPU) -> MTLScissorRect {
+    pub fn clip_drawing_area(gpu: &mut GPU) -> MTLScissorRect {
         let width = (gpu.x2 - gpu.x1 + 1) as usize;
         let height = (gpu.y2 - gpu.y1 + 1) as usize;
 
@@ -359,7 +359,7 @@ impl Renderer {
                     self.encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
                 }
 
-                if let (Some(encoder_ref), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+                if let Some(encoder_ref) = &mut self.encoder {
                     encoder_ref.setCullMode(MTLCullMode::None);
                     encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
 
@@ -371,13 +371,10 @@ impl Renderer {
 
                     encoder_ref.setViewport(vp);
 
-                    let drawing_area = self.clip_drawing_area(gpu);
+                    let drawing_area = Self::clip_drawing_area(gpu);
                     encoder_ref.setScissorRect(drawing_area);
 
-                    self.render_polygons(gpu, encoder_ref);
-
-                    encoder_ref.endEncoding();
-                    command_buffer.commit();
+                    self.render_polygons(gpu);
                 }
             }
             if let Some(params) = &gpu.transfer_params {
@@ -391,8 +388,12 @@ impl Renderer {
     }
 
     pub fn present(&mut self, gpu: &mut GPU) {
-
         let drawable = unsafe { self.metal_layer.nextDrawable() };
+
+        if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+            encoder.endEncoding();
+            command_buffer.commit();
+        }
 
         if let Some(drawable) = &drawable {
             let rpd = unsafe { MTLRenderPassDescriptor::new() };
@@ -418,7 +419,6 @@ impl Renderer {
                         let width = gpu.display_width as f64;
                         let height = gpu.display_height as f64;
 
-                        println!("resizing everything.");
                         gpu.resolution_changed = false;
 
                         unsafe { self.metal_layer.setDrawableSize(CGSize::new(gpu.display_width as f64, gpu.display_height as f64)); }
