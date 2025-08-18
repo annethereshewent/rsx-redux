@@ -911,6 +911,8 @@ impl GPU {
     8-23  Not used (zero)
     */
     fn display_mode(&mut self, word: u32) {
+        let old_display_width = self.display_width;
+        let old_display_height = self.display_height;
         self.display_width = if (word >> 6) & 0x1 == 1 {
             368
         }  else {
@@ -939,7 +941,9 @@ impl GPU {
             self.display_height = 240;
         }
 
-        self.resolution_changed = true;
+        if old_display_width != self.display_width || old_display_height != self.display_height {
+            self.resolution_changed = true;
+        }
 
         self.video_mode = match (word >> 3) & 0x1 {
             0 => DisplayMode::Ntsc,
