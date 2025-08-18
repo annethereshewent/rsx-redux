@@ -58,7 +58,7 @@ impl Frontend {
             _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
-            renderer: Renderer::new(metal_view, metal_layer, gpu)
+            renderer: Renderer::new(metal_layer, gpu)
         }
     }
 

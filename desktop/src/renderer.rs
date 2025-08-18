@@ -93,22 +93,22 @@ pub struct FbVertex {
 }
 
 pub struct Renderer {
-    pub metal_view: *mut c_void,
     pub metal_layer: Retained<CAMetalLayer>,
-    pub command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
-    pub device: Retained<ProtocolObject<dyn MTLDevice>>,
-    pub pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    pub fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    pub vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
-    pub vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
-    pub encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
-    pub command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
-    pub vertices: [FbVertex; 4],
-    pub buffer: Retained<ProtocolObject<dyn MTLBuffer>>
+    command_queue: Retained<ProtocolObject<dyn MTLCommandQueue>>,
+    device: Retained<ProtocolObject<dyn MTLDevice>>,
+    pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
+    command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
+    vertices: [FbVertex; 4],
+    buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
+    already_encoded: bool
 }
 
 impl Renderer {
-    pub fn new(metal_view: *mut c_void, metal_layer: Retained<CAMetalLayer>, gpu: &GPU) -> Self {
+    pub fn new(metal_layer: Retained<CAMetalLayer>, gpu: &GPU) -> Self {
         let device = MTLCreateSystemDefaultDevice().unwrap();
 
         let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
@@ -280,7 +280,6 @@ impl Renderer {
 
         Self {
             metal_layer,
-            metal_view,
             command_queue,
             vram_read,
             vram_write,
@@ -290,7 +289,8 @@ impl Renderer {
             encoder: None,
             command_buffer: None,
             vertices,
-            buffer
+            buffer,
+            already_encoded: false
         }
     }
     pub fn render_polygons(
@@ -638,7 +638,14 @@ impl Renderer {
                     self.render_polygons(gpu);
                 }
             }
-            if let Some(params) = &gpu.transfer_params {
+            if let Some(params) = &gpu.transfer_params.take() {
+                self.already_encoded = true;
+
+                if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+                    encoder.endEncoding();
+                    command_buffer.commit();
+                }
+
                 let halfwords = self.handle_cpu_transfer(params);
 
                 for halfword in halfwords {
@@ -651,10 +658,14 @@ impl Renderer {
     pub fn present(&mut self, gpu: &mut GPU) {
         let drawable = unsafe { self.metal_layer.nextDrawable() };
 
-        if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
-            encoder.endEncoding();
-            command_buffer.commit();
+        if !self.already_encoded {
+            if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+                encoder.endEncoding();
+                command_buffer.commit();
+            }
         }
+
+        self.already_encoded = false;
 
         if let Some(drawable) = &drawable {
             let rpd = unsafe { MTLRenderPassDescriptor::new() };
