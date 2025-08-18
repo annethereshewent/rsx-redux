@@ -471,51 +471,24 @@ impl Renderer {
 
         let row_bytes = params.width * 2;
 
-        if let Some(command_buffer) = self.command_queue.commandBuffer() {
-            let desc = unsafe {
-                MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                    MTLPixelFormat::R16Uint, params.width as _, params.height as _, false
-                )
-            };
+        if let Some(texture) = &self.vram_read {
+            let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
+            unsafe {
+                texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
+                    row_bytes as usize,
+                    MTLRegion {
+                        origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
+                        size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                    },
+                    0
+                );
+            }
 
-            desc.setUsage(MTLTextureUsage::ShaderRead);
-            desc.setStorageMode(MTLStorageMode::Shared);
+            for i in (0..bytes.len()).step_by(2) {
+                let halfword = bytes[i] as u16 | (bytes[i + 1] as u16) << 8;
 
-            let tmp: Retained<ProtocolObject<dyn MTLTexture>> =
-                self.device.newTextureWithDescriptor(&desc).expect("tmp tex");
-
-            if let Some(blit) = command_buffer.blitCommandEncoder(){
-                unsafe {
-                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                        self.vram_read.as_ref().unwrap(), 0, 0,
-                        MTLOrigin { x: params.start_x as _, y: params.start_y as _, z: 0 },
-                        MTLSize   { width: params.width as _, height: params.height as _, depth: 1 },
-                        &tmp, 0, 0,
-                        MTLOrigin { x: 0, y: 0, z: 0 },
-                    );
-
-                    blit.endEncoding();
-                    command_buffer.commit();
-                    // command_buffer.waitUntilCompleted();
-
-                    let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
-
-                    tmp.getBytes_bytesPerRow_fromRegion_mipmapLevel(
-                        NonNull::new(bytes.as_mut_ptr().cast() as *mut c_void).unwrap(),
-                        row_bytes as _,
-                        MTLRegion {
-                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
-                            size:   MTLSize   { width: params.width as _, height: params.height as usize, depth: 1 },
-                        },
-                        0,
-                    );
-
-                    for i in (0..bytes.len()).step_by(2) {
-                        let halfword = bytes[i] as u16 | (bytes[i + 1] as u16) << 8;
-
-                        halfwords.push(halfword);
-                    }
-                }
+                halfwords.push(halfword);
             }
         }
 
@@ -577,7 +550,6 @@ impl Renderer {
                     encoder.endEncoding();
                     command_buffer.commit();
                 }
-                println!("found some transfer params!");
                 self.vram_writeback(gpu);
 
                 let halfwords = self.handle_cpu_transfer(params);
@@ -594,7 +566,7 @@ impl Renderer {
         let size   = MTLSize   { width: gpu.display_width as usize, height: gpu.display_height as usize, depth: 1 };
 
         if let Some(texture) = &self.vram_write {
-            let mut bytes = vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
+            let mut bytes: Vec<u8> = vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
             unsafe {
                 texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
                     NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
@@ -684,7 +656,7 @@ impl Renderer {
                         }.unwrap();
 
                         let vp = MTLViewport {
-                            originX: 0.0, originY: 0.0,
+                            originX: gpu.display_start_x as f64, originY: gpu.display_start_y as f64,
                             width, height,
                             znear: 0.0, zfar: 1.0,
                         };
