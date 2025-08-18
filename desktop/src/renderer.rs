@@ -659,8 +659,11 @@ impl Renderer {
 
                         }.unwrap();
 
+                        let origin_x = if gpu.display_start_x >= gpu.display_width { 0 } else { gpu.display_start_x };
+                        let origin_y = if gpu.display_start_y >= gpu.display_height { 0 } else { gpu.display_start_y };
+
                         let vp = MTLViewport {
-                            originX: gpu.display_start_x as f64, originY: gpu.display_start_y as f64,
+                            originX: origin_x as f64, originY: origin_y as f64,
                             width, height,
                             znear: 0.0, zfar: 1.0,
                         };
