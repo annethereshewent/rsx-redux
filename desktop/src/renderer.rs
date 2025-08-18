@@ -1,6 +1,7 @@
 use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
+use objc2_core_foundation::CGSize;
 use objc2_metal::{
     MTLCommandEncoder,
     MTLCommandBuffer,
@@ -19,10 +20,18 @@ use objc2_metal::{
     MTLPixelFormat,
     MTLTextureUsage,
     MTLStorageMode,
-    MTLScissorRect
+    MTLScissorRect,
+    MTLRenderPassDescriptor,
+    MTLClearColor,
+    MTLStoreAction,
+    MTLLoadAction,
+    MTLCullMode,
+    MTLWinding,
+    MTLViewport,
+    MTLBuffer
 
 };
-use objc2_quartz_core::CAMetalLayer;
+use objc2_quartz_core::{CAMetalLayer, CAMetalDrawable};
 use rsx_redux::cpu::bus::gpu::{
     CPUTransferParams,
     GPUCommand,
@@ -32,6 +41,8 @@ use rsx_redux::cpu::bus::gpu::{
 use std::cmp;
 
 use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
+
+pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
 #[repr(C)]
 #[derive(Debug)]
@@ -84,7 +95,11 @@ pub struct Renderer {
     pub pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     pub fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     pub vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
-    pub vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>
+    pub vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    pub encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
+    pub command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
+    pub vertices: [FbVertex; 4],
+    pub buffer: Retained<ProtocolObject<dyn MTLBuffer>>
 }
 
 impl Renderer {
@@ -319,6 +334,150 @@ impl Renderer {
         let height = (gpu.y2 - gpu.y1 + 1) as usize;
 
         MTLScissorRect { x: gpu.x1 as usize, y: gpu.y1 as usize, width, height }
+    }
+
+    pub fn process(&mut self, gpu: &mut GPU) {
+        if gpu.commands_ready {
+            gpu.commands_ready = false;
+            if !gpu.gpu_commands.is_empty() {
+                self.process_commands(gpu);
+            }
+
+            if gpu.polygons.len() > 0 {
+                if self.encoder.is_none() {
+                    let rpd = unsafe { MTLRenderPassDescriptor::new() };
+                    self.command_buffer = self.command_queue.commandBuffer();
+
+                    let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+                    color_attachment.setLoadAction(MTLLoadAction::Load);
+                    color_attachment.setStoreAction(MTLStoreAction::Store);
+
+                    color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+                    color_attachment.setTexture(self.vram_write.as_deref());
+
+                    self.encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
+                }
+
+                if let (Some(encoder_ref), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+                    encoder_ref.setCullMode(MTLCullMode::None);
+                    encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
+
+                    let vp = MTLViewport {
+                        originX: 0.0, originY: 0.0,
+                        width: 1024.0, height: 512.0,
+                        znear: 0.0, zfar: 1.0,
+                    };
+
+                    encoder_ref.setViewport(vp);
+
+                    let drawing_area = self.clip_drawing_area(gpu);
+                    encoder_ref.setScissorRect(drawing_area);
+
+                    self.render_polygons(gpu, encoder_ref);
+
+                    encoder_ref.endEncoding();
+                    command_buffer.commit();
+                }
+            }
+            if let Some(params) = &gpu.transfer_params {
+                let halfwords = self.handle_cpu_transfer(params);
+
+                for halfword in halfwords {
+                    gpu.gpuread_fifo.push_back(halfword);
+                }
+            }
+        }
+    }
+
+    pub fn present(&mut self, gpu: &mut GPU) {
+
+        let drawable = unsafe { self.metal_layer.nextDrawable() };
+
+        if let Some(drawable) = &drawable {
+            let rpd = unsafe { MTLRenderPassDescriptor::new() };
+
+            self.command_buffer = self.command_queue.commandBuffer();
+
+            let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+            color_attachment.setLoadAction(MTLLoadAction::Load);
+            color_attachment.setStoreAction(MTLStoreAction::Store);
+
+            color_attachment.setClearColor(MTLClearColor { red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+            unsafe {
+                color_attachment.setTexture(Some(&drawable.texture()));
+            }
+
+            if let Some(command_buffer) = &self.command_buffer {
+                if let Some(draw_encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd) {
+                    draw_encoder.setCullMode(MTLCullMode::None);
+                    draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
+
+                    if gpu.resolution_changed {
+                        let width = gpu.display_width as f64;
+                        let height = gpu.display_height as f64;
+
+                        println!("resizing everything.");
+                        gpu.resolution_changed = false;
+
+                        unsafe { self.metal_layer.setDrawableSize(CGSize::new(gpu.display_width as f64, gpu.display_height as f64)); }
+                        self.vertices = Self::get_vertices(gpu.display_width, gpu.display_height);
+
+                        self.buffer = unsafe {
+                            self.device.newBufferWithBytes_length_options(
+                                NonNull::new(
+                                    self.vertices.as_ptr() as *mut c_void).unwrap(),
+                                    BYTE_LEN,
+                                    MTLResourceOptions::empty())
+
+                        }.unwrap();
+
+                        let vp = MTLViewport {
+                            originX: 0.0, originY: 0.0,
+                            width, height,
+                            znear: 0.0, zfar: 1.0,
+                        };
+
+                        draw_encoder.setViewport(vp);
+
+                    }
+
+                    draw_encoder.setRenderPipelineState(&self.fb_pipeline_state);
+
+                    unsafe {
+                        draw_encoder.setVertexBuffer_offset_atIndex(Some(&self.buffer), 0, 0);
+                        draw_encoder.setFragmentTexture_atIndex(self.vram_write.as_deref(), 0);
+                        draw_encoder.drawPrimitives_vertexStart_vertexCount(MTLPrimitiveType::TriangleStrip, 0, 4);
+                    }
+
+                    draw_encoder.endEncoding();
+                    command_buffer.presentDrawable(drawable.as_ref());
+                    command_buffer.commit();
+                }
+            }
+        }
+    }
+
+    pub fn get_vertices(display_width: u32, display_height: u32) -> [FbVertex; 4] {
+        [
+            FbVertex {
+                position: [-1.0, 1.0],
+                uv: [0.0, 0.0]
+            },
+            FbVertex {
+                position: [1.0, 1.0],
+                uv: [display_width as f32 / VRAM_WIDTH as f32, 0.0]
+            },
+            FbVertex {
+                position: [-1.0, -1.0],
+                uv: [0.0, display_height as f32 / VRAM_HEIGHT as f32]
+            },
+            FbVertex {
+                position: [1.0, -1.0],
+                uv: [display_width as f32 / VRAM_WIDTH as f32, display_height as f32 / VRAM_HEIGHT as f32]
+            }
+        ]
     }
 
 }

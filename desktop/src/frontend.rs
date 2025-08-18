@@ -1,10 +1,13 @@
+use std::ffi::c_void;
 use std::fs;
 use std::ops::Deref;
 use std::process::exit;
+use std::ptr::NonNull;
 
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_quartz_core::CAMetalLayer;
+use rsx_redux::cpu::bus::gpu::GPU;
 use rsx_redux::cpu::CPU;
 use sdl2::keyboard::Keycode;
 use sdl2::{controller::GameController, event::Event, video::Window, EventPump};
@@ -22,7 +25,8 @@ use objc2_metal::{
     MTLTextureUsage,
     MTLVertexDescriptor,
     MTLVertexFormat,
-    MTLStorageMode
+    MTLStorageMode,
+    MTLResourceOptions
 };
 
 pub const VRAM_WIDTH: usize = 1024;
@@ -38,7 +42,7 @@ pub struct Frontend {
 }
 
 impl Frontend {
-    pub fn new() -> Self {
+    pub fn new(gpu: &GPU) -> Self {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
 
@@ -204,6 +208,21 @@ impl Frontend {
         unsafe { metal_layer.setDevice(Some(&device)) };
 
         let command_queue = device.newCommandQueue().unwrap();
+
+
+        let vertices = Renderer::get_vertices(gpu.display_width, gpu.display_height);
+
+        let byte_len = vertices.len() * std::mem::size_of::<FbVertex>();
+
+        let buffer = unsafe {
+            device.newBufferWithBytes_length_options(
+                NonNull::new(
+                    vertices.as_ptr() as *mut c_void).unwrap(),
+                    byte_len,
+                    MTLResourceOptions::empty())
+
+        }.unwrap();
+
         Self {
             window,
             event_pump: sdl_context.event_pump().unwrap(),
@@ -216,8 +235,11 @@ impl Frontend {
                 vram_write: Self::create_texture(&device, false),
                 device,
                 pipeline_state,
-                fb_pipeline_state
-
+                fb_pipeline_state,
+                encoder: None,
+                command_buffer: None,
+                vertices,
+                buffer
             }
         }
     }
