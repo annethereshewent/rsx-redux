@@ -89,7 +89,7 @@ impl Timer {
 
         self.is_active = true;
 
-        self.schedule_next_timer(scheduler);
+        self.schedule_next_timer(scheduler, false);
 
 
     }
@@ -176,7 +176,7 @@ impl Timer {
         };
     }
 
-    pub fn schedule_next_timer(&mut self, scheduler: &mut Scheduler) {
+    pub fn schedule_next_timer(&mut self, scheduler: &mut Scheduler, overflow_target_zero: bool) {
         self.clock_source = match self.counter_register.clock_source() {
             0 | 2 => ClockSource::SystemClock,
             1 | 3 => ClockSource::SystemClockDiv8,
@@ -186,25 +186,36 @@ impl Timer {
         self.initial_time = self.counter as usize;
         self.initial_cycles = scheduler.cycles;
 
-
         if !self.counter_register.contains(CounterModeRegister::SYNC_ENABLE) || self.switch_free_run.is_some() {
             if self.clock_source == ClockSource::SystemClock {
                 if !self.counter_register.contains(CounterModeRegister::RESET_COUNTER) || ((self.counter_target as u32) < self.counter) {
                     scheduler.schedule(EventType::Timer(self.timer_id), (0xffff - self.counter) as usize);
                 } else if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
-                    scheduler.schedule(EventType::Timer(self.timer_id), (self.counter_target as u32 - self.counter) as usize);
+                    let cycles = if overflow_target_zero && self.counter_target == 0 { 0xffff } else { self.counter_target as u32 - self.counter };
+                    scheduler.schedule(EventType::Timer(self.timer_id), cycles as usize);
                 }
             } else if self.clock_source == ClockSource::SystemClockDiv8 {
                 if !self.counter_register.contains(CounterModeRegister::RESET_COUNTER) || (self.counter_target as u32) < self.counter {
                     scheduler.schedule(EventType::Timer(self.timer_id), (0xffff - self.counter) as usize * 8);
                 } else if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
-                    scheduler.schedule(EventType::Timer(self.timer_id), (self.counter_target as u32 - self.counter) as usize * 8);
+                    let cycles = if overflow_target_zero && self.counter_target == 0 { 0xffff * 8 } else { (self.counter_target as u32 - self.counter) * 8 };
+                    scheduler.schedule(EventType::Timer(self.timer_id), cycles as usize);
                 }
             }
         }
     }
 
     pub fn on_overflow_or_target(&mut self, scheduler: &mut Scheduler, interrupt_stat: &mut InterruptRegister) {
+        if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) && self.counter_target == 0 && self.counter == 0 {
+            self.counter_register.insert(CounterModeRegister::REACHED_TARGET);
+
+            if self.counter_register.contains(CounterModeRegister::COUNTER_IRQ_TARGET) {
+                self.trigger_irq(interrupt_stat);
+            }
+
+            self.schedule_next_timer(scheduler, true);
+            return;
+        }
         let prescalar = match self.timer_id {
             2 => match self.counter_register.clock_source() {
                 0 | 2 => 1,
@@ -221,7 +232,7 @@ impl Timer {
         };
 
         if current_cycles >= 0xffff {
-            self.counter -= 0xffff;
+            self.counter = current_cycles as u32 - 0xffff;
 
             if !self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
                 self.counter_register.insert(CounterModeRegister::REACHED_FFFF);
@@ -232,10 +243,8 @@ impl Timer {
             }
         } else if self.counter < self.counter_target as u32 && current_cycles >= self.counter_target as usize {
             if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
-
+                self.counter = current_cycles as u32 - self.counter_target as u32;
                 self.counter_register.insert(CounterModeRegister::REACHED_TARGET);
-
-                self.counter -= self.counter_target as u32;
             }
 
             if self.counter_register.contains(CounterModeRegister::COUNTER_IRQ_TARGET) {
@@ -243,8 +252,7 @@ impl Timer {
             }
         }
         // schedule next timer if applicable
-        if self.timer_id == 2 {
-            self.schedule_next_timer(scheduler);
-        }
+        self.schedule_next_timer(scheduler, false);
+
     }
 }
