@@ -226,16 +226,16 @@ impl Renderer {
                         size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
                     };
 
-                    if let Some(texture) = &mut self.vram_write {
-                        unsafe {
-                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                                region,
-                                0,
-                                NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
-                                params.width as usize * 4
-                            );
-                        }
-                    }
+                    // if let Some(texture) = &mut self.vram_write {
+                    //     unsafe {
+                    //         texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    //             region,
+                    //             0,
+                    //             NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                    //             params.width as usize * 4
+                    //         );
+                    //     }
+                    // }
 
                     if let Some(texture) = &mut self.vram_read {
                         unsafe {
