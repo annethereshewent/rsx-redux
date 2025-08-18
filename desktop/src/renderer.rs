@@ -1,7 +1,8 @@
-use std::{ffi::c_void, ops::Deref, ptr::NonNull};
+use std::{ffi::c_void, fs, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
+use objc2_foundation::NSString;
 use objc2_metal::{
     MTLCommandEncoder,
     MTLCommandBuffer,
@@ -28,8 +29,12 @@ use objc2_metal::{
     MTLCullMode,
     MTLWinding,
     MTLViewport,
-    MTLBuffer
-
+    MTLBuffer,
+    MTLVertexDescriptor,
+    MTLCreateSystemDefaultDevice,
+    MTLLibrary,
+    MTLRenderPipelineDescriptor,
+    MTLVertexFormat
 };
 use objc2_quartz_core::{CAMetalLayer, CAMetalDrawable};
 use rsx_redux::cpu::bus::gpu::{
@@ -103,6 +108,191 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    pub fn new(metal_view: *mut c_void, metal_layer: Retained<CAMetalLayer>, gpu: &GPU) -> Self {
+        let device = MTLCreateSystemDefaultDevice().unwrap();
+
+        let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
+        let fb_source = NSString::from_str(&fs::read_to_string("shaders/ShadersFb.metal").unwrap());
+
+        let library = device.newLibraryWithSource_options_error(source.deref(), None).unwrap();
+        let fb_library = device.newLibraryWithSource_options_error(fb_source.deref(), None).unwrap();
+
+        let vertex_str = NSString::from_str("vertex_main");
+        let fragment_str = NSString::from_str("fragment_main");
+
+        let vertex_fb_str = NSString::from_str("vertex_fb");
+        let fragment_fb_str = NSString::from_str("fragment_fb");
+
+        let vertex_main_function = library.newFunctionWithName(&vertex_str);
+        let fragment_main_function = library.newFunctionWithName(&fragment_str);
+
+        let vertex_fb_function = fb_library.newFunctionWithName(&vertex_fb_str);
+        let fragment_fb_function = fb_library.newFunctionWithName(&fragment_fb_str);
+
+        let pipeline_descriptor = MTLRenderPipelineDescriptor::new();
+
+        let fb_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
+
+        pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
+        pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
+
+        fb_pipeline_descriptor.setVertexFunction(vertex_fb_function.as_deref());
+        fb_pipeline_descriptor.setFragmentFunction(fragment_fb_function.as_deref());
+
+        let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let fb_color_attachment = unsafe { fb_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+
+        // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
+        unsafe {
+            color_attachment.setPixelFormat(metal_layer.pixelFormat());
+            color_attachment.setBlendingEnabled(true);
+            color_attachment.setRgbBlendOperation(objc2_metal::MTLBlendOperation::Add);
+            color_attachment.setAlphaBlendOperation(objc2_metal::MTLBlendOperation::Add);
+            // straight (non‑premultiplied) alpha
+            color_attachment.setSourceRGBBlendFactor(objc2_metal::MTLBlendFactor::SourceAlpha);
+            color_attachment.setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+            color_attachment.setSourceAlphaBlendFactor(objc2_metal::MTLBlendFactor::One);
+            color_attachment.setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+
+            fb_color_attachment.setPixelFormat(metal_layer.pixelFormat());
+            fb_color_attachment.setBlendingEnabled(false);
+        }
+
+
+
+        let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
+
+        let attributes = vertex_descriptor.attributes();
+
+        let position = unsafe { attributes.objectAtIndexedSubscript(0) };
+
+        position.setFormat(MTLVertexFormat::Float2);
+        unsafe { position.setOffset(0) };
+        unsafe { position.setBufferIndex(0) };
+
+        let uv = unsafe { attributes.objectAtIndexedSubscript(1) };
+
+        uv.setFormat(MTLVertexFormat::Float2);
+        unsafe { uv.setOffset(8) };
+        unsafe { uv.setBufferIndex(0) };
+
+        let color = unsafe { attributes.objectAtIndexedSubscript(2) };
+
+        color.setFormat(MTLVertexFormat::Float4);
+        unsafe { color.setOffset(16) };
+        unsafe { color.setBufferIndex(0) };
+
+        let page = unsafe { attributes.objectAtIndexedSubscript(3) };
+
+        page.setFormat(MTLVertexFormat::UInt2);
+        unsafe {
+            page.setOffset(32);
+            page.setBufferIndex(0);
+        }
+
+        let depth = unsafe { attributes.objectAtIndexedSubscript(4) };
+
+        depth.setFormat(MTLVertexFormat::UInt);
+        unsafe {
+            depth.setOffset(40);
+            depth.setBufferIndex(0);
+        }
+
+        let clut = unsafe { attributes.objectAtIndexedSubscript(5) };
+        clut.setFormat(MTLVertexFormat::UInt2);
+        unsafe {
+            clut.setOffset(48);
+            clut.setBufferIndex(0);
+        }
+
+        let layout = unsafe { vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
+
+        unsafe { layout.setStride((std::mem::size_of::<MetalVertex>()) as usize) };
+
+
+        let fb_vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
+
+        let fb_attributes = fb_vertex_descriptor.attributes();
+
+        let fb_position = unsafe { fb_attributes.objectAtIndexedSubscript(0) };
+
+        fb_position.setFormat(MTLVertexFormat::Float2);
+        unsafe { fb_position.setOffset(0) };
+        unsafe { fb_position.setBufferIndex(0) };
+
+        let fb_uv = unsafe { fb_attributes.objectAtIndexedSubscript(1) };
+
+        fb_uv.setFormat(MTLVertexFormat::Float2);
+        unsafe { fb_uv.setOffset(8) };
+        unsafe { fb_uv.setBufferIndex(0) };
+
+        assert_eq!(size_of::<MetalVertex>(), 56);
+
+        let fb_layout = unsafe { fb_vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
+
+        unsafe { fb_layout.setStride((std::mem::size_of::<FbVertex>()) as usize) };
+
+        fb_pipeline_descriptor.setVertexDescriptor(Some(&fb_vertex_descriptor));
+
+        pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
+
+        let pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor).unwrap();
+        let fb_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor).unwrap();
+
+        unsafe { metal_layer.setDevice(Some(&device)) };
+
+        let command_queue = device.newCommandQueue().unwrap();
+
+
+        let vertices = Renderer::get_vertices(gpu.display_width, gpu.display_height);
+
+        let byte_len = vertices.len() * std::mem::size_of::<FbVertex>();
+
+        let buffer = unsafe {
+            device.newBufferWithBytes_length_options(
+                NonNull::new(
+                    vertices.as_ptr() as *mut c_void).unwrap(),
+                    byte_len,
+                    MTLResourceOptions::empty())
+
+        }.unwrap();
+
+        let vram_read = Self::create_texture(&device, true);
+        let vram_write = Self::create_texture(&device, false);
+
+        let rpd = unsafe { MTLRenderPassDescriptor::new() };
+        let command_buffer = command_queue.commandBuffer();
+
+        let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+        color_attachment.setLoadAction(MTLLoadAction::Clear);
+        color_attachment.setStoreAction(MTLStoreAction::Store);
+
+        color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+        color_attachment.setTexture(vram_write.as_deref());
+
+        if let Some(command_buffer) = &command_buffer {
+            if let Some(encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd) {
+                encoder.endEncoding();
+                command_buffer.commit();
+            }
+        }
+
+        Self {
+            metal_layer,
+            metal_view,
+            command_queue,
+            vram_read,
+            vram_write,
+            device,
+            pipeline_state,
+            fb_pipeline_state,
+            encoder: None,
+            command_buffer: None,
+            vertices,
+            buffer
+        }
+    }
     pub fn render_polygons(
         &mut self,
         gpu: &mut GPU
@@ -238,31 +428,86 @@ impl Renderer {
                         }
                     }
 
-                    let region = MTLRegion {
-                        origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
-                        size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
-                    };
+                    let write_staging_texture = self.get_staging_texture(
+                        MTLPixelFormat::RGBA8Unorm,
+                        params.width,
+                        params.height
+                    );
 
-                    if let Some(texture) = &mut self.vram_write {
+                    if let Some(texture) = &write_staging_texture {
+                        let region = MTLRegion {
+                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                            size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                        };
                         unsafe {
                             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                                 region,
                                 0,
                                 NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
-                                params.width as usize * 4
-                            );
+                                4 * params.width as usize
+                            )
                         }
                     }
 
-                    if let Some(texture) = &mut self.vram_read {
+
+                    let read_staging_texture = self.get_staging_texture(
+                        MTLPixelFormat::R16Uint,
+                        params.width,
+                        params.height
+                    );
+
+                    if let Some(texture) = &read_staging_texture {
+                        let region = MTLRegion {
+                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+                            size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                        };
                         unsafe {
                             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                                 region,
                                 0,
                                 NonNull::new(params.halfwords.as_ptr() as *mut c_void).unwrap(),
-                                params.width as usize * 2
+                                2 * params.width as usize
                             )
                         }
+                    }
+                    if let Some(command_buffer) = self.command_queue.commandBuffer() {
+                        if let Some(blit) = command_buffer.blitCommandEncoder() {
+                            if let (Some(texture), Some(staging_texture)) = (&mut self.vram_write, &write_staging_texture) {
+                                unsafe {
+                                    // holy fuck these method names
+                                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                                        &staging_texture,
+                                        0,
+                                        0,
+                                        MTLOrigin { x: 0, y: 0, z: 0 },
+                                        MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 },
+                                        &texture,
+                                        0,
+                                        0,
+                                        MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 }
+                                    )
+                                }
+                            }
+
+                            if let (Some(texture), Some(staging_texture)) = (&mut self.vram_read, &read_staging_texture) {
+                                unsafe {
+                                    // holy fuck these method names
+                                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                                        &staging_texture,
+                                        0,
+                                        0,
+                                        MTLOrigin { x: 0, y: 0, z: 0 },
+                                        MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 },
+                                        &texture,
+                                        0,
+                                        0,
+                                        MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 }
+                                    )
+                                }
+                            }
+                            blit.endEncoding();
+                        }
+                        command_buffer.commit();
                     }
                 }
                 GPUCommand::VRAMtoCPU(params) => {
@@ -271,6 +516,22 @@ impl Renderer {
                 _  => todo!("VRAMFill")
             }
         }
+    }
+
+    fn get_staging_texture(&self, pixel_format: MTLPixelFormat, width: u32, height: u32) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+        let texture_descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                pixel_format,
+                width as usize,
+                height as usize,
+                false
+            )
+        };
+
+        texture_descriptor.setStorageMode(MTLStorageMode::Shared);
+        texture_descriptor.setUsage(MTLTextureUsage::ShaderRead |  MTLTextureUsage::ShaderWrite);
+
+        self.device.newTextureWithDescriptor(&texture_descriptor)
     }
 
     pub fn handle_cpu_transfer(&mut self, params: &CPUTransferParams) -> Vec<u16> {
@@ -478,6 +739,30 @@ impl Renderer {
                 uv: [display_width as f32 / VRAM_WIDTH as f32, display_height as f32 / VRAM_HEIGHT as f32]
             }
         ]
+    }
+
+    fn create_texture(device: &Retained<ProtocolObject<dyn MTLDevice>>, is_read: bool) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+        let pixel_format = if is_read { MTLPixelFormat::R16Uint } else { MTLPixelFormat::RGBA8Unorm };
+        let descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                pixel_format,
+                VRAM_WIDTH,
+                VRAM_HEIGHT,
+                false
+            )
+        };
+
+        descriptor.setStorageMode(MTLStorageMode::Private);
+
+        if is_read {
+            descriptor.setUsage(MTLTextureUsage::ShaderRead)
+        } else {
+            descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
+        }
+
+        let mtl_texture = device.newTextureWithDescriptor(&descriptor);
+
+        mtl_texture
     }
 
 }
