@@ -1,41 +1,20 @@
-use std::ffi::c_void;
-use std::fs;
-use std::ops::Deref;
 use std::process::exit;
-use std::ptr::NonNull;
 
 use objc2::rc::Retained;
-use objc2::runtime::ProtocolObject;
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::bus::gpu::GPU;
 use rsx_redux::cpu::CPU;
 use sdl2::keyboard::Keycode;
 use sdl2::{controller::GameController, event::Event, video::Window, EventPump};
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
-use objc2_foundation::NSString;
-
-use objc2_metal::{
-    MTLCreateSystemDefaultDevice,
-    MTLDevice,
-    MTLLibrary,
-    MTLPixelFormat,
-    MTLRenderPipelineDescriptor,
-    MTLTexture,
-    MTLTextureDescriptor,
-    MTLTextureUsage,
-    MTLVertexDescriptor,
-    MTLVertexFormat,
-    MTLStorageMode,
-    MTLResourceOptions
-};
 
 pub const VRAM_WIDTH: usize = 1024;
 pub const VRAM_HEIGHT: usize = 512;
 
-use crate::renderer::{FbVertex, MetalVertex, Renderer};
+use crate::renderer::Renderer;
 
 pub struct Frontend {
-    window: Window,
+    _window: Window,
     event_pump: EventPump,
     _controller: Option<GameController>,
     pub renderer: Renderer
@@ -76,7 +55,7 @@ impl Frontend {
         let metal_layer: Retained<CAMetalLayer> = unsafe { Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer).expect("Couldn cast pointer to CAMetalLayer!") };
 
         Self {
-            window,
+            _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
             renderer: Renderer::new(metal_view, metal_layer, gpu)
