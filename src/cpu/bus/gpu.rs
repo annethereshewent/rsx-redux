@@ -209,7 +209,8 @@ pub struct GPU {
     pub gpu_commands: Vec<GPUCommand>,
     pub gpuread_fifo: VecDeque<u16>,
     pub vram_transfer_halfwords: Vec<u16>,
-    pub transfer_params: Option<CPUTransferParams>
+    pub transfer_params: Option<CPUTransferParams>,
+    pub resolution_changed: bool
 }
 
 impl GPU {
@@ -274,7 +275,8 @@ impl GPU {
             gpu_commands: Vec::new(),
             gpuread_fifo: VecDeque::new(),
             vram_transfer_halfwords: Vec::new(),
-            transfer_params: None
+            transfer_params: None,
+            resolution_changed: false
         }
     }
 
@@ -937,6 +939,8 @@ impl GPU {
             self.display_height = 240;
         }
 
+        self.resolution_changed = true;
+
         self.video_mode = match (word >> 3) & 0x1 {
             0 => DisplayMode::Ntsc,
             1 => DisplayMode::Pal,
@@ -1074,6 +1078,8 @@ impl GPU {
 
         if self.previous_time != 0 {
             let diff = current_time - self.previous_time;
+
+            println!("fps = {}", 1000 / diff);
             if diff < FPS_INTERVAL {
                 sleep(Duration::from_millis((FPS_INTERVAL - diff) as u64));
             }

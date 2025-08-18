@@ -31,6 +31,8 @@ use rsx_redux::cpu::bus::gpu::{
 };
 use std::cmp;
 
+use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
+
 #[repr(C)]
 #[derive(Debug)]
 struct FragmentUniform {
@@ -141,8 +143,8 @@ impl Renderer {
 
                 let metal_vert = &mut vertices[i];
 
-                metal_vert.position[0] = (vertex.x as f32 / gpu.display_width as f32) * 2.0 - 1.0;
-                metal_vert.position[1] = 1.0 - (vertex.y as f32 / gpu.display_height as f32) * 2.0;
+                metal_vert.position[0] = (vertex.x as f32 / VRAM_WIDTH as f32) * 2.0 - 1.0;
+                metal_vert.position[1] = 1.0 - (vertex.y as f32 / VRAM_HEIGHT as f32) * 2.0;
 
                 metal_vert.color[0] = vertex.color.r as f32 / 255.0;
                 metal_vert.color[1] = vertex.color.g as f32 / 255.0;
@@ -226,16 +228,16 @@ impl Renderer {
                         size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
                     };
 
-                    // if let Some(texture) = &mut self.vram_write {
-                    //     unsafe {
-                    //         texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                    //             region,
-                    //             0,
-                    //             NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
-                    //             params.width as usize * 4
-                    //         );
-                    //     }
-                    // }
+                    if let Some(texture) = &mut self.vram_write {
+                        unsafe {
+                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                                region,
+                                0,
+                                NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                                params.width as usize * 4
+                            );
+                        }
+                    }
 
                     if let Some(texture) = &mut self.vram_read {
                         unsafe {
@@ -286,7 +288,7 @@ impl Renderer {
 
                     blit.endEncoding();
                     command_buffer.commit();
-                    command_buffer.waitUntilCompleted();
+                    // command_buffer.waitUntilCompleted();
 
                     let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
 

@@ -1,6 +1,6 @@
 use std::{env, ffi::c_void, fs::{self, File}, ptr::NonNull};
 
-use frontend::Frontend;
+use frontend::{Frontend, VRAM_HEIGHT, VRAM_WIDTH};
 use memmap2::Mmap;
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
@@ -24,31 +24,30 @@ use objc2_metal::{
     MTLWinding,
     MTLPrimitiveType,
     MTLDevice,
-    MTLResourceOptions,
-    MTLSamplerDescriptor,
-    MTLSamplerMinMagFilter,
-    MTLSamplerAddressMode
+    MTLResourceOptions
 };
 use objc2_quartz_core::CAMetalDrawable;
 
-pub const VERTICES: [FbVertex; 4] = [
-    FbVertex {
-        position: [-1.0, 1.0],
-        uv: [0.0, 0.0]
-    },
-    FbVertex {
-        position: [1.0, 1.0],
-        uv: [1.0, 0.0]
-    },
-    FbVertex {
-        position: [-1.0, -1.0],
-        uv: [0.0, 1.0]
-    },
-    FbVertex {
-        position: [1.0, -1.0],
-        uv: [1.0, 1.0]
-    }
-];
+fn get_vertices(display_width: u32, display_height: u32) -> [FbVertex; 4] {
+    [
+        FbVertex {
+            position: [-1.0, 1.0],
+            uv: [0.0, 0.0]
+        },
+        FbVertex {
+            position: [1.0, 1.0],
+            uv: [display_width as f32 / VRAM_WIDTH as f32, 0.0]
+        },
+        FbVertex {
+            position: [-1.0, -1.0],
+            uv: [0.0, display_height as f32 / VRAM_HEIGHT as f32]
+        },
+        FbVertex {
+            position: [1.0, -1.0],
+            uv: [display_width as f32 / VRAM_WIDTH as f32, display_height as f32 / VRAM_HEIGHT as f32]
+        }
+    ]
+}
 
 
 fn main() {
@@ -73,6 +72,21 @@ fn main() {
     let mut encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>> = None;
     // let mut drawable = unsafe { frontend.renderer.metal_layer.nextDrawable() };
     let mut command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>> = None;
+
+    let mut vertices = get_vertices(cpu.bus.gpu.display_width, cpu.bus.gpu.display_height);
+
+    let byte_len = vertices.len() * std::mem::size_of::<FbVertex>();
+
+    let mut buffer = unsafe {
+        frontend.renderer.device.newBufferWithBytes_length_options(
+            NonNull::new(
+                vertices.as_ptr() as *mut c_void).unwrap(),
+                byte_len,
+                MTLResourceOptions::empty())
+
+    }.unwrap();
+
+    unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
 
     loop {
         while !cpu.bus.gpu.frame_finished {
@@ -111,8 +125,8 @@ fn main() {
 
                         encoder_ref.setViewport(vp);
 
-                        // let drawing_area = frontend.renderer.clip_drawing_area(&mut cpu.bus.gpu);
-                        // encoder_ref.setScissorRect(drawing_area);
+                        let drawing_area = frontend.renderer.clip_drawing_area(&mut cpu.bus.gpu);
+                        encoder_ref.setScissorRect(drawing_area);
 
                         frontend.renderer.render_polygons(&mut cpu.bus.gpu, encoder_ref);
 
@@ -137,7 +151,7 @@ fn main() {
 
             command_buffer = frontend.renderer.command_queue.commandBuffer();
 
-            unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
+
 
             let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
 
@@ -154,29 +168,36 @@ fn main() {
                     draw_encoder.setCullMode(MTLCullMode::None);
                     draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
 
-                    let width = cpu.bus.gpu.display_width as f64;
-                    let height = cpu.bus.gpu.display_height as f64;
+                    if cpu.bus.gpu.resolution_changed {
+                        let width = cpu.bus.gpu.display_width as f64;
+                        let height = cpu.bus.gpu.display_height as f64;
 
-                    let vp = MTLViewport {
-                        originX: 0.0, originY: 0.0,
-                        width, height,
-                        znear: 0.0, zfar: 1.0,
-                    };
+                        println!("resizing everything.");
+                        cpu.bus.gpu.resolution_changed = false;
 
-                    draw_encoder.setViewport(vp);
+                        unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
+                        vertices = get_vertices(cpu.bus.gpu.display_width, cpu.bus.gpu.display_height);
+
+                        buffer = unsafe {
+                            frontend.renderer.device.newBufferWithBytes_length_options(
+                                NonNull::new(
+                                    vertices.as_ptr() as *mut c_void).unwrap(),
+                                    byte_len,
+                                    MTLResourceOptions::empty())
+
+                        }.unwrap();
+
+                        let vp = MTLViewport {
+                            originX: 0.0, originY: 0.0,
+                            width, height,
+                            znear: 0.0, zfar: 1.0,
+                        };
+
+                        draw_encoder.setViewport(vp);
+
+                    }
 
                     draw_encoder.setRenderPipelineState(&frontend.renderer.fb_pipeline_state);
-
-                    let byte_len = VERTICES.len() * std::mem::size_of::<FbVertex>();
-
-                    let buffer = unsafe {
-                        frontend.renderer.device.newBufferWithBytes_length_options(
-                            NonNull::new(
-                                VERTICES.as_ptr() as *mut c_void).unwrap(),
-                                byte_len,
-                                MTLResourceOptions::empty())
-
-                    }.unwrap();
 
                     unsafe {
                         draw_encoder.setVertexBuffer_offset_atIndex(Some(&buffer), 0, 0);

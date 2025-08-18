@@ -25,8 +25,8 @@ use objc2_metal::{
     MTLStorageMode
 };
 
-const VRAM_WIDTH: usize = 1024;
-const VRAM_HEIGHT: usize = 512;
+pub const VRAM_WIDTH: usize = 1024;
+pub const VRAM_HEIGHT: usize = 512;
 
 use crate::renderer::{FbVertex, MetalVertex, Renderer};
 
