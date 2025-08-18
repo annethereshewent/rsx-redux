@@ -144,7 +144,7 @@ impl Renderer {
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
-            color_attachment.setPixelFormat(metal_layer.pixelFormat());
+            color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
             color_attachment.setBlendingEnabled(true);
             color_attachment.setRgbBlendOperation(objc2_metal::MTLBlendOperation::Add);
             color_attachment.setAlphaBlendOperation(objc2_metal::MTLBlendOperation::Add);
@@ -242,7 +242,6 @@ impl Renderer {
         unsafe { metal_layer.setDevice(Some(&device)) };
 
         let command_queue = device.newCommandQueue().unwrap();
-
 
         let vertices = Renderer::get_vertices(gpu.display_width, gpu.display_height);
 
@@ -546,10 +545,14 @@ impl Renderer {
             }
             if let Some(params) = &gpu.transfer_params.take() {
                 self.already_encoded = true;
+
                 if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
                     encoder.endEncoding();
                     command_buffer.commit();
+                    // maybe add this back in? but it doesn't seem to be doing anything
+                    // unsafe { command_buffer.waitUntilCompleted() };
                 }
+
                 self.vram_writeback(gpu);
 
                 let halfwords = self.handle_cpu_transfer(params);
@@ -562,7 +565,7 @@ impl Renderer {
     }
 
     fn vram_writeback(&mut self, gpu: &mut GPU) {
-        let origin = MTLOrigin { x: 0, y: 0, z: 0 };
+        let origin = MTLOrigin { x: gpu.display_start_x as usize, y: gpu.display_start_y as usize, z: 0 };
         let size   = MTLSize   { width: gpu.display_width as usize, height: gpu.display_height as usize, depth: 1 };
 
         if let Some(texture) = &self.vram_write {
@@ -651,7 +654,8 @@ impl Renderer {
                                 NonNull::new(
                                     self.vertices.as_ptr() as *mut c_void).unwrap(),
                                     BYTE_LEN,
-                                    MTLResourceOptions::empty())
+                                    MTLResourceOptions::empty()
+                                )
 
                         }.unwrap();
 
