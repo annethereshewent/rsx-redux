@@ -50,12 +50,6 @@ use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
 #[repr(C)]
-struct Rect {
-    origin: [u32; 2],
-    size: [u32; 2]
-}
-
-#[repr(C)]
 #[derive(Debug)]
 struct FragmentUniform {
     has_texture: bool,
@@ -387,7 +381,7 @@ impl Renderer {
             }.unwrap();
 
             if let Some(encoder) = &self.encoder {
-                unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() , 1, 1) };
+                unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() , size_of::<FragmentUniform>(), 1) };
                 unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
                 let primitive_type = MTLPrimitiveType::Triangle;
@@ -576,13 +570,13 @@ impl Renderer {
                     self.render_polygons(gpu);
                 }
 
+            }
+            if let Some(params) = &gpu.transfer_params.take() {
+                self.already_encoded = true;
                 if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
                     encoder.endEncoding();
                     command_buffer.commit();
                 }
-
-            }
-            if let Some(params) = &gpu.transfer_params.take() {
                 println!("found some transfer params!");
                 self.vram_writeback(gpu);
 
@@ -641,6 +635,13 @@ impl Renderer {
 
     pub fn present(&mut self, gpu: &mut GPU) {
         let drawable = unsafe { self.metal_layer.nextDrawable() };
+
+        if !self.already_encoded {
+            if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+                encoder.endEncoding();
+                command_buffer.commit();
+            }
+        }
 
         self.already_encoded = false;
 
