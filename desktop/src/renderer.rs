@@ -575,15 +575,15 @@ impl Renderer {
 
                     self.render_polygons(gpu);
                 }
-            }
-            if let Some(params) = &gpu.transfer_params.take() {
-                self.already_encoded = true;
 
                 if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
                     encoder.endEncoding();
                     command_buffer.commit();
                 }
 
+            }
+            if let Some(params) = &gpu.transfer_params.take() {
+                println!("found some transfer params!");
                 self.vram_writeback(gpu);
 
                 let halfwords = self.handle_cpu_transfer(params);
@@ -599,91 +599,48 @@ impl Renderer {
         let origin = MTLOrigin { x: 0, y: 0, z: 0 };
         let size   = MTLSize   { width: gpu.display_width as usize, height: gpu.display_height as usize, depth: 1 };
 
-        if let Some(command_buffer) = &self.command_buffer {
-            if let Some(blit) = &command_buffer.blitCommandEncoder() {
-                let desc = unsafe {
-                    MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                        MTLPixelFormat::R16Uint, gpu.display_width as _, gpu.display_height as _, false
-                    )
+        if let Some(texture) = &self.vram_write {
+            let mut bytes = vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
+            unsafe {
+                texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
+                    gpu.display_width as usize * 4,
+                    MTLRegion { origin, size },
+                    0
+                );
+            }
+
+            let mut halfwords = Vec::new();
+            for i in (0..bytes.len()).step_by(4) {
+                let r = bytes[i] >> 3;
+                let g = bytes[i + 1] >> 3;
+                let b = bytes[i + 2] >> 3;
+                let a = bytes[i + 3];
+
+                let halfword = r as u16  | (g as u16) << 5 | (b as u16) << 10 | ((a > 0) as u16) << 15;
+
+                halfwords.push(halfword);
+            }
+
+            if let Some(texture) = &self.vram_read {
+                let region = MTLRegion {
+                    origin,
+                    size
                 };
-
-                desc.setUsage(MTLTextureUsage::ShaderRead);
-                desc.setStorageMode(MTLStorageMode::Shared);
-
-                let tmp: Retained<ProtocolObject<dyn MTLTexture>> =
-                    self.device.newTextureWithDescriptor(&desc).expect("tmp tex");
-
                 unsafe {
-                    blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                        self.vram_read.as_ref().unwrap(), 0, 0,
-                        MTLOrigin { x: 0, y: 0, z: 0 },
-                        MTLSize   { width: gpu.display_width as _, height: gpu.display_height as _, depth: 1 },
-                        &tmp, 0, 0,
-                        MTLOrigin { x: 0, y: 0, z: 0 },
-                    );
-
-                    blit.endEncoding();
-                    command_buffer.commit();
-                    // command_buffer.waitUntilCompleted();
-
-                    let mut bytes: Vec<u8> = vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
-                    let row_bytes = gpu.display_width * 4;
-
-                    tmp.getBytes_bytesPerRow_fromRegion_mipmapLevel(
-                        NonNull::new(bytes.as_mut_ptr().cast() as *mut c_void).unwrap(),
-                        row_bytes as _,
-                        MTLRegion {
-                            origin: MTLOrigin { x: 0, y: 0, z: 0 },
-                            size:   MTLSize   { width: gpu.display_width as _, height: gpu.display_height as usize, depth: 1 },
-                        },
+                    texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                        region,
                         0,
-                    );
-
-                    let mut halfwords = Vec::new();
-                    for i in (0..bytes.len()).step_by(2) {
-                        let r = bytes[i];
-                        let g = bytes[i + 1];
-                        let b = bytes[i + 2];
-                        let a = bytes[i + 3];
-
-                        let mut halfword = (r as u16) & 0x1f | ((g as u16) & 0x1f) << 5 | ((b as u16) & 0x1f) << 10 | ((a > 0) as u16) << 15;
-
-                        if a == 0 {
-                            halfword = 0;
-                        }
-
-                        halfwords.push(halfword);
-                    }
-
-                    if let Some(texture) = &self.vram_read {
-                        let region = MTLRegion {
-                            origin,
-                            size
-                        };
-                        texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                            region,
-                            0,
-                            NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
-                            2 * gpu.display_width as usize
-                        )
-                    }
-
-
+                        NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
+                        2 * gpu.display_width as usize
+                    )
                 }
-
             }
         }
     }
 
     pub fn present(&mut self, gpu: &mut GPU) {
         let drawable = unsafe { self.metal_layer.nextDrawable() };
-
-        if !self.already_encoded {
-            if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
-                encoder.endEncoding();
-                command_buffer.commit();
-            }
-        }
 
         self.already_encoded = false;
 
