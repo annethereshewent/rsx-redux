@@ -63,7 +63,7 @@ fn main() {
 
                     unsafe {
                         color_attachment.setTexture(Some(&drawable.as_ref().unwrap().texture()));
-                        color_attachment.setLoadAction(MTLLoadAction::Clear);
+                        color_attachment.setLoadAction(MTLLoadAction::Load);
                         color_attachment.setStoreAction(MTLStoreAction::Store);
 
                         color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
