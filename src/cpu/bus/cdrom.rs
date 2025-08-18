@@ -415,6 +415,19 @@ impl CDRom {
         scheduler.schedule(EventType::CDStat, 100 * CDROM_CYCLES);
     }
 
+    fn init(&mut self, scheduler: &mut Scheduler) {
+        self.stat();
+
+        self.double_speed = false;
+        self.sector_size = 0x800;
+
+        self.is_playing = false;
+        self.is_seeking = false;
+        self.is_reading = false;
+
+        scheduler.schedule(EventType::CDStat, 100 * CDROM_CYCLES);
+    }
+
     pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
         self.controller_response_fifo.clear();
 
@@ -425,6 +438,7 @@ impl CDRom {
             0x2 => self.set_loc(),
             0x6 => self.cd_read_command(scheduler),
             0x9 => self.pause(scheduler),
+            0xa => self.init(scheduler),
             0xe => self.set_mode(),
             0x15 => self.seek(scheduler),
             0x19 => self.commandx19(),
