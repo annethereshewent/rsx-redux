@@ -179,7 +179,8 @@ impl CPU {
     }
 
     pub fn xori(&mut self, instruction: Instruction) {
-        todo!("xori");
+        self.r[instruction.rt()] = self.r[instruction.rs()] ^ instruction.immediate16();
+        self.ignored_load_delay = Some(instruction.rt());
     }
 
     pub fn lui(&mut self, instruction: Instruction) {

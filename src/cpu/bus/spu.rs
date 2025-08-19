@@ -17,6 +17,7 @@ pub struct SPU {
     pub noise_enable: u32,
     pub echo_on: u32,
     pub cd_volume: (u16, u16),
+    pub current_volume: (u16, u16),
     pub external_volume: (u16, u16),
     pub sound_ram_transfer: u16,
     pub sound_ram_address: u16,
@@ -74,6 +75,7 @@ impl SPU {
             echo_on: 0,
             cd_volume: (0, 0),
             external_volume: (0, 0),
+            current_volume: (0, 0),
             sound_ram_transfer: 0,
             sound_ram_address: 0,
             sample: 0,
@@ -137,11 +139,27 @@ impl SPU {
         self.voices[voice as usize].write(channel, value);
     }
 
-    pub fn read_voices(&self, address: usize) -> u32 {
+    pub fn read_voices(&self, address: usize) -> u16 {
         let voice = (address - 0x1f801c00) / 16;
         let channel = (address - 0x1f801c00) & 0xf;
 
-        self.voices[voice as usize].read(channel) as u32
+        self.voices[voice as usize].read(channel)
+    }
+
+    pub fn read16(&self, address: usize) -> u16 {
+        match address {
+            0x1f801c00..=0x1f801d7f => self.read_voices(address),
+            0x1f801d88 => self.keyon as u16,
+            0x1f801d8a => (self.keyon >> 16) as u16,
+            0x1f801d8c => self.keyoff as u16,
+            0x1f801d8e => (self.keyoff >> 16) as u16,
+            0x1f801daa => self.spucnt.bits(),
+            0x1f801dac => self.sound_ram_transfer,
+            0x1f801dae => self.read_stat(),
+            0x1f801db8 => self.current_volume.0,
+            0x1f801dba => self.current_volume.1,
+            _ => todo!("SPU address 0x{:x}", address)
+        }
     }
     /*
     1f801DA2h spu   mBASE   base    Reverb Work Area Start Address in Sound RAM

@@ -437,6 +437,7 @@ impl CDRom {
             0x6 => self.cd_read_command(scheduler),
             0x9 => self.pause(scheduler),
             0xa => self.init(scheduler),
+            0xb | 0xc => self.stat(),
             0xe => self.set_mode(),
             0x15 => self.seek(scheduler),
             0x19 => self.commandx19(),
@@ -657,17 +658,18 @@ impl CDRom {
                     }
                 }
                 1 => self.write_control(value),
+                2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank)
             }
             0x1f801801 => match self.bank {
-                0 => {
-                    self.command_latch = Some(value);
-                }
+                0 => self.command_latch = Some(value),
+                2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank)
             }
             0x1f801802 => match self.bank {
                 0 => self.parameter_fifo.push_back(value),
                 1 => self.hntmask.write(value),
+                2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank)
             }
             _ => todo!("(cdrom) address: 0x{:x}", address)

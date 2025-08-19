@@ -111,14 +111,7 @@ impl Bus {
             0x1f801072 => (self.interrupt_stat.bits() >> 16) & 0xffff,
             0x1f801074 => self.interrupt_mask.bits() & 0xffff,
             0x1f801076 => self.interrupt_mask.bits() >> 16,
-            0x1f801c00..=0x1f801d7f => self.spu.read_voices(address),
-            0x1f801d88 => self.spu.keyon & 0xffff,
-            0x1f801d8a => (self.spu.keyon >> 16) & 0xffff,
-            0x1f801d8c => self.spu.keyoff & 0xffff,
-            0x1f801d8e => (self.spu.keyoff >> 16) & 0xffff,
-            0x1f801daa => self.spu.spucnt.bits() as u32,
-            0x1f801dac => self.spu.sound_ram_transfer as u32,
-            0x1f801dae => self.spu.read_stat() as u32,
+            0x1f801c00..=0x1f801e7f => self.spu.read16(address) as u32,
             _ => todo!("(mem_read16) address: 0x{:x}", address)
         }
     }
@@ -201,7 +194,7 @@ impl Bus {
             0x1f801120 => self.timers[2].counter = value as u32,
             0x1f801124 => self.timers[2].write_counter_register(value, &mut self.scheduler),
             0x1f801128 => self.timers[2].counter_target = value,
-            0x1f801c00..=0x1f801e7f  => self.spu.write16(address, value),
+            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
     }
