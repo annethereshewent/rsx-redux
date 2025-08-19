@@ -90,6 +90,7 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
+            0x1f801060 => self.ram_size,
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f801080..=0x1f8010f4 => self.dma.read_registers(address),

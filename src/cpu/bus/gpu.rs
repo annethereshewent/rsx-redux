@@ -883,12 +883,28 @@ impl GPU {
             0x6 => self.display_range_horizontal(word),
             0x7 => self.display_range_vertical(word),
             0x8 => self.display_mode(word),
+            0x10..=0x1f => self.read_internal_register(word),
             _ => todo!("gp1 0x{:x}", command)
         }
     }
 
     fn display_range_horizontal(&mut self, word: u32) {
         self.display_range_x = (word & 0xfff, (word >> 12) & 0x1ff);
+    }
+
+    fn read_internal_register(&mut self, word: u32) {
+        match word & 0x7 {
+            0x2 => self.gpuread =
+                self.texture_window_mask_x |
+                (self.texture_window_mask_y) << 5 |
+                (self.texture_window_offset_x) << 10 |
+                (self.texture_window_offset_y) << 15,
+            0x3 => self.gpuread = self.x1 | self.y1 << 10,
+            0x4 => self.gpuread = self.x2 | self.y2 << 10,
+            0x5 => self.gpuread = self.x_offset as u32 | (self.y_offset as u32) << 11,
+            _ => (),
+
+        }
     }
 
     fn display_range_vertical(&mut self, word: u32) {
