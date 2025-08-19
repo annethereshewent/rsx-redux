@@ -1,6 +1,7 @@
 use cdrom::CDRom;
 use dma::dma::Dma;
 use gpu::GPU;
+use mdec::Mdec;
 use registers::{
     delay_register::DelayRegister,
     interrupt_register::InterruptRegister
@@ -16,6 +17,7 @@ pub mod scheduler;
 pub mod gpu;
 pub mod dma;
 pub mod cdrom;
+pub mod mdec;
 
 pub struct Bus {
     bios: Vec<u8>,
@@ -41,6 +43,7 @@ pub struct Bus {
     pub gpu: GPU,
     pub dma: Dma,
     pub cdrom: CDRom,
+    pub mdec: Mdec
 }
 
 impl Bus {
@@ -69,7 +72,8 @@ impl Bus {
             gpu: GPU::new(&mut scheduler),
             cdrom: CDRom::new(&mut scheduler),
             scheduler,
-            dma: Dma::new()
+            dma: Dma::new(),
+            mdec: Mdec::new()
         }
     }
 
@@ -97,6 +101,7 @@ impl Bus {
             0x1f801110 => self.timers[1].counter,
             0x1f801810 => self.gpu.read_gpu(),
             0x1f801814 => self.gpu.read_stat(),
+            0x1f801820..=0x1f801824 => self.mdec.read(address),
             0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
             _ => todo!("(mem_read32) address: 0x{:x}", address)
         }
@@ -166,6 +171,7 @@ impl Bus {
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.process_gp0_commands(value),
             0x1f801814 => self.gpu.process_gp1_commands(value),
+            0x1f801820..=0x1f801824 => self.mdec.write(address, value),
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
