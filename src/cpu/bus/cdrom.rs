@@ -169,7 +169,6 @@ pub struct CDRom {
     game_data: Option<Mmap>,
     current_header: CDHeader,
     subheader: CDSubheader,
-    sector_buffer: Vec<u8>,
     output_buffer: [u8; 0x930],
     buffer_index: usize,
     reading_buffer: bool,
@@ -206,7 +205,6 @@ impl CDRom {
             game_data: None,
             current_header: CDHeader::new(),
             subheader: CDSubheader::new(),
-            sector_buffer: vec![0; 0x930],
             buffer_index: 0,
             output_buffer: [0; 0x930],
             reading_buffer: false,
@@ -502,7 +500,7 @@ impl CDRom {
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
 
-            self.sector_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
+            self.output_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
 
             let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
 
@@ -542,7 +540,7 @@ impl CDRom {
     }
 
     fn bcd_to_u8(value: u8) -> u8 {
-        (value >> 4) * 10 + value & 0xf
+        ((value >> 4) * 10) + (value & 0xf)
     }
 
     pub fn cd_stat(&mut self, scheduler: &mut Scheduler) {
@@ -588,6 +586,8 @@ impl CDRom {
     }
 
     fn set_loc(&mut self) {
+        self.stat();
+
         self.msf.amm = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
         self.msf.ass = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
         self.msf.asect = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
@@ -654,7 +654,6 @@ impl CDRom {
                         self.reading_buffer = true;
                     } else {
                         self.buffer_index = 0;
-                        self.output_buffer.copy_from_slice(&self.sector_buffer[..0x930]);
                     }
                 }
                 1 => self.write_control(value),
