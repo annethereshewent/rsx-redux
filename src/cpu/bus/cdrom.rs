@@ -491,7 +491,7 @@ impl CDRom {
         }
         if self.is_reading {
             scheduler.schedule(EventType::CDRead, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES });
-            }
+        }
 
     }
 
