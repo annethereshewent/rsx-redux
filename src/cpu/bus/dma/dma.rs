@@ -1,4 +1,4 @@
-use crate::cpu::bus::{cdrom::CDRom, gpu::GPU, registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
+use crate::cpu::bus::{cdrom::CDRom, gpu::GPU, mdec::Mdec, registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
 
 use super::{dma_channel_control_register::{DmaChannelControlRegister, SyncMode}, dma_control_register::DmaControlRegister, dma_interrupt_register::DmaInterruptRegister};
 
@@ -85,10 +85,28 @@ impl Dma {
         }
     }
 
-    fn start_mdec_in_transfer(&mut self) {
-        let _dma_channel = &mut self.channels[MDEC_IN];
+    fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
+        let dma_channel = &mut self.channels[MDEC_IN];
 
-        todo!("mdec in transfer");
+        assert_eq!(dma_channel.control.sync_mode(), SyncMode::Slice);
+
+        let mut current_address = dma_channel.base_address & 0x1fffff;
+        let block_size = dma_channel.block_size;
+        let num_blocks = dma_channel.num_blocks;
+
+        for _ in 0..num_blocks {
+            for _ in 0..block_size {
+                let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
+
+                mdec.write_command(word);
+
+                if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                    current_address -= 4;
+                } else {
+                    current_address += 4;
+                }
+            }
+        }
     }
 
     fn start_mdec_out_transfer(&mut self) {
@@ -260,6 +278,7 @@ impl Dma {
         ram: &mut [u8],
         gpu: &mut GPU,
         cdrom: &mut CDRom,
+        mdec: &mut Mdec,
         interrupt_stat: &mut InterruptRegister
     ) {
         let channel = (address - 0x1f801080) / 0x10;
@@ -308,7 +327,7 @@ impl Dma {
             };
 
             match channel {
-                0 => self.start_mdec_in_transfer(),
+                0 => self.start_mdec_in_transfer(ram, mdec),
                 1 => self.start_mdec_out_transfer(),
                 2 =>  {
                     match dma_channel.control.sync_mode() {

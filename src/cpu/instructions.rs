@@ -511,7 +511,12 @@ impl CPU {
     }
 
     pub fn mult(&mut self, instruction: Instruction) {
-        todo!("mult");
+        self.tick(1);
+
+        let result = self.r[instruction.rs()] as i32 as i64 * self.r[instruction.rt()] as i32 as i64;
+
+        self.lo = result as u32;
+        self.hi = (result >> 32) as u32;
     }
 
     pub fn multu(&mut self, instruction: Instruction) {
