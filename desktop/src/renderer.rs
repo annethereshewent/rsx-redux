@@ -361,7 +361,7 @@ impl Renderer {
                     metal_vert.clut = [polygon.clut.0, polygon.clut.1];
                     metal_vert.depth = match texpage.texture_page_colors {
                         TexturePageColors::Bit4 => 0,
-                        _ => todo!("8 bit and 15 bit color depth")
+                        _ => todo!("{:?}", texpage.texture_page_colors)
                     };
 
                     metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];

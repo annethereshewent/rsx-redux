@@ -110,7 +110,7 @@ impl Gte {
         }
     }
 
-    pub fn execute_command(&mut self, instr: Instruction) {
+    pub fn execute_command(&mut self, instr: Instruction) -> usize {
         let command = instr.cop2_command();
 
         let op_code = command & 0x3f;
@@ -137,7 +137,7 @@ impl Gte {
 
         }
 
-        match op_code {
+        let cycles = match op_code {
             0x01 => self.rtps(),
             0x06 => self.nclip(),
             0x0c => self.op(),
@@ -161,14 +161,16 @@ impl Gte {
             0x3e => self.gpl(),
             0x3f => self.ncct(),
             _ => panic!("unimplemented op code for gte: {:x}", op_code)
-        }
+        };
 
         if (self.flags & 0x7f87e000) != 0 {
             self.flags |= 1 << 31;
         }
+
+        cycles
     }
 
-    fn cdp(&mut self) {
+    fn cdp(&mut self) -> usize {
         let bk_x = (self.bk.0 as i64) << 12;
         let bk_y = (self.bk.1 as i64) << 12;
         let bk_z = (self.bk.2 as i64) << 12;
@@ -244,9 +246,11 @@ impl Gte {
         for i in 1..4 {
             self.ir[i] = self.set_ir_flags(self.mac[i], i, self.lm);
         }
+
+        13
     }
 
-    fn cc(&mut self) {
+    fn cc(&mut self) -> usize {
         let bk_x = (self.bk.0 as i64) << 12;
         let bk_y = (self.bk.1 as i64) << 12;
         let bk_z = (self.bk.2 as i64) << 12;
@@ -305,9 +309,11 @@ impl Gte {
         for i in 1..4 {
             self.ir[i] = self.set_ir_flags(self.mac[i], i, self.lm);
         }
+
+        11
     }
 
-    fn dpcl(&mut self) {
+    fn dpcl(&mut self) -> usize {
         let r = (self.rgbc.r as i64) << 4;
         let g = (self.rgbc.g as i64) << 4;
         let b = (self.rgbc.b as i64) << 4;
@@ -345,16 +351,22 @@ impl Gte {
             self.ir[i] = self.set_ir_flags(self.mac[i], i, self.lm);
         }
 
+        8
+
     }
 
-    fn ncs(&mut self) {
+    fn ncs(&mut self) -> usize {
         self.nc(0);
+
+        14
     }
 
-    fn nct(&mut self) {
+    fn nct(&mut self) -> usize {
         self.nc(0);
         self.nc(1);
         self.nc(2);
+
+        30
     }
 
     fn nc(&mut self, index: usize) {
@@ -443,7 +455,7 @@ impl Gte {
 
     }
 
-    fn op(&mut self) {
+    fn op(&mut self) -> usize {
         let ir1 = self.ir[1] as i64;
         let ir2 = self.ir[2] as i64;
         let ir3 = self.ir[3] as i64;
@@ -463,16 +475,21 @@ impl Gte {
         self.ir[1] = self.set_ir_flags(self.mac[1], 1, self.lm);
         self.ir[2] = self.set_ir_flags(self.mac[2], 2, self.lm);
         self.ir[3] = self.set_ir_flags(self.mac[3], 3, self.lm);
+
+        6
     }
 
-    fn dpcs(&mut self) {
+    fn dpcs(&mut self) -> usize {
         self.dpc(false);
+        8
     }
 
-    fn dpct(&mut self) {
+    fn dpct(&mut self) -> usize {
         self.dpc(true);
         self.dpc(true);
         self.dpc(true);
+
+        17
     }
 
     fn dpc(&mut self, is_triple: bool) {
@@ -519,7 +536,7 @@ impl Gte {
         }
     }
 
-    fn sqr(&mut self) {
+    fn sqr(&mut self) -> usize {
         let ir1 = self.ir[1] as i64;
         let ir2 = self.ir[2] as i64;
         let ir3 = self.ir[3] as i64;
@@ -531,16 +548,21 @@ impl Gte {
         self.ir[1] = self.set_ir_flags(self.mac[1], 1, self.lm);
         self.ir[2] = self.set_ir_flags(self.mac[2], 2, self.lm);
         self.ir[3] = self.set_ir_flags(self.mac[3], 3, self.lm);
+
+        5
     }
 
-    fn nccs(&mut self) {
+    fn nccs(&mut self) -> usize {
         self.ncc(0);
+        17
     }
 
-    fn ncct(&mut self) {
+    fn ncct(&mut self) -> usize {
         self.ncc(0);
         self.ncc(1);
         self.ncc(2);
+
+        39
     }
 
     fn ncc(&mut self, index: usize) {
@@ -644,11 +666,12 @@ impl Gte {
         self.push_rgb(r, g, b, c);
     }
 
-    fn gpf(&mut self) {
+    fn gpf(&mut self) -> usize {
         self.interpolate(0, 0, 0);
+        5
     }
 
-    fn intpl(&mut self) {
+    fn intpl(&mut self) -> usize {
         let mac1 = (self.ir[1] as i64) << 12;
         let mac2 = (self.ir[2] as i64) << 12;
         let mac3 = (self.ir[3] as i64) << 12;
@@ -687,14 +710,18 @@ impl Gte {
             self.ir[i] = self.set_ir_flags(self.mac[i], i, self.lm);
         }
 
+        8
+
     }
 
-    fn gpl(&mut self) {
+    fn gpl(&mut self) -> usize {
         let mac1 = (self.mac[1] as i64) << self.sf;
         let mac2 = (self.mac[2] as i64) << self.sf;
         let mac3 = (self.mac[3] as i64) << self.sf;
 
         self.interpolate(mac1, mac2, mac3);
+
+        5
     }
 
     fn interpolate(&mut self, mac1: i64, mac2: i64, mac3: i64) {
@@ -724,7 +751,7 @@ impl Gte {
         self.ir[3] = self.set_ir_flags(self.mac[3], 3, self.lm);
     }
 
-    fn avsz3(&mut self) {
+    fn avsz3(&mut self) -> usize {
         let value = self.zsf3 as i64 * (self.sz_fifo[1] as i64 + self.sz_fifo[2] as i64 + self.sz_fifo[3] as i64);
 
         self.set_mac0_flags(value);
@@ -734,9 +761,11 @@ impl Gte {
         let otz = value >> 12;
 
         self.otz = self.set_sz3_or_otz_flags(otz);
+
+        5
     }
 
-    fn avsz4(&mut self) {
+    fn avsz4(&mut self)  -> usize {
         let value = self.zsf4 as i64 * (self.sz_fifo[0] as i64 + self.sz_fifo[1] as i64 + self.sz_fifo[2] as i64 + self.sz_fifo[3] as i64);
 
         self.set_mac0_flags(value);
@@ -746,9 +775,11 @@ impl Gte {
         let otz = value >> 12;
 
         self.otz = self.set_sz3_or_otz_flags(otz);
+
+        6
     }
 
-    fn nclip(&mut self) {
+    fn nclip(&mut self) -> usize {
         let value = (self.sxy_fifo[0].0 as i64 * self.sxy_fifo[1].1 as i64)
             + (self.sxy_fifo[1].0 as i64 * self.sxy_fifo[2].1 as i64)
             + (self.sxy_fifo[2].0 as i64 * self.sxy_fifo[0].1 as i64)
@@ -759,19 +790,25 @@ impl Gte {
         self.set_mac0_flags(value);
 
         self.mac[0] = value as i32;
+
+        8
     }
 
-    fn ncds(&mut self) {
+    fn ncds(&mut self) -> usize {
         self.ncd(0);
+
+        19
     }
 
-    fn ncdt(&mut self) {
+    fn ncdt(&mut self) -> usize {
         self.ncd(0);
         self.ncd(1);
         self.ncd(2);
+
+        44
     }
 
-    fn mvmva(&mut self) {
+    fn mvmva(&mut self) -> usize {
         let mx = match self.mx {
             0 => self.rotation,
             1 => self.light,
@@ -850,6 +887,8 @@ impl Gte {
         self.ir[1] = self.set_ir_flags(self.mac[1], 1, self.lm);
         self.ir[2] = self.set_ir_flags(self.mac[2], 2, self.lm);
         self.ir[3] = self.set_ir_flags(self.mac[3], 3, self.lm);
+
+        8
     }
 
     fn ncd(&mut self, index: usize) {
@@ -1188,14 +1227,18 @@ impl Gte {
         value as u16
     }
 
-    fn rtpt(&mut self) {
+    fn rtpt(&mut self) -> usize {
         self.rtp(0, false);
         self.rtp(1, false);
         self.rtp(2, true);
+
+        23
     }
 
-    fn rtps(&mut self) {
+    fn rtps(&mut self) -> usize {
         self.rtp(0, true);
+
+        15
     }
 
     fn push_sx(&mut self, sx: i16) {

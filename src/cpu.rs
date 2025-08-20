@@ -28,8 +28,8 @@ pub struct CPU {
     hi: u32,
     lo: u32,
     pub bus: Bus,
-    instructions: [fn(&mut CPU, Instruction); 0x40],
-    special_instructions: [fn(&mut CPU, Instruction); 0x40],
+    instructions: [fn(&mut CPU, Instruction) -> usize; 0x40],
+    special_instructions: [fn(&mut CPU, Instruction) -> usize; 0x40],
     cop0: COP0,
     gte: Gte,
     found: HashSet<u32>,
@@ -308,11 +308,18 @@ impl CPU {
         self.branch_taken = false;
         self.cop0.cause.remove(CauseRegister::BD);
 
+        let opcode = self.bus.mem_read32(self.pc);
+
         if self.check_irqs() {
             self.enter_exception(ExceptionType::Interrupt);
-        }
 
-        let opcode = self.bus.mem_read32(self.pc);
+
+            if (opcode >> 25) == 0x25 {
+                self.gte.execute_command(Instruction(opcode));
+            }
+
+            return;
+        }
 
         self.update_tty();
 
@@ -327,9 +334,9 @@ impl CPU {
 
         self.next_pc += 4;
 
-        self.decode_opcode(opcode);
+        let cycles = self.decode_opcode(opcode);
 
-        self.tick(2);
+        self.tick(cycles);
 
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
