@@ -36,40 +36,7 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
 
     return out;
 }
-
-/*
-  fn read_texture(&mut self, uv: Coordinates2d) -> Option<RgbColor> {
-    let tex_x_base = (self.stat.texture_x_base as i32) * 64;
-    let tex_y_base = (self.stat.texture_y_base1 as i32) * 16;
-
-    let offset_x = tex_x_base + uv.x;
-    let offset_y = tex_y_base + uv.y;
-
-    let texture_address = 2 * (offset_x + offset_y * 1024) as usize;
-
-    // for this case, each cache entry is 8 * 32 cache lines, and each cache entry is 4 16bpp pixels wide
-    let entry = (((uv.y * 8) + ((uv.x / 4 ) & 0x7)) & 0xff) as usize;
-    let block = ((offset_x / 32) + (offset_y / 32) * 8) as isize;
-
-    let cache_entry = &mut self.texture_cache[entry];
-
-    if cache_entry.tag != block {
-      for i in 0..8 {
-        cache_entry.data[i] = self.vram[(texture_address & !0x7) + i];
-      }
-    }
-
-    let index = ((uv.x * 2) & 0x7) as usize;
-
-    let texture = (cache_entry.data[index] as u16) | (cache_entry.data[index + 1] as u16) << 8;
-
-    if texture != 0 {
-      Some(GPU::translate_15bit_to_24(texture))
-    } else {
-      None
-    }
-  }
-*/
+// TODO: actually implement CLUT
 float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);

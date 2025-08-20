@@ -16,7 +16,6 @@ use objc2_metal::{
     MTLResourceOptions,
     MTLSize,
     MTLTexture,
-    MTLBlitCommandEncoder,
     MTLTextureDescriptor,
     MTLPixelFormat,
     MTLTextureUsage,
