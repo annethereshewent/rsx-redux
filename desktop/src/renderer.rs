@@ -460,7 +460,58 @@ impl Renderer {
                 GPUCommand::VRAMtoCPU(params) => {
                     gpu.transfer_params = Some(params);
                 }
-                _  => todo!("VRAMFill")
+                GPUCommand::FillVRAM(params) => {
+                    let mut halfwords: Vec<u16> = Vec::new();
+                    let mut rgba8_bytes: Vec<u8> = Vec::new();
+
+                    let mut r = (params.pixel & 0x1f) as u8;
+                    let mut g = ((params.pixel >> 5) & 0x1f) as u8;
+                    let mut b = ((params.pixel >> 10) & 0x1f) as u8;
+
+                    r = r << 3 | r >> 2;
+                    g = g << 3 | g >> 2;
+                    b = b << 3 | b >> 2;
+
+                    let a = (((params.pixel >> 15) & 1) * 255) as u8;
+
+                    for _ in 0..params.height {
+                        for _ in 0..params.width {
+                            rgba8_bytes.push(r);
+                            rgba8_bytes.push(g);
+                            rgba8_bytes.push(b);
+                            rgba8_bytes.push(a);
+
+                            halfwords.push(params.pixel);
+                        }
+                    }
+
+                    let region = MTLRegion {
+                        origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
+                        size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                    };
+
+                    if let Some(texture) = &self.vram_read {
+                        unsafe {
+                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                                region,
+                                0,
+                                NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
+                                2 * params.width as usize
+                            );
+                        }
+                    }
+
+                    if let Some(texture) = &self.vram_write {
+                        unsafe {
+                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                                region,
+                                0,
+                                NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
+                                4 * params.width as usize
+                            );
+                        }
+                    }
+                }
             }
         }
     }

@@ -39,7 +39,8 @@ pub struct FillVramParams {
     pub start_x: u32,
     pub start_y: u32,
     pub width: u32,
-    pub height: u32
+    pub height: u32,
+    pub pixel: u16
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -764,9 +765,7 @@ impl GPU {
         let g = ((color >> 8) & 0xff) >> 3;
         let b = ((color >> 16) & 0xff) >> 3;
 
-        let pixel: u16 = r as u16 | (g as u16) << 5 | (b as u16) << 5;
-
-        panic!("got pixel 0x{:x}", pixel);
+        let pixel = r as u16 | (g as u16) << 5 | (b as u16) << 5;
 
         let destination = self.current_command_buffer.pop_front().unwrap();
         let dimensions = self.current_command_buffer.pop_front().unwrap();
@@ -777,13 +776,15 @@ impl GPU {
         let w = ((dimensions & 0x3ff) + 0xf) & !0xf;
         let h = (dimensions >> 16) & 0x1ff;
 
-        for y in 0..h {
-            for x in 0..w {
-                let address = Self::get_vram_address(start_x + x, start_y + y);
+        let fill_vram_params = FillVramParams {
+            start_x,
+            start_y,
+            width: w,
+            height: h,
+            pixel
+        };
 
-
-            }
-        }
+        self.gpu_commands.push(GPUCommand::FillVRAM(fill_vram_params));
     }
 
     fn execute_command(&mut self, word: u32) {
