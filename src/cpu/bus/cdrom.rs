@@ -88,6 +88,7 @@ impl CDSubheader {
     }
 }
 
+#[derive(Debug)]
 struct CDHeader {
     mm: u8,
     ss: u8,
@@ -172,7 +173,8 @@ pub struct CDRom {
     output_buffer: [u8; 0x930],
     buffer_index: usize,
     reading_buffer: bool,
-    pre_seek: bool
+    pre_seek: bool,
+    pending_stat: Option<u8>
 }
 
 impl CDRom {
@@ -208,7 +210,8 @@ impl CDRom {
             buffer_index: 0,
             output_buffer: [0; 0x930],
             reading_buffer: false,
-            pre_seek: false
+            pre_seek: false,
+            pending_stat: None
         }
     }
 
@@ -295,6 +298,7 @@ impl CDRom {
             (self.parameter_fifo.is_empty() as u8) << 3 |
             ((self.parameter_fifo.len() < 16) as u8) << 4 |
             (!self.result_fifo.is_empty() as u8) << 5 |
+            (!self.output_buffer_empty() as u8) << 6 |
             ((self.controller_status != ControllerStatus::Idle) as u8) << 7
     }
 
@@ -496,8 +500,6 @@ impl CDRom {
     }
 
     fn read_data(&mut self) {
-        assert!(self.irqs == 0);
-
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
 
@@ -509,9 +511,12 @@ impl CDRom {
             val |= (self.is_seeking as u8) << 6;
             val |= (self.is_playing as u8) << 7;
 
-            self.result_fifo.push_back(val);
-
-            self.irqs = 1;
+            if self.irqs == 0 {
+                self.irqs = 1;
+                self.result_fifo.push_back(val);
+            } else {
+                self.pending_stat = Some(val);
+            }
         }
     }
 
@@ -530,6 +535,7 @@ impl CDRom {
             self.is_playing = false;
             // request a seek
             self.next_event = Some(EventType::CDRead);
+
             scheduler.schedule(EventType::CDSeek, 25 * CDROM_CYCLES);
         }
 
@@ -537,7 +543,11 @@ impl CDRom {
     }
 
     fn get_pointer(&self) -> usize {
-        return ((self.current_msf.amm * 60 + self.current_msf.ass) * 75 + self.current_msf.asect - 150) as usize * BYTES_PER_SECTOR
+        let mm = self.current_msf.amm as usize;
+        let ss = self.current_msf.ass as usize;
+        let sect = self.current_msf.asect as usize;
+
+        ((mm * 60 + ss) * 75 + sect - 150) * BYTES_PER_SECTOR
     }
 
     fn bcd_to_u8(value: u8) -> u8 {
@@ -568,7 +578,13 @@ impl CDRom {
         if let Some(event) = self.next_event.take() {
             match event {
                 EventType::CDStat => scheduler.schedule(event, 100 * CDROM_CYCLES),
-                EventType::CDRead => scheduler.schedule(event, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES }),
+                EventType::CDRead => {
+                    self.is_reading = true;
+                    self.is_seeking = false;
+                    self.is_playing = false;
+
+                    scheduler.schedule(event, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES })
+                }
                 _ => ()
             }
         }
@@ -639,6 +655,13 @@ impl CDRom {
 
     fn write_control(&mut self, value: u8) {
         self.irqs &= !(value & 0x1f);
+
+        if self.irqs == 0 {
+            if let Some(stat) = self.pending_stat.take() {
+                self.result_fifo.push_back(stat);
+                self.irqs = 0x1;
+            }
+        }
 
         self.result_fifo.clear();
 
