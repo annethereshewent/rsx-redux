@@ -56,7 +56,8 @@ struct FragmentUniform {
     texture_mask_x: u32,
     texture_mask_y: u32,
     texture_offset_x: u32,
-    texture_offset_y: u32
+    texture_offset_y: u32,
+    depth: i32
 }
 
 #[repr(C)]
@@ -66,8 +67,6 @@ pub struct MetalVertex {
     uv: [f32; 2],
     color: [f32; 4],
     page: [u32; 2],
-    depth: u32,
-    _padding: u32,
     clut: [u32; 2]
 }
 
@@ -78,8 +77,6 @@ impl MetalVertex {
             uv: [0.0; 2],
             color: [0.0; 4],
             page: [0; 2],
-            depth: 0,
-            _padding: 0,
             clut: [0; 2]
         }
     }
@@ -190,18 +187,10 @@ impl Renderer {
             page.setBufferIndex(0);
         }
 
-        let depth = unsafe { attributes.objectAtIndexedSubscript(4) };
-
-        depth.setFormat(MTLVertexFormat::UInt);
-        unsafe {
-            depth.setOffset(40);
-            depth.setBufferIndex(0);
-        }
-
-        let clut = unsafe { attributes.objectAtIndexedSubscript(5) };
+        let clut = unsafe { attributes.objectAtIndexedSubscript(4) };
         clut.setFormat(MTLVertexFormat::UInt2);
         unsafe {
-            clut.setOffset(48);
+            clut.setOffset(40);
             clut.setBufferIndex(0);
         }
 
@@ -226,7 +215,7 @@ impl Renderer {
         unsafe { fb_uv.setOffset(8) };
         unsafe { fb_uv.setBufferIndex(0) };
 
-        assert_eq!(size_of::<MetalVertex>(), 56);
+        assert_eq!(size_of::<MetalVertex>(), 48);
 
         let fb_layout = unsafe { fb_vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
 
@@ -298,12 +287,24 @@ impl Renderer {
     ) {
         for polygon in gpu.polygons.drain(..) {
             let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
+
+            let depth = if let Some(texpage) = polygon.texpage {
+                match texpage.texture_page_colors {
+                    TexturePageColors::Bit4 => 0,
+                    TexturePageColors::Bit15 => 2,
+                    _ => todo!("{:?}", texpage.texture_page_colors)
+                }
+            } else {
+                -1
+            };
+
             let mut fragment_uniform = FragmentUniform {
                 has_texture: false,
                 texture_mask_x: gpu.texture_window_mask_x,
                 texture_mask_y: gpu.texture_window_mask_y,
                 texture_offset_x: gpu.texture_window_offset_x,
-                texture_offset_y: gpu.texture_window_offset_y
+                texture_offset_y: gpu.texture_window_offset_y,
+                depth
             };
 
             if let Some(_) = polygon.texpage {
@@ -359,11 +360,6 @@ impl Renderer {
                 metal_vert.uv[1] = v_f32;
                 if let Some(texpage) = polygon.texpage {
                     metal_vert.clut = [polygon.clut.0, polygon.clut.1];
-                    metal_vert.depth = match texpage.texture_page_colors {
-                        TexturePageColors::Bit4 => 0,
-                        _ => todo!("{:?}", texpage.texture_page_colors)
-                    };
-
                     metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];
                 }
             }
