@@ -375,7 +375,13 @@ impl Renderer {
             }.unwrap();
 
             if let Some(encoder) = &self.encoder {
-                unsafe { encoder.setFragmentBytes_length_atIndex(NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() , size_of::<FragmentUniform>(), 1) };
+                unsafe {
+                    encoder.setFragmentBytes_length_atIndex(
+                        NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() ,
+                        size_of::<FragmentUniform>(),
+                        1
+                    )
+                };
                 unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
                 let primitive_type = MTLPrimitiveType::Triangle;
