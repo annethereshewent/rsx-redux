@@ -408,7 +408,6 @@ impl Renderer {
                 let primitive_type = MTLPrimitiveType::Triangle;
                 // TODO: use enums instead
                 if polygon.transparent_mode == 2 && polygon.semitransparent {
-                    println!("setting semisub pipeline state!");
                     encoder.setRenderPipelineState(&self.semisub_pipeline_state);
                 } else {
                     encoder.setRenderPipelineState(&self.pipeline_state);
@@ -434,12 +433,7 @@ impl Renderer {
                             let mut r = halfword & 0x1f;
                             let mut g = (halfword >> 5) & 0x1f;
                             let mut b = (halfword >> 10) & 0x1f;
-
-                            let a = if halfword == 0 {
-                                0
-                            } else {
-                                0xff
-                            };
+                            let a = ((halfword >> 15) & 1) * 0xff;
 
                             r = r << 3 | r >> 2;
                             g = g << 3 | g >> 2;

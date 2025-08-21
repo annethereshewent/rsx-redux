@@ -372,7 +372,9 @@ impl GPU {
         }
 
         if self.interlaced {
-            self.even_flag = if self.even_flag == 0 { 1 } else { 0 };
+            self.even_flag ^= 1;
+        } else {
+            self.even_flag = 1;
         }
 
         self.current_line += 1;
@@ -1137,8 +1139,6 @@ impl GPU {
         timers: &mut [Timer],
         cycles_left: usize
     ) {
-        self.even_flag = 0;
-
         timers[1].in_xblank = true;
 
         if timers[1].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {

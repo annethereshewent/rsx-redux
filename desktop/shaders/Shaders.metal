@@ -85,7 +85,7 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint b = (texel >> 10) & 0x1f;
 
     // normally would be 255, but it's easier just to divide everything by 31
-    uint a = 31;
+    uint a = 31.0;
 
     if (texel == 0) {
         a = 0;
