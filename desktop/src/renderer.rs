@@ -33,7 +33,9 @@ use objc2_metal::{
     MTLCreateSystemDefaultDevice,
     MTLLibrary,
     MTLRenderPipelineDescriptor,
-    MTLVertexFormat
+    MTLVertexFormat,
+    MTLBlendOperation,
+    MTLBlendFactor
 };
 use objc2_quartz_core::{CAMetalLayer, CAMetalDrawable};
 use rsx_redux::cpu::bus::gpu::{
@@ -52,11 +54,13 @@ pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 #[derive(Debug)]
 struct FragmentUniform {
     has_texture: bool,
+    semitransparent: bool,
     texture_mask_x: u32,
     texture_mask_y: u32,
     texture_offset_x: u32,
     texture_offset_y: u32,
-    depth: i32
+    depth: i32,
+    transparent_mode: u32
 }
 
 #[repr(C)]
@@ -94,6 +98,7 @@ pub struct Renderer {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    semisub_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
@@ -129,14 +134,20 @@ impl Renderer {
 
         let fb_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
 
+        let semisub_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
+
         pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
         pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
+
+        semisub_pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
+        semisub_pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
 
         fb_pipeline_descriptor.setVertexFunction(vertex_fb_function.as_deref());
         fb_pipeline_descriptor.setFragmentFunction(fragment_fb_function.as_deref());
 
         let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
         let fb_color_attachment = unsafe { fb_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let semisub_color_attachment = unsafe { semisub_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
@@ -152,9 +163,16 @@ impl Renderer {
 
             fb_color_attachment.setPixelFormat(metal_layer.pixelFormat());
             fb_color_attachment.setBlendingEnabled(false);
+
+            semisub_color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
+            semisub_color_attachment.setBlendingEnabled(true);
+            semisub_color_attachment.setRgbBlendOperation(MTLBlendOperation::ReverseSubtract);
+            semisub_color_attachment.setAlphaBlendOperation(MTLBlendOperation::Add);
+            semisub_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::One);
+            semisub_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::One);
+            semisub_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
+            semisub_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
         }
-
-
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
 
@@ -223,9 +241,11 @@ impl Renderer {
         fb_pipeline_descriptor.setVertexDescriptor(Some(&fb_vertex_descriptor));
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
+        semisub_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 
         let pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor).unwrap();
         let fb_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor).unwrap();
+        let semisub_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semisub_pipeline_descriptor).unwrap();
 
         unsafe { metal_layer.setDevice(Some(&device)) };
 
@@ -273,6 +293,7 @@ impl Renderer {
             device,
             pipeline_state,
             fb_pipeline_state,
+            semisub_pipeline_state,
             encoder: None,
             command_buffer: None,
             vertices,
@@ -297,18 +318,18 @@ impl Renderer {
                 -1
             };
 
+
             let mut fragment_uniform = FragmentUniform {
-                has_texture: false,
+                has_texture: polygon.textured,
                 texture_mask_x: gpu.texture_window_mask_x,
                 texture_mask_y: gpu.texture_window_mask_y,
                 texture_offset_x: gpu.texture_window_offset_x,
                 texture_offset_y: gpu.texture_window_offset_y,
-                depth
+                semitransparent: polygon.semitransparent,
+                depth,
+                transparent_mode: polygon.transparent_mode
             };
 
-            if let Some(_) = polygon.texpage {
-                fragment_uniform.has_texture = true;
-            }
 
             let cross_product = GPU::cross_product(&polygon.vertices);
             let v = &polygon.vertices;
@@ -385,8 +406,13 @@ impl Renderer {
                 unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
                 let primitive_type = MTLPrimitiveType::Triangle;
-
-                encoder.setRenderPipelineState(&self.pipeline_state);
+                // TODO: use enums instead
+                if polygon.transparent_mode == 2 && polygon.semitransparent {
+                    println!("setting semisub pipeline state!");
+                    encoder.setRenderPipelineState(&self.semisub_pipeline_state);
+                } else {
+                    encoder.setRenderPipelineState(&self.pipeline_state);
+                }
 
                 unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
                 unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };

@@ -3,11 +3,13 @@ using namespace metal;
 
 struct FragmentUniforms {
     bool hasTexture;
+    bool semitransparent;
     uint textureMaskX;
     uint textureMaskY;
     uint textureOffsetX;
     uint textureOffsetY;
     int depth;
+    uint transparentMode;
 };
 
 struct VertexIn {
@@ -98,6 +100,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                               constant FragmentUniforms& uniforms [[buffer(1)]]
 )
 {
+    float4 finalColor;
     if (uniforms.hasTexture) {
         float4 texColor;
         switch (uniforms.depth) {
@@ -109,9 +112,23 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 break;
         }
 
-        float4 finalColor = texColor * in.color;
-        return texColor;
+        finalColor = texColor;
     } else {
-        return float4(in.color);
+        finalColor = float4(in.color);
     }
+
+    float alpha = finalColor[3];
+    if (uniforms.semitransparent && alpha != 0) {
+        switch (uniforms.transparentMode) {
+            case 0: alpha = 0.5; break;
+            case 1:
+            case 2:
+                alpha = 1.0; break;
+            case 3: alpha = 0.25; break;
+        }
+    }
+
+    finalColor[3] = alpha;
+
+    return finalColor;
 }

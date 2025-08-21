@@ -57,8 +57,8 @@ enum DisplayMode {
     Pal = 1
 }
 
-#[derive(Copy, Clone, PartialEq)]
-enum DisplayDepth {
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum DisplayDepth {
     Bit15 = 0,
     Bit24 = 1
 }
@@ -88,7 +88,10 @@ pub enum TexturePageColors {
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,
+    pub semitransparent: bool,
+    pub textured: bool,
     pub texpage: Option<Texpage>,
+    pub transparent_mode: u32,
     pub clut: (u32, u32)
 }
 
@@ -97,8 +100,11 @@ impl Polygon {
         Self {
             vertices,
             is_line,
+            semitransparent: false,
+            textured: false,
             texpage: None,
-            clut: (0, 0)
+            clut: (0, 0),
+            transparent_mode: 0
         }
     }
 }
@@ -156,7 +162,7 @@ pub struct GPU {
     pub frame_finished: bool,
     pub current_line: usize,
     even_flag: u32,
-    interlaced: bool,
+    pub interlaced: bool,
     pub current_command_buffer: VecDeque<u32>,
     texpage: Texpage,
     pub gpuread: u32,
@@ -196,7 +202,7 @@ pub struct GPU {
     pub display_width: u32,
     pub display_height: u32,
     video_mode: DisplayMode,
-    display_depth: DisplayDepth,
+    pub display_depth: DisplayDepth,
     horizontal_flip: bool,
     dma_direction: DmaDirection,
     horizontal_bits1: u32,
@@ -480,7 +486,7 @@ impl GPU {
             r,
             g,
             b,
-            a: 255
+            a: 0xff
         }
     }
 
@@ -552,22 +558,31 @@ impl GPU {
             polygons.push(Polygon {
                 vertices: vertices1,
                 is_line: false,
+                textured: self.is_textured,
                 texpage: texpage.clone(),
-                clut: (self.clut_x as u32, self.clut_y as u32)
+                transparent_mode: if texpage.is_some() { texpage.unwrap().semi_transparency } else { self.texpage.semi_transparency },
+                clut: (self.clut_x as u32, self.clut_y as u32),
+                semitransparent: self.is_semitransparent
             });
 
             polygons.push(Polygon {
                 vertices: vertices2,
                 is_line: false,
                 texpage,
-                clut: (self.clut_x as u32, self.clut_y as u32)
+                clut: (self.clut_x as u32, self.clut_y as u32),
+                semitransparent: self.is_semitransparent,
+                textured: self.is_textured,
+                transparent_mode: if texpage.is_some() { texpage.unwrap().semi_transparency } else { self.texpage.semi_transparency }
             });
         } else {
             polygons.push(Polygon {
                 vertices,
                 is_line: false,
                 texpage,
-                clut: (self.clut_x as u32, self.clut_y as u32)
+                clut: (self.clut_x as u32, self.clut_y as u32),
+                semitransparent: self.is_semitransparent,
+                textured: self.is_textured,
+                transparent_mode: if texpage.is_some() { texpage.unwrap().semi_transparency } else { self.texpage.semi_transparency }
             });
         }
 
@@ -663,13 +678,19 @@ impl GPU {
             vertices: vertices1,
             is_line: false,
             texpage: Some(self.texpage.clone()),
-            clut: (self.clut_x as u32, self.clut_y as u32)
+            clut: (self.clut_x as u32, self.clut_y as u32),
+            semitransparent: self.is_semitransparent,
+            transparent_mode: self.texpage.semi_transparency,
+            textured: self.is_textured
         });
         self.polygons.push(Polygon {
             vertices: vertices2,
             is_line: false,
             texpage: Some(self.texpage.clone()),
-            clut: (self.clut_x as u32, self.clut_y as u32)
+            clut: (self.clut_x as u32, self.clut_y as u32),
+            semitransparent: self.is_semitransparent,
+            transparent_mode: self.texpage.semi_transparency,
+            textured: self.is_textured
         });
 
         self.num_vertices = 0;
@@ -860,10 +881,6 @@ impl GPU {
                 self.transfer_y = 0;
             }
         }
-    }
-
-    fn get_vram_address(x: u32, y: u32) -> usize {
-        2 * ((x & 0x3ff) + 1024 * (y & 0x1ff)) as usize
     }
 
     pub fn process_gp1_commands(&mut self, word: u32) {
