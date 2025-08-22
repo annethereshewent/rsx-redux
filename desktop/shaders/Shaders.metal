@@ -10,6 +10,7 @@ struct FragmentUniforms {
     uint textureOffsetY;
     int depth;
     uint transparentMode;
+    uint pass;
 };
 
 struct VertexIn {
@@ -52,10 +53,10 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    uint a = 31;
+    float a = 31.0;
 
     if (texel == 0) {
-        a = 0;
+        a = -31.0;
     }
 
     return float4(r, g, b, a) / 31.0;
@@ -85,10 +86,10 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint b = (texel >> 10) & 0x1f;
 
     // normally would be 255, but it's easier just to divide everything by 31
-    uint a = 31.0;
+    float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
-        a = 0;
+        a = -31.0;
     }
 
     return float4(r, g, b, a) / 31.0;
@@ -112,19 +113,48 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 break;
         }
 
+        if (texColor[3] < 0.0) {
+            discard_fragment();
+        }
+
         finalColor = texColor;
     } else {
         finalColor = float4(in.color);
     }
 
-    float alpha = finalColor[3];
-    if (uniforms.semitransparent && alpha != 0) {
+    float alpha = 1.0;
+
+    bool isST = uniforms.hasTexture ? finalColor[3] > 0.5 : uniforms.semitransparent;
+
+    if (uniforms.semitransparent) {
         switch (uniforms.transparentMode) {
-            case 0: alpha = 0.5; break;
-            case 1:
+            case 0: alpha = isST ? 0.5 : 1.0; break;
+            case 1: alpha = isST ? 1.0 : 0.0; break;
             case 2:
-                alpha = 1.0; break;
-            case 3: alpha = 0.25; break;
+                if (!uniforms.hasTexture) {
+                    alpha = 1.0;
+                } else if (uniforms.pass == 1) {
+                    if (isST) {
+                        discard_fragment();
+                    }
+                } else if (!isST) {
+                    discard_fragment();
+                }
+                break;
+            case 3:
+                if (!uniforms.hasTexture) {
+                    alpha = 0.25;
+                } else if (uniforms.pass == 1) {
+                    if (isST) {
+                        discard_fragment();
+                    }
+                } else {
+                    if (!isST) {
+                        discard_fragment();
+                    }
+                    alpha = 0.25;
+                }
+                break;
         }
     }
 

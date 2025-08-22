@@ -39,10 +39,7 @@ use objc2_metal::{
 };
 use objc2_quartz_core::{CAMetalLayer, CAMetalDrawable};
 use rsx_redux::cpu::bus::gpu::{
-    CPUTransferParams,
-    GPUCommand,
-    TexturePageColors,
-    GPU
+    CPUTransferParams, GPUCommand, Polygon, TexturePageColors, GPU
 };
 use std::cmp;
 
@@ -60,7 +57,8 @@ struct FragmentUniform {
     texture_offset_x: u32,
     texture_offset_y: u32,
     depth: i32,
-    transparent_mode: u32
+    transparent_mode: u32,
+    pass: u32
 }
 
 #[repr(C)]
@@ -101,13 +99,15 @@ pub struct Renderer {
     semisub_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     semiadd_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     semiquart_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    noblend_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
     command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
     vertices: [FbVertex; 4],
     buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    already_encoded: bool
+    already_encoded: bool,
+    pass2_poly: Option<Polygon>
 }
 
 impl Renderer {
@@ -139,6 +139,7 @@ impl Renderer {
         let semisub_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
         let semiadd_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
         let semiquart_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
+        let noblend_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
 
         pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
         pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
@@ -152,6 +153,9 @@ impl Renderer {
         semiquart_pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
         semiquart_pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
 
+        noblend_pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
+        noblend_pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
+
         fb_pipeline_descriptor.setVertexFunction(vertex_fb_function.as_deref());
         fb_pipeline_descriptor.setFragmentFunction(fragment_fb_function.as_deref());
 
@@ -161,6 +165,7 @@ impl Renderer {
         let semisub_color_attachment = unsafe { semisub_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
         let semiadd_color_attachment = unsafe { semiadd_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
         let semiquart_color_attachment = unsafe { semiquart_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let noblend_color_attachment = unsafe { noblend_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
@@ -203,6 +208,8 @@ impl Renderer {
             semiquart_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::One);
             semiquart_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
             semiquart_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
+
+            noblend_color_attachment.setBlendingEnabled(false);
         }
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
@@ -275,12 +282,14 @@ impl Renderer {
         semisub_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
         semiadd_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
         semiquart_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
+        noblend_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 
         let pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor).unwrap();
         let fb_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor).unwrap();
         let semisub_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semisub_pipeline_descriptor).unwrap();
         let semiadd_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semiadd_pipeline_descriptor).unwrap();
         let semiquart_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semiquart_pipeline_descriptor).unwrap();
+        let noblend_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&noblend_pipeline_descriptor).unwrap();
 
         unsafe { metal_layer.setDevice(Some(&device)) };
 
@@ -331,135 +340,162 @@ impl Renderer {
             semisub_pipeline_state,
             semiadd_pipeline_state,
             semiquart_pipeline_state,
+            noblend_pipeline_state,
             encoder: None,
             command_buffer: None,
             vertices,
             buffer,
-            already_encoded: false
+            already_encoded: false,
+            pass2_poly: None
         }
     }
+
+
+    pub fn render_polygon(&mut self, gpu: &mut GPU, polygon: Polygon, is_second_pass: bool) {
+        let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
+
+        let depth = if let Some(texpage) = polygon.texpage {
+            match texpage.texture_page_colors {
+                TexturePageColors::Bit4 => 0,
+                TexturePageColors::Bit15 => 2,
+                _ => todo!("{:?}", texpage.texture_page_colors)
+            }
+        } else {
+            -1
+        };
+
+        let mut fragment_uniform = FragmentUniform {
+            has_texture: polygon.textured,
+            texture_mask_x: gpu.texture_window_mask_x,
+            texture_mask_y: gpu.texture_window_mask_y,
+            texture_offset_x: gpu.texture_window_offset_x,
+            texture_offset_y: gpu.texture_window_offset_y,
+            semitransparent: polygon.semitransparent,
+            depth,
+            transparent_mode: polygon.transparent_mode,
+            pass: (is_second_pass as u32) + 1
+        };
+
+
+        let cross_product = GPU::cross_product(&polygon.vertices);
+        let v = &polygon.vertices;
+
+        if cross_product == 0 {
+            return;
+        }
+
+        let min_x = cmp::min(v[0].x, cmp::min(v[1].x, v[2].x));
+        let min_y = cmp::min(v[0].y, cmp::min(v[1].y, v[2].y));
+
+        let max_x = cmp::max(v[0].x, cmp::max(v[1].x, v[2].x));
+        let max_y = cmp::max(v[0].y, cmp::max(v[1].y, v[2].y));
+
+        if (max_x >= 1024 && min_x >= 1024) || (max_x < 0 && min_x < 0) {
+            return;
+        }
+
+        if (max_y >= 512 && min_y >= 512) || (max_y < 0 && min_y < 0) {
+            return;
+        }
+
+        if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
+            return;
+        }
+
+
+        for i in 0..polygon.vertices.len() {
+            let vertex = &polygon.vertices[i];
+
+            let u = vertex.u;
+            let v = vertex.v;
+
+            let metal_vert = &mut vertices[i];
+
+            metal_vert.position[0] = (vertex.x as f32 / VRAM_WIDTH as f32) * 2.0 - 1.0;
+            metal_vert.position[1] = 1.0 - (vertex.y as f32 / VRAM_HEIGHT as f32) * 2.0;
+
+            metal_vert.color[0] = vertex.color.r as f32 / 255.0;
+            metal_vert.color[1] = vertex.color.g as f32 / 255.0;
+            metal_vert.color[2] = vertex.color.b as f32 / 255.0;
+            metal_vert.color[3] = vertex.color.a as f32 / 255.0;
+
+            let u_f32 = u as f32;
+            let v_f32 = v as f32;
+
+            metal_vert.uv[0] = u_f32;
+            metal_vert.uv[1] = v_f32;
+            if let Some(texpage) = polygon.texpage {
+                metal_vert.clut = [polygon.clut.0, polygon.clut.1];
+                metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];
+            }
+        }
+
+        let byte_len = vertices.len() * std::mem::size_of::<MetalVertex>();
+
+        let buffer = unsafe {
+            self.device.newBufferWithBytes_length_options(
+                NonNull::new(
+                    vertices.as_ptr() as *mut c_void).unwrap(),
+                    byte_len,
+                    MTLResourceOptions::empty())
+
+        }.unwrap();
+
+        if let Some(encoder) = &self.encoder {
+            unsafe {
+                encoder.setFragmentBytes_length_atIndex(
+                    NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() ,
+                    size_of::<FragmentUniform>(),
+                    1
+                )
+            };
+            unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
+
+            let primitive_type = MTLPrimitiveType::Triangle;
+
+            if polygon.semitransparent {
+                if polygon.transparent_mode != 2 {
+                    println!("[WARN]Semitransparent mode {} used", polygon.transparent_mode);
+                }
+                match polygon.transparent_mode {
+                    0 => encoder.setRenderPipelineState(&self.pipeline_state),
+                    1 => encoder.setRenderPipelineState(&self.semiadd_pipeline_state),
+                    2 => if !polygon.textured {
+                        encoder.setRenderPipelineState(&self.semisub_pipeline_state)
+                    } else if !is_second_pass {
+                        self.pass2_poly = Some(polygon);
+                        encoder.setRenderPipelineState(&self.noblend_pipeline_state);
+                    } else {
+                        encoder.setRenderPipelineState(&self.semisub_pipeline_state);
+                    }
+                    3 => if !polygon.textured {
+                        encoder.setRenderPipelineState(&self.semiquart_pipeline_state)
+                    } else if !is_second_pass {
+                        self.pass2_poly = Some(polygon);
+                        encoder.setRenderPipelineState(&self.noblend_pipeline_state);
+                    } else {
+                        encoder.setRenderPipelineState(&self.semiquart_pipeline_state);
+                    }
+                    _ => unreachable!()
+                }
+            } else {
+                encoder.setRenderPipelineState(&self.pipeline_state);
+            }
+
+            unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
+            unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
+        }
+    }
+
     pub fn render_polygons(
         &mut self,
         gpu: &mut GPU
     ) {
-        for polygon in gpu.polygons.drain(..) {
-            let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
-
-            let depth = if let Some(texpage) = polygon.texpage {
-                match texpage.texture_page_colors {
-                    TexturePageColors::Bit4 => 0,
-                    TexturePageColors::Bit15 => 2,
-                    _ => todo!("{:?}", texpage.texture_page_colors)
-                }
-            } else {
-                -1
-            };
-
-            let mut fragment_uniform = FragmentUniform {
-                has_texture: polygon.textured,
-                texture_mask_x: gpu.texture_window_mask_x,
-                texture_mask_y: gpu.texture_window_mask_y,
-                texture_offset_x: gpu.texture_window_offset_x,
-                texture_offset_y: gpu.texture_window_offset_y,
-                semitransparent: polygon.semitransparent,
-                depth,
-                transparent_mode: polygon.transparent_mode
-            };
-
-
-            let cross_product = GPU::cross_product(&polygon.vertices);
-            let v = &polygon.vertices;
-
-            if cross_product == 0 {
-                continue;
-            }
-
-            let min_x = cmp::min(v[0].x, cmp::min(v[1].x, v[2].x));
-            let min_y = cmp::min(v[0].y, cmp::min(v[1].y, v[2].y));
-
-            let max_x = cmp::max(v[0].x, cmp::max(v[1].x, v[2].x));
-            let max_y = cmp::max(v[0].y, cmp::max(v[1].y, v[2].y));
-
-            if (max_x >= 1024 && min_x >= 1024) || (max_x < 0 && min_x < 0) {
-                continue;
-            }
-
-            if (max_y >= 512 && min_y >= 512) || (max_y < 0 && min_y < 0) {
-                continue;
-            }
-
-            if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
-                continue;
-            }
-
-
-            for i in 0..polygon.vertices.len() {
-                let vertex = &polygon.vertices[i];
-
-                let u = vertex.u;
-                let v = vertex.v;
-
-                let metal_vert = &mut vertices[i];
-
-                metal_vert.position[0] = (vertex.x as f32 / VRAM_WIDTH as f32) * 2.0 - 1.0;
-                metal_vert.position[1] = 1.0 - (vertex.y as f32 / VRAM_HEIGHT as f32) * 2.0;
-
-                metal_vert.color[0] = vertex.color.r as f32 / 255.0;
-                metal_vert.color[1] = vertex.color.g as f32 / 255.0;
-                metal_vert.color[2] = vertex.color.b as f32 / 255.0;
-                metal_vert.color[3] = vertex.color.a as f32 / 255.0;
-
-                let u_f32 = u as f32;
-                let v_f32 = v as f32;
-
-                metal_vert.uv[0] = u_f32;
-                metal_vert.uv[1] = v_f32;
-                if let Some(texpage) = polygon.texpage {
-                    metal_vert.clut = [polygon.clut.0, polygon.clut.1];
-                    metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];
-                }
-            }
-
-            let byte_len = vertices.len() * std::mem::size_of::<MetalVertex>();
-
-            let buffer = unsafe {
-                self.device.newBufferWithBytes_length_options(
-                    NonNull::new(
-                        vertices.as_ptr() as *mut c_void).unwrap(),
-                        byte_len,
-                        MTLResourceOptions::empty())
-
-            }.unwrap();
-
-            if let Some(encoder) = &self.encoder {
-                unsafe {
-                    encoder.setFragmentBytes_length_atIndex(
-                        NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() ,
-                        size_of::<FragmentUniform>(),
-                        1
-                    )
-                };
-                unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
-
-                let primitive_type = MTLPrimitiveType::Triangle;
-
-                if polygon.semitransparent {
-                    if polygon.transparent_mode != 2 {
-                        println!("[WARN]Semitransparent mode {} used", polygon.transparent_mode);
-                    }
-                    match polygon.transparent_mode {
-                        0 => encoder.setRenderPipelineState(&self.pipeline_state),
-                        1 => encoder.setRenderPipelineState(&self.semiadd_pipeline_state),
-                        2 => encoder.setRenderPipelineState(&self.semisub_pipeline_state),
-                        3 => encoder.setRenderPipelineState(&self.semiquart_pipeline_state),
-                        _ => unreachable!()
-                    }
-                } else {
-                    encoder.setRenderPipelineState(&self.pipeline_state);
-                }
-
-                unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
-                unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
+        let polygons: Vec<Polygon> = gpu.polygons.drain(..).collect();
+        for polygon in polygons {
+            self.render_polygon(gpu, polygon, false);
+            if let Some(polygon) = self.pass2_poly.take() {
+                self.render_polygon(gpu, polygon, true);
             }
         }
     }
