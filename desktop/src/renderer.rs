@@ -99,6 +99,8 @@ pub struct Renderer {
     pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     semisub_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    semiadd_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    semiquart_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
@@ -135,6 +137,8 @@ impl Renderer {
         let fb_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
 
         let semisub_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
+        let semiadd_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
+        let semiquart_pipeline_descriptor = MTLRenderPipelineDescriptor::new();
 
         pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
         pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
@@ -142,12 +146,21 @@ impl Renderer {
         semisub_pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
         semisub_pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
 
+        semiadd_pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
+        semiadd_pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
+
+        semiquart_pipeline_descriptor.setVertexFunction(vertex_main_function.as_deref());
+        semiquart_pipeline_descriptor.setFragmentFunction(fragment_main_function.as_deref());
+
         fb_pipeline_descriptor.setVertexFunction(vertex_fb_function.as_deref());
         fb_pipeline_descriptor.setFragmentFunction(fragment_fb_function.as_deref());
 
         let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
         let fb_color_attachment = unsafe { fb_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+
         let semisub_color_attachment = unsafe { semisub_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let semiadd_color_attachment = unsafe { semiadd_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let semiquart_color_attachment = unsafe { semiquart_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
@@ -172,6 +185,24 @@ impl Renderer {
             semisub_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::One);
             semisub_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
             semisub_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
+
+            semiadd_color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
+            semiadd_color_attachment.setBlendingEnabled(true);
+            semiadd_color_attachment.setRgbBlendOperation(MTLBlendOperation::Add);
+            semiadd_color_attachment.setAlphaBlendOperation(MTLBlendOperation::Add);
+            semiadd_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::One);
+            semiadd_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::SourceAlpha);
+            semiadd_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
+            semiadd_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
+
+            semiquart_color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
+            semiquart_color_attachment.setBlendingEnabled(true);
+            semiquart_color_attachment.setRgbBlendOperation(MTLBlendOperation::Add);
+            semiquart_color_attachment.setAlphaBlendOperation(MTLBlendOperation::Add);
+            semiquart_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::SourceAlpha);
+            semiquart_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::One);
+            semiquart_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
+            semiquart_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
         }
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
@@ -242,10 +273,14 @@ impl Renderer {
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
         semisub_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
+        semiadd_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
+        semiquart_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 
         let pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor).unwrap();
         let fb_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor).unwrap();
         let semisub_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semisub_pipeline_descriptor).unwrap();
+        let semiadd_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semiadd_pipeline_descriptor).unwrap();
+        let semiquart_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semiquart_pipeline_descriptor).unwrap();
 
         unsafe { metal_layer.setDevice(Some(&device)) };
 
@@ -294,6 +329,8 @@ impl Renderer {
             pipeline_state,
             fb_pipeline_state,
             semisub_pipeline_state,
+            semiadd_pipeline_state,
+            semiquart_pipeline_state,
             encoder: None,
             command_buffer: None,
             vertices,
@@ -317,7 +354,6 @@ impl Renderer {
             } else {
                 -1
             };
-
 
             let mut fragment_uniform = FragmentUniform {
                 has_texture: polygon.textured,
@@ -406,9 +442,18 @@ impl Renderer {
                 unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
                 let primitive_type = MTLPrimitiveType::Triangle;
-                // TODO: use enums instead
-                if polygon.transparent_mode == 2 && polygon.semitransparent {
-                    encoder.setRenderPipelineState(&self.semisub_pipeline_state);
+
+                if polygon.semitransparent {
+                    if polygon.transparent_mode != 2 {
+                        println!("[WARN]Semitransparent mode {} used", polygon.transparent_mode);
+                    }
+                    match polygon.transparent_mode {
+                        0 => encoder.setRenderPipelineState(&self.pipeline_state),
+                        1 => encoder.setRenderPipelineState(&self.semiadd_pipeline_state),
+                        2 => encoder.setRenderPipelineState(&self.semisub_pipeline_state),
+                        3 => encoder.setRenderPipelineState(&self.semiquart_pipeline_state),
+                        _ => unreachable!()
+                    }
                 } else {
                     encoder.setRenderPipelineState(&self.pipeline_state);
                 }
