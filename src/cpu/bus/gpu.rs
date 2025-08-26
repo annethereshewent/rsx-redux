@@ -178,8 +178,8 @@ pub struct GPU {
     pub texture_window_offset_x: u32,
     pub texture_window_mask_y: u32,
     pub texture_window_offset_y: u32,
-    set_while_drawing: bool,
-    check_before_drawing: bool,
+    pub force_mask_bit: bool,
+    pub preserve_masked_pixels: bool,
     pub polygons: Vec<Polygon>,
     pub commands_ready: bool,
     num_vertices: usize,
@@ -244,8 +244,8 @@ impl GPU {
             texture_window_mask_y: 0,
             texture_window_offset_x: 0,
             texture_window_offset_y: 0,
-            set_while_drawing: false,
-            check_before_drawing: false,
+            force_mask_bit: false,
+            preserve_masked_pixels: false,
             commands_ready: false,
             polygons: Vec::new(),
             num_vertices: 0,
@@ -722,8 +722,8 @@ impl GPU {
     }
 
     fn mask_bit(&mut self, word: u32) {
-        self.set_while_drawing = word & 1 == 1;
-        self.check_before_drawing = (word >> 1) & 1 == 1;
+        self.force_mask_bit = word & 1 == 1;
+        self.preserve_masked_pixels = (word >> 1) & 1 == 1;
     }
 
     fn vram_to_cpu_transfer(&mut self) {
@@ -1090,8 +1090,8 @@ impl GPU {
             (self.texpage.texture_page_colors as u32) << 7 |
             (self.texpage.dither as u32) << 9 |
             (self.texpage.draw_to_display_area as u32) << 10 |
-            (self.set_while_drawing as u32) << 11 |
-            (self.check_before_drawing as u32) << 12 |
+            (self.force_mask_bit as u32) << 11 |
+            (self.preserve_masked_pixels as u32) << 12 |
             (self.interlaced as u32) << 13 |
             (self.horizontal_flip as u32) << 14 |
             self.texpage.y_base2 << 15 |
