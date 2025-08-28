@@ -338,6 +338,15 @@ impl CPU {
 
         self.tick(cycles);
 
+
+        self.handle_events();
+
+        if should_transfer {
+            self.transfer_load();
+        }
+    }
+
+    fn handle_events(&mut self) {
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
                 EventType::Vblank => self.bus.gpu.handle_vblank(
@@ -371,12 +380,9 @@ impl CPU {
                 EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler),
                 EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
                 EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
-                EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler)
+                EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler),
+                EventType::TickSpu => self.bus.spu.tick()
             }
-        }
-
-        if should_transfer {
-            self.transfer_load();
         }
     }
 

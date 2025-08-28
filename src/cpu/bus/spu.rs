@@ -279,4 +279,8 @@ impl SPU {
             _ => panic!("invalid address given to control spu control registers: 0x{:x}", address)
         }
     }
+
+    pub fn tick(&mut self) {
+
+    }
 }
