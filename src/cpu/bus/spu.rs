@@ -1,8 +1,12 @@
-use spu_control_register::SpuControlRegister;
+use std::collections::VecDeque;
+
+use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
 use voice::Voice;
 
 pub mod spu_control_register;
 pub mod voice;
+
+const SOUND_RAM_SIZE: usize = 0x8_0000;
 
 pub struct SPU {
     pub main_volume_left: u16,
@@ -10,7 +14,6 @@ pub struct SPU {
     pub reverb_volume_left: u16,
     pub reverb_volume_right: u16,
     pub spucnt: SpuControlRegister,
-    pub spustat: u16,
     pub sound_modulation: u32,
     pub keyoff: u32,
     pub keyon: u32,
@@ -19,7 +22,8 @@ pub struct SPU {
     pub cd_volume: (u16, u16),
     pub current_volume: (u16, u16),
     pub external_volume: (u16, u16),
-    pub sound_ram_transfer: u16,
+    pub sound_ram_transfer_type: u16,
+    pub current_ram_address: u32,
     pub sound_ram_address: u32,
     pub sample: i16,
     pub voices: [Voice; 24],
@@ -57,7 +61,9 @@ pub struct SPU {
     pub v_lin: i16,
     pub v_rin: i16,
     pub v_l_out: i16,
-    pub v_r_out: i16
+    pub v_r_out: i16,
+    sample_fifo: VecDeque<u16>,
+    sound_ram: Box<[u8]>
 }
 
 impl SPU {
@@ -68,7 +74,6 @@ impl SPU {
             reverb_volume_left: 0,
             reverb_volume_right: 0,
             spucnt: SpuControlRegister::from_bits_retain(0),
-            spustat: 0,
             keyoff: 0,
             sound_modulation: 0,
             noise_enable: 0,
@@ -76,8 +81,9 @@ impl SPU {
             cd_volume: (0, 0),
             external_volume: (0, 0),
             current_volume: (0, 0),
-            sound_ram_transfer: 0,
+            sound_ram_transfer_type: 0,
             sound_ram_address: 0,
+            current_ram_address: 0,
             sample: 0,
             voices: [Voice::new(); 24],
             keyon: 0,
@@ -115,7 +121,9 @@ impl SPU {
             v_lin: 0,
             v_rin: 0,
             v_l_out: 0,
-            v_r_out: 0
+            v_r_out: 0,
+            sample_fifo: VecDeque::new(),
+            sound_ram: vec![0; SOUND_RAM_SIZE].into_boxed_slice()
         }
     }
     /*
@@ -129,7 +137,7 @@ impl SPU {
     5-0   Current SPU Mode   (same as SPUCNT.Bit5-0, but, applied a bit delayed)
     */
     pub fn read_stat(&self) -> u16 {
-        self.spucnt.bits() & 0x1f
+        self.spucnt.bits() & 0x3f
     }
 
     pub fn write_voices(&mut self, address: usize, value: u16) {
@@ -155,7 +163,7 @@ impl SPU {
             0x1f801d8e => (self.keyoff >> 16) as u16,
             0x1f801da6 => (self.sound_ram_address / 8) as u16,
             0x1f801daa => self.spucnt.bits(),
-            0x1f801dac => self.sound_ram_transfer,
+            0x1f801dac => self.sound_ram_transfer_type,
             0x1f801dae => self.read_stat(),
             0x1f801db8 => self.current_volume.0,
             0x1f801dba => self.current_volume.1,
@@ -215,10 +223,23 @@ impl SPU {
             0x1f801d98 => self.echo_on = (self.echo_on & 0xffff000) | value as u32,
             0x1f801d9a => self.echo_on = (self.echo_on & 0xffff) | (value as u32) << 16,
             0x1f801da2 => self.m_base = value,
-            0x1f801da6 => self.sound_ram_address = value as u32 * 8,
-            0x1f801da8 => self.sample = value as i16,
-            0x1f801daa => self.spucnt = SpuControlRegister::from_bits_retain(value),
-            0x1f801dac => self.sound_ram_transfer = value,
+            0x1f801da6 => {
+                self.sound_ram_address = value as u32 * 8;
+                self.current_ram_address = self.sound_ram_address;
+            }
+            0x1f801da8 => self.sample_fifo.push_back(value),
+            0x1f801daa => {
+
+                self.spucnt = SpuControlRegister::from_bits_retain(value);
+
+                if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::ManualWrite {
+                    while !self.sample_fifo.is_empty() {
+                        unsafe { *(&mut self.sound_ram[self.current_ram_address as usize] as *mut u8 as *mut u16 ) = self.sample_fifo.pop_front().unwrap() };
+                        self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
+                    }
+                }
+            }
+            0x1f801dac => self.sound_ram_transfer_type = value,
             0x1f801db0 => self.cd_volume.0 = value,
             0x1f801db2 => self.cd_volume.1 = value,
             0x1f801db4 => self.external_volume.0 = value,
