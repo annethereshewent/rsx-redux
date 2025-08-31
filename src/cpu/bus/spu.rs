@@ -3,6 +3,8 @@ use std::collections::VecDeque;
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
 use voice::Voice;
 
+use crate::cpu::bus::spu::voice::AdsrPhase;
+
 pub mod spu_control_register;
 pub mod voice;
 
@@ -322,6 +324,21 @@ impl SPU {
     }
 
     pub fn tick(&mut self) {
+        let mut samples: Vec<i16> = Vec::new();
+        for voice in &mut self.voices {
+            if voice.enabled {
+                voice.adsr.tick_adsr();
+
+                if voice.adsr.phase == AdsrPhase::Idle {
+                    voice.enabled = false;
+                }
+
+                let sample = voice.generate_sample();
+
+                samples.push(sample);
+            }
+        }
+
 
     }
 }
