@@ -363,16 +363,19 @@ impl SPU {
             };
             let voice = &mut self.voices[i];
             if voice.adsr.phase != AdsrPhase::Idle {
-                let (left, right) = voice.generate_sample(
+                let (left, right, endx) = voice.generate_samples(
                     &self.sound_ram,
                     self.irq_address,
                     self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE),
                     interrupt_register,
                     self.sound_modulation >> i == 1 && i > 0,
                     previous_out,
-                    (self.noise_enable >> i) == 1,
-                    &mut self.endx
+                    (self.noise_enable >> i) == 1
                 );
+
+                if endx {
+                    self.endx |= 1 << i;
+                }
 
                 left_total += left;
                 right_total += right;
