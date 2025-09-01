@@ -1,9 +1,15 @@
 use std::process::exit;
+use std::sync::Arc;
 
 use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
+use ringbuf::storage::Heap;
+use ringbuf::traits::{Consumer, Observer};
+use ringbuf::wrap::caching::Caching;
+use ringbuf::SharedRb;
 use rsx_redux::cpu::bus::gpu::GPU;
 use rsx_redux::cpu::CPU;
+use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::keyboard::Keycode;
 use sdl2::{controller::GameController, event::Event, video::Window, EventPump};
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
@@ -13,15 +19,50 @@ pub const VRAM_HEIGHT: usize = 512;
 
 use crate::renderer::Renderer;
 
+pub struct PsxAudioCallback {
+    pub consumer: Caching<Arc<SharedRb<Heap<i16>>>, false, true>
+}
+
+impl AudioCallback for PsxAudioCallback {
+    type Channel = i16;
+
+    fn callback(&mut self, buf: &mut [Self::Channel]) {
+        let mut left_sample: i16 = 0;
+        let mut right_sample: i16 = 0;
+
+        if self.consumer.vacant_len() > 2 {
+            left_sample = *self.consumer.try_peek().unwrap_or(&0);
+            right_sample = *self.consumer.try_peek().unwrap_or(&0);
+        }
+
+        let mut is_left_sample = true;
+
+        for b in buf.iter_mut() {
+            *b = if let Some(sample) = self.consumer.try_pop() {
+                sample
+            } else {
+                if is_left_sample {
+                    left_sample
+                } else {
+                    right_sample
+                }
+            };
+
+            is_left_sample = !is_left_sample;
+        }
+    }
+}
+
 pub struct Frontend {
     _window: Window,
     event_pump: EventPump,
     _controller: Option<GameController>,
-    pub renderer: Renderer
+    pub renderer: Renderer,
+    _device: AudioDevice<PsxAudioCallback>
 }
 
 impl Frontend {
-    pub fn new(gpu: &GPU) -> Self {
+    pub fn new(gpu: &GPU, consumer: Caching<Arc<SharedRb<Heap<i16>>>, false, true>) -> Self {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
 
@@ -54,11 +95,28 @@ impl Frontend {
 
         let metal_layer: Retained<CAMetalLayer> = unsafe { Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer).expect("Couldn cast pointer to CAMetalLayer!") };
 
+        let audio_subsystem = sdl_context.audio().unwrap();
+
+        let spec = AudioSpecDesired {
+            freq: Some(44100),
+            channels: Some(2),
+            samples: Some(4096)
+        };
+
+        let device = audio_subsystem.open_playback(
+            None,
+            &spec,
+            |_| PsxAudioCallback { consumer }
+        ).unwrap();
+
+        device.resume();
+
         Self {
             _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
-            renderer: Renderer::new(metal_layer, gpu)
+            renderer: Renderer::new(metal_layer, gpu),
+            _device: device
         }
     }
 

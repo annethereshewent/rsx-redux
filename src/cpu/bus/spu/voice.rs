@@ -293,12 +293,12 @@ impl Adsr {
     pub fn write_upper(&mut self, value: u16) {
         self.value = (self.value & 0xffff) | (value as u32) << 16;
         self.release_shift = (value & 0x1f) as u8;
-        self.release_mode = match (value >> 21) & 1 {
+        self.release_mode = match (value >> 5) & 1 {
             0 => EnvelopeMode::Linear,
             1 => EnvelopeMode::Exponential,
             _ => unreachable!()
         };
-        self.sustain_step = match (value >> 22) & 0x3 {
+        self.sustain_step = match (value >> 6) & 0x3 {
             0 => 7,
             1 => 6,
             2 => 5,
@@ -306,15 +306,15 @@ impl Adsr {
             _ => unreachable!()
         };
 
-        self.sustain_rate = (((value >> 22)) & 0x7f) as u8;
-        self.sustain_shift = (((value >> 24) & 0x1f)) as u8;
-        self.sustain_direction = match (value >> 30) & 1 {
+        self.sustain_rate = (((value >> 6)) & 0x7f) as u8;
+        self.sustain_shift = (((value >> 8) & 0x1f)) as u8;
+        self.sustain_direction = match (value >> 14) & 1 {
             0 => EnvelopeDirection::Increase,
             1 => EnvelopeDirection::Decrease,
             _ => unreachable!()
         };
 
-        self.sustain_mode = match value >> 31 {
+        self.sustain_mode = match value >> 15 {
             0 => EnvelopeMode::Linear,
             1 => EnvelopeMode::Exponential,
             _ => unreachable!()
@@ -691,7 +691,7 @@ impl Voice {
                 byte >> 4
             };
 
-            let mut sample = ((nibble << 12) as i16 as i32) >> block.shift as i32;
+            let mut sample = (((nibble as i16) << 12) as i32) >> block.shift as i32;
 
             sample += ((self.last_samples[0] * positive_filter as i16) >> 6) as i32;
             sample += ((self.last_samples[1] * negative_filter as i16) >> 6) as i32;

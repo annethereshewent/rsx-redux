@@ -31,7 +31,7 @@ fn main() {
     cpu.bus.load_bios(bios);
     cpu.bus.cdrom.load_game_arm64(game_data);
 
-    let mut frontend = Frontend::new(&cpu.bus.gpu);
+    let mut frontend = Frontend::new(&cpu.bus.gpu, consumer);
 
     unsafe { frontend.renderer.metal_layer.setDrawableSize(CGSize::new(cpu.bus.gpu.display_width as f64, cpu.bus.gpu.display_height as f64)); }
 
