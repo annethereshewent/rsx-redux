@@ -646,10 +646,12 @@ impl Voice {
             self.pitch_counter &= 0xfff;
             self.pitch_counter |= sample_index << 12;
 
-            self.current_address = (self.current_address + 2) & 0x7_ffff;
+            // self.current_address = (self.current_address + 2) & 0x7_ffff;
 
             if self.current_block.loop_end {
                 endx = true;
+
+                self.current_address = self.repeat_address;
 
                 if !self.current_block.loop_repeat {
                     if !noise_enable {
@@ -736,6 +738,7 @@ impl Voice {
 
     pub fn update_keyon(&mut self) {
         self.current_address = self.start_address;
+
         self.adsr.phase = AdsrPhase::Attack;
         self.adsr.envelope.volume = 0;
         self.is_first_block = true;
