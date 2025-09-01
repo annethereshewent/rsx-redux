@@ -735,6 +735,7 @@ impl Voice {
         self.current_address = self.start_address;
         self.adsr.phase = AdsrPhase::Attack;
         self.is_first_block = true;
+        self.has_samples = false;
 
         self.adsr.update_envelope();
     }

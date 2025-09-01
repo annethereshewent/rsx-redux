@@ -382,7 +382,7 @@ impl CPU {
                 EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
                 EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
                 EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler),
-                EventType::TickSpu => self.bus.spu.tick(&mut self.bus.interrupt_stat)
+                EventType::TickSpu => self.bus.spu.tick(&mut self.bus.interrupt_stat, &mut self.bus.scheduler)
             }
         }
     }

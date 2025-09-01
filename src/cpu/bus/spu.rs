@@ -4,7 +4,7 @@ use ringbuf::{storage::Heap, traits::Producer, wrap::caching::Caching, SharedRb}
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
 use voice::Voice;
 
-use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, spu::voice::AdsrPhase};
+use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
 
 pub mod spu_control_register;
 pub mod voice;
@@ -12,6 +12,8 @@ pub mod voice;
 const SOUND_RAM_SIZE: usize = 0x8_0000;
 
 pub const NUM_SAMPLES: usize = 8192 * 2;
+
+const SPU_CYCLES: usize = 768;
 
 pub struct SPU {
     pub main_volume_left: u16,
@@ -75,7 +77,8 @@ pub struct SPU {
 }
 
 impl SPU {
-    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>) -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>, scheduler: &mut Scheduler) -> Self {
+        scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
         Self {
             main_volume_left: 0,
             main_volume_right: 0,
@@ -351,7 +354,7 @@ impl SPU {
         old_keyon >> i == 0 && self.keyon >> i == 1
     }
 
-    pub fn tick(&mut self, interrupt_register: &mut InterruptRegister) {
+    pub fn tick(&mut self, interrupt_register: &mut InterruptRegister, scheduler: &mut Scheduler) {
         let mut left_total: i32 = 0;
         let mut right_total: i32 = 0;
 
@@ -362,27 +365,27 @@ impl SPU {
                 0
             };
             let voice = &mut self.voices[i];
-            if voice.adsr.phase != AdsrPhase::Idle {
-                let (left, right, endx) = voice.generate_samples(
-                    &self.sound_ram,
-                    self.irq_address,
-                    self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE),
-                    interrupt_register,
-                    self.sound_modulation >> i == 1 && i > 0,
-                    previous_out,
-                    (self.noise_enable >> i) == 1
-                );
+            let (left, right, endx) = voice.generate_samples(
+                &self.sound_ram,
+                self.irq_address,
+                self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE),
+                interrupt_register,
+                self.sound_modulation >> i == 1 && i > 0,
+                previous_out,
+                (self.noise_enable >> i) == 1
+            );
 
-                if endx {
-                    self.endx |= 1 << i;
-                }
-
-                left_total += left;
-                right_total += right;
+            if endx {
+                self.endx |= 1 << i;
             }
+
+            left_total += left;
+            right_total += right;
         }
 
         self.producer.try_push(Self::clamp(left_total, -0x8000, 0x7fff)).unwrap_or(());
         self.producer.try_push(Self::clamp(right_total, -0x8000, 0x7fff)).unwrap_or(());
+
+        scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }
 }
