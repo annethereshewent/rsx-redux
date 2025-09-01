@@ -237,47 +237,10 @@ impl SPU {
             0x1f801d82 => self.main_volume_right = value,
             0x1f801d84 => self.v_l_out = value as i16,
             0x1f801d86 => self.v_r_out = value as i16,
-            0x1f801d88 => {
-                let old_keyon = self.keyon;
-                self.keyon = (self.keyon & 0xffff0000) | value as u32;
-
-                for i in 0..self.voices.len() {
-                    if self.check_key(i, old_keyon) {
-                        self.voices[i].update_keyon();
-                    }
-                }
-            }
-            0x1f801d8a => {
-                let old_keyon = self.keyon;
-                self.keyon = (self.keyon & 0xffff) | (value as u32) << 16;
-
-                for i in 0..self.voices.len() {
-                    if self.check_key(i, old_keyon) {
-                        self.voices[i].update_keyon();
-                    }
-                }
-            }
-            0x1f801d8c => {
-                let old_keyoff = self.keyoff;
-                self.keyoff = (self.keyoff & 0xffff0000) | value as u32;
-
-                for i in 0..self.voices.len() {
-                    if self.check_key(i, old_keyoff) {
-                        self.voices[i].update_keyoff();
-                    }
-                }
-            }
-            0x1f801d8e => {
-                let old_keyoff = self.keyoff;
-                self.keyoff = (self.keyoff & 0xffff) | (value as u32) << 16;
-
-                for i in 0..self.voices.len() {
-                    if self.check_key(i, old_keyoff) {
-                        self.voices[i].update_keyoff();
-                    }
-                }
-
-            }
+            0x1f801d88 => self.keyon = (self.keyon & 0xffff0000) | value as u32,
+            0x1f801d8a => self.keyon = (self.keyon & 0xffff) | (value as u32) << 16,
+            0x1f801d8c => self.keyoff = (self.keyoff & 0xffff0000) | value as u32,
+            0x1f801d8e => self.keyoff = (self.keyoff & 0xffff) | (value as u32) << 16,
             0x1f801d90 => self.sound_modulation = (self.sound_modulation & 0xffff000) | value as u32,
             0x1f801d92 => self.sound_modulation = (self.sound_modulation & 0xffff) | (value as u32) << 16,
             0x1f801d94 => self.noise_enable = (self.noise_enable & 0xffff000) | value as u32,
@@ -350,8 +313,22 @@ impl SPU {
         }
     }
 
-    fn check_key(&self, i: usize, old_keyon: u32) -> bool {
-        old_keyon >> i == 0 && self.keyon >> i == 1
+    fn update_keystatus(&mut self) {
+        if self.keyoff != 0 || self.keyon != 0 {
+            for i in 0..self.voices.len() {
+                if (self.keyoff >> i) & 1 == 1 {
+                    self.voices[i].update_keyoff();
+                }
+
+                if (self.keyon >> i) & 1 == 1 {
+                    self.endx &= !(1 << i);
+                    self.voices[i].update_keyon();
+                }
+            }
+
+            self.keyoff = 0;
+            self.keyon = 0;
+        }
     }
 
     pub fn tick(&mut self, interrupt_register: &mut InterruptRegister, scheduler: &mut Scheduler) {
@@ -385,6 +362,8 @@ impl SPU {
 
         self.producer.try_push(Self::clamp(left_total, -0x8000, 0x7fff)).unwrap_or(());
         self.producer.try_push(Self::clamp(right_total, -0x8000, 0x7fff)).unwrap_or(());
+
+        self.update_keystatus();
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }

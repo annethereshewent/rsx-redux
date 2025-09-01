@@ -78,13 +78,13 @@ const GAUSSIAN_TABLE: [i32; 0x200] = [
 ];
 
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum EnvelopeMode {
     Linear = 0,
     Exponential = 1
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum EnvelopeDirection {
     Increase = 0,
     Decrease = 1
@@ -130,10 +130,13 @@ impl Envelope {
         self.increment = 0x8000;
         self.rate = rate as u8;
         self.invert_phase = invert;
+        self.direction = direction;
 
         let decreasing = direction == EnvelopeDirection::Decrease;
 
-        self.step = if decreasing != invert || (decreasing && mode == EnvelopeMode::Exponential) { step as i16 } else { !step as i16};
+        let invert_phase = self.invert_phase && !(decreasing && mode == EnvelopeMode::Exponential);
+
+        self.step = if decreasing != invert_phase || (decreasing && mode == EnvelopeMode::Exponential) { !step as i16 } else { step as i16};
         self.mode = mode;
 
         if rate < 44 {
@@ -217,7 +220,6 @@ pub struct Adsr {
     release_shift: u8,
     value: u32,
     current_target: i16,
-    increment: u16,
     envelope: Envelope
 }
 
@@ -239,11 +241,9 @@ impl Adsr {
             release_shift: 0,
             phase: AdsrPhase::Idle,
             value: 0,
-            // volume: 0,
             current_target: 0,
             attack_shift: 0,
             sustain_shift: 0,
-            increment: 0,
             envelope: Envelope::new()
         }
     }
@@ -279,6 +279,7 @@ impl Adsr {
             3 => 4,
             _ => unreachable!()
         };
+
         self.attack_shift = ((value >> 10) & 0x1f) as u8;
         self.attack_rate = ((value >> 8) & 0x7f) as u8;
         self.attack_mode = match value >> 15 {
@@ -323,7 +324,7 @@ impl Adsr {
     }
 
     pub fn tick(&mut self) {
-        if self.increment > 0 {
+        if self.envelope.increment > 0 {
             self.envelope.tick();
         }
 
@@ -407,7 +408,7 @@ impl Adsr {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct ADPCMBlock {
     pub filter: u8,
     pub shift: u8,
@@ -556,10 +557,10 @@ impl Voice {
     }
 
     fn interpolate(&mut self, interpolation_index: usize, sample_index: usize) -> i32 {
-        let oldest = self.get_interpolate_sample(sample_index as isize - 4);
-        let older = self.get_interpolate_sample(sample_index as isize - 3);
-        let old = self.get_interpolate_sample(sample_index as isize - 2);
-        let new = self.get_interpolate_sample(sample_index as isize - 1);
+        let oldest = self.get_interpolate_sample(sample_index as isize - 3);
+        let older = self.get_interpolate_sample(sample_index as isize - 2);
+        let old = self.get_interpolate_sample(sample_index as isize - 1);
+        let new = self.get_interpolate_sample(sample_index as isize);
 
         let mut out: i32 = (GAUSSIAN_TABLE[0xff - interpolation_index] * oldest as i32) >> 15;
         out += (GAUSSIAN_TABLE[0x1ff - interpolation_index] * older) >> 15;
@@ -639,6 +640,8 @@ impl Voice {
         if sample_index >= NUM_BLOCK_SAMPLES as i32 {
             self.is_first_block = false;
             sample_index -= NUM_BLOCK_SAMPLES as i32;
+
+            self.has_samples = false;
 
             self.pitch_counter &= 0xfff;
             self.pitch_counter |= sample_index << 12;
@@ -734,6 +737,7 @@ impl Voice {
     pub fn update_keyon(&mut self) {
         self.current_address = self.start_address;
         self.adsr.phase = AdsrPhase::Attack;
+        self.adsr.envelope.volume = 0;
         self.is_first_block = true;
         self.has_samples = false;
 
