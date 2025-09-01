@@ -1,14 +1,17 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
+use ringbuf::{storage::Heap, traits::Producer, wrap::caching::Caching, SharedRb};
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
 use voice::Voice;
 
-use crate::cpu::bus::spu::voice::AdsrPhase;
+use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, spu::voice::AdsrPhase};
 
 pub mod spu_control_register;
 pub mod voice;
 
 const SOUND_RAM_SIZE: usize = 0x8_0000;
+
+pub const NUM_SAMPLES: usize = 8192 * 2;
 
 pub struct SPU {
     pub main_volume_left: u16,
@@ -27,6 +30,7 @@ pub struct SPU {
     pub sound_ram_transfer_type: u16,
     pub current_ram_address: u32,
     pub sound_ram_address: u32,
+    irq_address: u32,
     pub sample: i16,
     pub voices: [Voice; 24],
     pub m_base: u16,
@@ -65,11 +69,13 @@ pub struct SPU {
     pub v_l_out: i16,
     pub v_r_out: i16,
     sample_fifo: VecDeque<u16>,
-    sound_ram: Box<[u8]>
+    sound_ram: Box<[u8]>,
+    producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>,
+    endx: u32
 }
 
 impl SPU {
-    pub fn new() -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>) -> Self {
         Self {
             main_volume_left: 0,
             main_volume_right: 0,
@@ -85,6 +91,7 @@ impl SPU {
             current_volume: (0, 0),
             sound_ram_transfer_type: 0,
             sound_ram_address: 0,
+            irq_address: 0,
             current_ram_address: 0,
             sample: 0,
             voices: [Voice::new(); 24],
@@ -125,8 +132,21 @@ impl SPU {
             v_l_out: 0,
             v_r_out: 0,
             sample_fifo: VecDeque::new(),
-            sound_ram: vec![0; SOUND_RAM_SIZE].into_boxed_slice()
+            sound_ram: vec![0; SOUND_RAM_SIZE].into_boxed_slice(),
+            producer,
+            endx: 0
         }
+    }
+
+    pub fn clamp(value: i32, min: i32, max: i32) -> i16 {
+        if value < min {
+            return min as i16;
+        }
+        if value > max {
+            return max as i16;
+        }
+
+        value as i16
     }
     /*
     15-12 Unknown/Unused (seems to be usually zero)
@@ -207,7 +227,7 @@ impl SPU {
     1f801DFCh rev1E vLIN    volume  Reverb Input Volume Left
     1f801DFEh rev1F vRIN    volume  Reverb Input Volume Right
     */
-    pub fn write16(&mut self, address: usize, value: u16) {
+    pub fn write16(&mut self, address: usize, value: u16, interrupt_register: &mut InterruptRegister) {
         match address {
             0x1f801c00..=0x1f801d7f => self.write_voices(address, value),
             0x1f801d80 => self.main_volume_left = value,
@@ -262,9 +282,14 @@ impl SPU {
             0x1f801d98 => self.echo_on = (self.echo_on & 0xffff000) | value as u32,
             0x1f801d9a => self.echo_on = (self.echo_on & 0xffff) | (value as u32) << 16,
             0x1f801da2 => self.m_base = value,
+            0x1f801da4 => self.irq_address = value as u32 * 8,
             0x1f801da6 => {
                 self.sound_ram_address = value as u32 * 8;
                 self.current_ram_address = self.sound_ram_address;
+
+                if self.irq_address == self.current_ram_address && self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE) {
+                    interrupt_register.insert(InterruptRegister::SPU);
+                }
             }
             0x1f801da8 => self.sample_fifo.push_back(value),
             0x1f801daa => {
@@ -273,6 +298,9 @@ impl SPU {
 
                 if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::ManualWrite {
                     while !self.sample_fifo.is_empty() {
+                        if self.current_ram_address == self.irq_address && self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE) {
+                            interrupt_register.insert(InterruptRegister::SPU);
+                        }
                         unsafe { *(&mut self.sound_ram[self.current_ram_address as usize] as *mut u8 as *mut u16 ) = self.sample_fifo.pop_front().unwrap() };
                         self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
                     }
@@ -323,22 +351,35 @@ impl SPU {
         old_keyon >> i == 0 && self.keyon >> i == 1
     }
 
-    pub fn tick(&mut self) {
-        let mut samples: Vec<i16> = Vec::new();
-        for voice in &mut self.voices {
-            if voice.enabled {
-                voice.adsr.tick_adsr();
+    pub fn tick(&mut self, interrupt_register: &mut InterruptRegister) {
+        let mut left_total: i32 = 0;
+        let mut right_total: i32 = 0;
 
-                if voice.adsr.phase == AdsrPhase::Idle {
-                    voice.enabled = false;
-                }
+        for i in 0..self.voices.len() {
+            let previous_out = if i > 0 {
+                self.voices[i - 1].last_volume
+            } else {
+                0
+            };
+            let voice = &mut self.voices[i];
+            if voice.adsr.phase != AdsrPhase::Idle {
+                let (left, right) = voice.generate_sample(
+                    &self.sound_ram,
+                    self.irq_address,
+                    self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE),
+                    interrupt_register,
+                    self.sound_modulation >> i == 1 && i > 0,
+                    previous_out,
+                    (self.noise_enable >> i) == 1,
+                    &mut self.endx
+                );
 
-                let sample = voice.generate_sample();
-
-                samples.push(sample);
+                left_total += left;
+                right_total += right;
             }
         }
 
-
+        self.producer.try_push(Self::clamp(left_total, -0x8000, 0x7fff)).unwrap_or(());
+        self.producer.try_push(Self::clamp(right_total, -0x8000, 0x7fff)).unwrap_or(());
     }
 }

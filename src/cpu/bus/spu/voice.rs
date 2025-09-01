@@ -1,7 +1,81 @@
 use std::cmp;
 
+use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, spu::SPU};
+
 pub const VOLUME_MIN: i32 = -0x8000;
 pub const VOLUME_MAX: i32 = 0x7fff;
+
+const POS_FILTER_TABLE: [i8; 16] = [0, 60, 115, 98, 122, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const NEG_FILTER_TABLE: [i8; 16] = [0, 0, -52, -55, -60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+const NUM_BLOCK_SAMPLES: usize = 28;
+
+const GAUSSIAN_TABLE: [i32; 0x200] = [
+    -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, //
+    -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, -0x001, //
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0001, //
+    0x0001, 0x0001, 0x0001, 0x0002, 0x0002, 0x0002, 0x0003, 0x0003, //
+    0x0003, 0x0004, 0x0004, 0x0005, 0x0005, 0x0006, 0x0007, 0x0007, //
+    0x0008, 0x0009, 0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x000E, //
+    0x000F, 0x0010, 0x0011, 0x0012, 0x0013, 0x0015, 0x0016, 0x0018, // entry
+    0x0019, 0x001B, 0x001C, 0x001E, 0x0020, 0x0021, 0x0023, 0x0025, // 000..07F
+    0x0027, 0x0029, 0x002C, 0x002E, 0x0030, 0x0033, 0x0035, 0x0038, //
+    0x003A, 0x003D, 0x0040, 0x0043, 0x0046, 0x0049, 0x004D, 0x0050, //
+    0x0054, 0x0057, 0x005B, 0x005F, 0x0063, 0x0067, 0x006B, 0x006F, //
+    0x0074, 0x0078, 0x007D, 0x0082, 0x0087, 0x008C, 0x0091, 0x0096, //
+    0x009C, 0x00A1, 0x00A7, 0x00AD, 0x00B3, 0x00BA, 0x00C0, 0x00C7, //
+    0x00CD, 0x00D4, 0x00DB, 0x00E3, 0x00EA, 0x00F2, 0x00FA, 0x0101, //
+    0x010A, 0x0112, 0x011B, 0x0123, 0x012C, 0x0135, 0x013F, 0x0148, //
+    0x0152, 0x015C, 0x0166, 0x0171, 0x017B, 0x0186, 0x0191, 0x019C, //
+    0x01A8, 0x01B4, 0x01C0, 0x01CC, 0x01D9, 0x01E5, 0x01F2, 0x0200, //
+    0x020D, 0x021B, 0x0229, 0x0237, 0x0246, 0x0255, 0x0264, 0x0273, //
+    0x0283, 0x0293, 0x02A3, 0x02B4, 0x02C4, 0x02D6, 0x02E7, 0x02F9, //
+    0x030B, 0x031D, 0x0330, 0x0343, 0x0356, 0x036A, 0x037E, 0x0392, //
+    0x03A7, 0x03BC, 0x03D1, 0x03E7, 0x03FC, 0x0413, 0x042A, 0x0441, //
+    0x0458, 0x0470, 0x0488, 0x04A0, 0x04B9, 0x04D2, 0x04EC, 0x0506, //
+    0x0520, 0x053B, 0x0556, 0x0572, 0x058E, 0x05AA, 0x05C7, 0x05E4, // entry
+    0x0601, 0x061F, 0x063E, 0x065C, 0x067C, 0x069B, 0x06BB, 0x06DC, // 080..0FF
+    0x06FD, 0x071E, 0x0740, 0x0762, 0x0784, 0x07A7, 0x07CB, 0x07EF, //
+    0x0813, 0x0838, 0x085D, 0x0883, 0x08A9, 0x08D0, 0x08F7, 0x091E, //
+    0x0946, 0x096F, 0x0998, 0x09C1, 0x09EB, 0x0A16, 0x0A40, 0x0A6C, //
+    0x0A98, 0x0AC4, 0x0AF1, 0x0B1E, 0x0B4C, 0x0B7A, 0x0BA9, 0x0BD8, //
+    0x0C07, 0x0C38, 0x0C68, 0x0C99, 0x0CCB, 0x0CFD, 0x0D30, 0x0D63, //
+    0x0D97, 0x0DCB, 0x0E00, 0x0E35, 0x0E6B, 0x0EA1, 0x0ED7, 0x0F0F, //
+    0x0F46, 0x0F7F, 0x0FB7, 0x0FF1, 0x102A, 0x1065, 0x109F, 0x10DB, //
+    0x1116, 0x1153, 0x118F, 0x11CD, 0x120B, 0x1249, 0x1288, 0x12C7, //
+    0x1307, 0x1347, 0x1388, 0x13C9, 0x140B, 0x144D, 0x1490, 0x14D4, //
+    0x1517, 0x155C, 0x15A0, 0x15E6, 0x162C, 0x1672, 0x16B9, 0x1700, //
+    0x1747, 0x1790, 0x17D8, 0x1821, 0x186B, 0x18B5, 0x1900, 0x194B, //
+    0x1996, 0x19E2, 0x1A2E, 0x1A7B, 0x1AC8, 0x1B16, 0x1B64, 0x1BB3, //
+    0x1C02, 0x1C51, 0x1CA1, 0x1CF1, 0x1D42, 0x1D93, 0x1DE5, 0x1E37, //
+    0x1E89, 0x1EDC, 0x1F2F, 0x1F82, 0x1FD6, 0x202A, 0x207F, 0x20D4, //
+    0x2129, 0x217F, 0x21D5, 0x222C, 0x2282, 0x22DA, 0x2331, 0x2389, // entry
+    0x23E1, 0x2439, 0x2492, 0x24EB, 0x2545, 0x259E, 0x25F8, 0x2653, // 100..17F
+    0x26AD, 0x2708, 0x2763, 0x27BE, 0x281A, 0x2876, 0x28D2, 0x292E, //
+    0x298B, 0x29E7, 0x2A44, 0x2AA1, 0x2AFF, 0x2B5C, 0x2BBA, 0x2C18, //
+    0x2C76, 0x2CD4, 0x2D33, 0x2D91, 0x2DF0, 0x2E4F, 0x2EAE, 0x2F0D, //
+    0x2F6C, 0x2FCC, 0x302B, 0x308B, 0x30EA, 0x314A, 0x31AA, 0x3209, //
+    0x3269, 0x32C9, 0x3329, 0x3389, 0x33E9, 0x3449, 0x34A9, 0x3509, //
+    0x3569, 0x35C9, 0x3629, 0x3689, 0x36E8, 0x3748, 0x37A8, 0x3807, //
+    0x3867, 0x38C6, 0x3926, 0x3985, 0x39E4, 0x3A43, 0x3AA2, 0x3B00, //
+    0x3B5F, 0x3BBD, 0x3C1B, 0x3C79, 0x3CD7, 0x3D35, 0x3D92, 0x3DEF, //
+    0x3E4C, 0x3EA9, 0x3F05, 0x3F62, 0x3FBD, 0x4019, 0x4074, 0x40D0, //
+    0x412A, 0x4185, 0x41DF, 0x4239, 0x4292, 0x42EB, 0x4344, 0x439C, //
+    0x43F4, 0x444C, 0x44A3, 0x44FA, 0x4550, 0x45A6, 0x45FC, 0x4651, //
+    0x46A6, 0x46FA, 0x474E, 0x47A1, 0x47F4, 0x4846, 0x4898, 0x48E9, //
+    0x493A, 0x498A, 0x49D9, 0x4A29, 0x4A77, 0x4AC5, 0x4B13, 0x4B5F, //
+    0x4BAC, 0x4BF7, 0x4C42, 0x4C8D, 0x4CD7, 0x4D20, 0x4D68, 0x4DB0, //
+    0x4DF7, 0x4E3E, 0x4E84, 0x4EC9, 0x4F0E, 0x4F52, 0x4F95, 0x4FD7, // entry
+    0x5019, 0x505A, 0x509A, 0x50DA, 0x5118, 0x5156, 0x5194, 0x51D0, // 180..1FF
+    0x520C, 0x5247, 0x5281, 0x52BA, 0x52F3, 0x532A, 0x5361, 0x5397, //
+    0x53CC, 0x5401, 0x5434, 0x5467, 0x5499, 0x54CA, 0x54FA, 0x5529, //
+    0x5558, 0x5585, 0x55B2, 0x55DE, 0x5609, 0x5632, 0x565B, 0x5684, //
+    0x56AB, 0x56D1, 0x56F6, 0x571B, 0x573E, 0x5761, 0x5782, 0x57A3, //
+    0x57C3, 0x57E2, 0x57FF, 0x581C, 0x5838, 0x5853, 0x586D, 0x5886, //
+    0x589E, 0x58B5, 0x58CB, 0x58E0, 0x58F4, 0x5907, 0x5919, 0x592A, //
+    0x593A, 0x5949, 0x5958, 0x5965, 0x5971, 0x597C, 0x5986, 0x598F, //
+    0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3  //
+];
 
 
 #[derive(Copy, Clone, PartialEq)]
@@ -43,7 +117,7 @@ pub struct Adsr {
     release_shift: u8,
     value: u32,
     cycles: u16,
-    volume: i16,
+    pub volume: i16,
     current_target: i16,
     current_step: i16,
     current_rate: u16,
@@ -53,16 +127,6 @@ pub struct Adsr {
 }
 
 impl Adsr {
-    fn clamp(value: i32, min: i32, max: i32) -> i16 {
-        if value < min {
-            return min as i16;
-        }
-        if value > max {
-            return max as i16;
-        }
-
-        value as i16
-    }
     pub fn new() -> Self {
         Self {
             attack_mode: AdsrMode::Linear,
@@ -237,10 +301,10 @@ impl Adsr {
         let new_volume = self.volume as i32 + actual_step as i32;
 
         if !decreasing {
-            self.volume = Self::clamp(new_volume, VOLUME_MIN, VOLUME_MAX);
+            self.volume = SPU::clamp(new_volume, VOLUME_MIN, VOLUME_MAX);
         } else {
             if self.invert_phase {
-                self.volume = Self::clamp(new_volume, VOLUME_MIN, 0);
+                self.volume = SPU::clamp(new_volume, VOLUME_MIN, 0);
             } else {
                 self.volume = cmp::max(new_volume, 0) as i16;
             }
@@ -305,6 +369,29 @@ impl Adsr {
 }
 
 #[derive(Copy, Clone)]
+struct ADPCMBlock {
+    pub filter: u8,
+    pub shift: u8,
+    pub loop_end: bool,
+    pub loop_repeat: bool,
+    pub loop_start: bool,
+    pub sample_blocks: [u8; 14]
+}
+
+impl ADPCMBlock {
+    pub fn new() -> Self {
+        Self {
+            filter: 0,
+            shift: 0,
+            loop_end: false,
+            loop_repeat: false,
+            loop_start: false,
+            sample_blocks: [0; 14]
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
 pub struct Voice {
     volume_left: u16,
     volume_right: u16,
@@ -314,7 +401,15 @@ pub struct Voice {
     pub adsr: Adsr,
     current_adsr_volume: i16,
     current_address: u32,
-    pub enabled: bool
+    pitch_counter: i32,
+    has_samples: bool,
+    is_first_block: bool,
+    last_samples: [i16; 2],
+    current_samples: [i16; NUM_BLOCK_SAMPLES],
+    current_block: ADPCMBlock,
+    pub last_volume: i32,
+    current_left_volume: u16,
+    current_right_volume: u16
 }
 
 impl Voice {
@@ -328,7 +423,15 @@ impl Voice {
             repeat_address: 0,
             current_adsr_volume: 0,
             current_address: 0,
-            enabled: false
+            pitch_counter: 0,
+            has_samples: false,
+            is_first_block: false,
+            last_samples: [0; 2],
+            current_samples: [0; NUM_BLOCK_SAMPLES],
+            current_block: ADPCMBlock::new(),
+            last_volume: 0,
+            current_left_volume: 0,
+            current_right_volume: 0
         }
     }
 
@@ -341,14 +444,14 @@ impl Voice {
             0x8 => {
                 self.adsr.write_lower(value);
 
-                if self.enabled {
+                if self.adsr.phase != AdsrPhase::Idle {
                     self.adsr.update_envelope();
                 }
             }
             0xa => {
                 self.adsr.write_upper(value);
 
-                if self.enabled {
+                if self.adsr.phase != AdsrPhase::Idle {
                     self.adsr.update_envelope();
                 }
             }
@@ -358,14 +461,167 @@ impl Voice {
         }
     }
 
-    pub fn generate_sample(&mut self) -> i16 {
-        0
+    fn interpolate(&mut self, interpolation_index: usize, sample_index: usize) -> i32 {
+        let oldest = self.get_interpolate_sample(sample_index as isize - 4);
+        let older = self.get_interpolate_sample(sample_index as isize - 3);
+        let old = self.get_interpolate_sample(sample_index as isize - 2);
+        let new = self.get_interpolate_sample(sample_index as isize - 1);
+
+        let mut out: i32 = (GAUSSIAN_TABLE[0xff - interpolation_index] * oldest as i32) >> 15;
+        out += (GAUSSIAN_TABLE[0x1ff - interpolation_index] * older) >> 15;
+        out += (GAUSSIAN_TABLE[0x100 - interpolation_index] * old) >> 15;
+        out += (GAUSSIAN_TABLE[interpolation_index] * new) >> 15;
+
+        out
+    }
+
+    pub fn generate_sample(
+        &mut self,
+        sound_ram: &[u8],
+        irq_address: u32,
+        irq9_enable: bool,
+        interrupt_register: &mut InterruptRegister,
+        pitch_modulate: bool,
+        previous_volume: i32,
+        noise_enable: bool,
+        endx: &mut u32
+    ) -> (i32, i32) {
+        if self.adsr.phase == AdsrPhase::Idle && !irq9_enable {
+            return (0, 0);
+        }
+
+        if !self.has_samples {
+            if irq9_enable && (self.current_address == irq_address || ((self.current_address + 8) & 0x7_ffff) == irq_address) {
+                interrupt_register.insert(InterruptRegister::SPU);
+            }
+            let block = self.read_adpcm_block(sound_ram);
+            self.decode_adpcm_block(&block);
+
+            self.has_samples = true;
+
+            if self.current_block.loop_start && !self.is_first_block && self.adsr.phase != AdsrPhase::Idle {
+                self.repeat_address = self.current_address;
+            }
+        }
+
+        let interpolation_index = (self.pitch_counter >> 4) & 0xff;
+        let sample_index = self.pitch_counter >> 12;
+
+        let volume = if self.adsr.volume > 0 {
+            let sample = if noise_enable {
+                todo!("noise");
+            } else {
+                self.interpolate(interpolation_index as usize, sample_index as usize)
+            };
+
+            (sample * self.adsr.volume as i32) >> 15
+        } else {
+            0
+        };
+
+        self.last_volume = volume;
+
+        let mut step = self.sample_rate as i32;
+
+        if self.adsr.phase != AdsrPhase::Idle {
+            self.adsr.tick_adsr();
+        }
+
+        if pitch_modulate {
+            let factor = SPU::clamp(previous_volume, -0x8000, 0x7fff) as i32 + 0x80000;
+
+            step = ((step * factor) >> 15) & 0xffff;
+        }
+
+        if step > 0x3fff {
+            step = 0x4000;
+        }
+
+        self.pitch_counter += step;
+
+        let mut sample_index = self.pitch_counter >> 12;
+
+        if sample_index >= NUM_BLOCK_SAMPLES as i32 {
+            self.is_first_block = false;
+            sample_index -= NUM_BLOCK_SAMPLES as i32;
+
+            self.pitch_counter &= 0xfff;
+            self.pitch_counter |= sample_index << 12;
+
+            self.current_address = (self.current_address + 2) & 0x7_ffff;
+        }
+
+        let left = (volume * self.volume_left as i32) >> 15;
+        let right = (volume * self.volume_right as i32) >> 15;
+
+        (left, right)
+    }
+
+    fn get_interpolate_sample(&self, index: isize) -> i32 {
+        if index < 0 {
+            self.current_samples[(index + 3) as usize] as i32
+        } else {
+            self.current_samples[index as usize] as i32
+        }
+    }
+
+    fn decode_adpcm_block(&mut self, block: &ADPCMBlock) {
+        let positive_filter = POS_FILTER_TABLE[block.filter as usize];
+        let negative_filter = NEG_FILTER_TABLE[block.filter as usize];
+
+        for i in 0..NUM_BLOCK_SAMPLES {
+            let byte = block.sample_blocks[i / 2];
+
+            let nibble = if i & 1 == 0 {
+                byte & 0xf
+            } else {
+                byte >> 4
+            };
+
+            let mut sample = ((nibble << 12) as i16 as i32) >> block.shift as i32;
+
+            sample += ((self.last_samples[0] * positive_filter as i16) >> 6) as i32;
+            sample += ((self.last_samples[1] * negative_filter as i16) >> 6) as i32;
+
+            self.last_samples[1] = self.last_samples[0];
+            self.last_samples[0] = SPU::clamp(sample, -0x8000, 0x7fff);
+
+            self.current_samples[i] = self.last_samples[0];
+        }
+
+    }
+
+    fn read_adpcm_block(&mut self, sound_ram: &[u8]) -> ADPCMBlock {
+        let mut block = ADPCMBlock::new();
+
+        let shift_filter = sound_ram[self.current_address as usize];
+
+        block.shift = shift_filter & 0xf;
+        block.filter = (shift_filter >> 4) & 0xf;
+
+        self.current_address = (self.current_address + 1) & 0x7_ffff;
+
+        let flags = sound_ram[self.current_address as usize];
+
+        block.loop_end = flags & 1 == 1;
+        block.loop_repeat = (flags >> 1) & 1 == 1;
+        block.loop_start = (flags >> 2) & 1 == 1;
+
+        self.current_address = (self.current_address + 1) & 0x7_ffff;
+
+        for i in 0..14 {
+            block.sample_blocks[i] = sound_ram[self.current_address as usize];
+
+            self.current_address = (self.current_address + 1) & 0x7_ffff;
+        }
+
+        block
     }
 
     pub fn update_keyon(&mut self) {
         self.current_address = self.start_address;
-        self.enabled = true;
         self.adsr.phase = AdsrPhase::Attack;
+        self.is_first_block = true;
 
         self.adsr.update_envelope();
     }

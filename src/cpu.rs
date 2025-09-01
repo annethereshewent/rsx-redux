@@ -1,9 +1,10 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use bus::{scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
 use gte::Gte;
 use instructions::Instruction;
+use ringbuf::{storage::Heap, wrap::caching::Caching, SharedRb};
 
 pub mod bus;
 pub mod instructions;
@@ -41,7 +42,7 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>) -> Self {
         /*
         00h=SPECIAL 08h=ADDI  10h=COP0 18h=N/A   20h=LB   28h=SB   30h=LWC0 38h=SWC0
         01h=BcondZ  09h=ADDIU 11h=COP1 19h=N/A   21h=LH   29h=SH   31h=LWC1 39h=SWC1
@@ -203,7 +204,7 @@ impl CPU {
             next_pc: 0xbfc00004,
             hi: 0,
             lo: 0,
-            bus: Bus::new(),
+            bus: Bus::new(producer),
             instructions,
             special_instructions,
             delayed_load: None,
@@ -381,7 +382,7 @@ impl CPU {
                 EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
                 EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
                 EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler),
-                EventType::TickSpu => self.bus.spu.tick()
+                EventType::TickSpu => self.bus.spu.tick(&mut self.bus.interrupt_stat)
             }
         }
     }

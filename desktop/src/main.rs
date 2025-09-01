@@ -3,7 +3,8 @@ use std::{env, fs::{self, File}};
 use frontend::Frontend;
 use memmap2::Mmap;
 use objc2_core_foundation::CGSize;
-use rsx_redux::cpu::CPU;
+use ringbuf::{traits::Split, HeapRb};
+use rsx_redux::cpu::{bus::spu::NUM_SAMPLES, CPU};
 
 pub mod frontend;
 pub mod renderer;
@@ -21,7 +22,12 @@ fn main() {
 
     let bios = fs::read("SCPH1001.bin").unwrap();
 
-    let mut cpu = CPU::new();
+
+    let ringbuffer = HeapRb::<i16>::new(NUM_SAMPLES);
+
+    let (producer, consumer) = ringbuffer.split();
+
+    let mut cpu = CPU::new(producer);
     cpu.bus.load_bios(bios);
     cpu.bus.cdrom.load_game_arm64(game_data);
 

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cdrom::CDRom;
 use dma::dma::Dma;
 use gpu::GPU;
@@ -6,6 +8,7 @@ use registers::{
     delay_register::DelayRegister,
     interrupt_register::InterruptRegister
 };
+use ringbuf::{storage::Heap, wrap::caching::Caching, SharedRb};
 use scheduler::Scheduler;
 use spu::SPU;
 use timer::Timer;
@@ -47,7 +50,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new() -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>) -> Self {
         let mut scheduler = Scheduler::new();
         Self {
             bios: Vec::new(),
@@ -64,7 +67,7 @@ impl Bus {
             exp2_delay: DelayRegister::new(),
             cache_config: 0,
             main_ram: vec![0; 0x200000].into_boxed_slice(),
-            spu: SPU::new(),
+            spu: SPU::new(producer),
             exp1_post: 0,
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
             interrupt_stat: InterruptRegister::from_bits_truncate(0),
@@ -202,7 +205,7 @@ impl Bus {
             0x1f801120 => self.timers[2].counter = value as u32,
             0x1f801124 => self.timers[2].write_counter_register(value, &mut self.scheduler),
             0x1f801128 => self.timers[2].counter_target = value,
-            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value),
+            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value, &mut self.interrupt_stat),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
     }
