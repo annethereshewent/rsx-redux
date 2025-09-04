@@ -1,4 +1,4 @@
-use std::cmp;
+use std::{cmp, i16};
 
 use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, spu::SPU};
 
@@ -90,7 +90,7 @@ pub enum EnvelopeDirection {
     Decrease = 1
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum AdsrPhase {
     Attack,
     Sustain,
@@ -136,7 +136,12 @@ impl Envelope {
 
         let invert_phase = self.invert_phase && !(decreasing && mode == EnvelopeMode::Exponential);
 
-        self.step = if decreasing != invert_phase || (decreasing && mode == EnvelopeMode::Exponential) { !step as i16 } else { step as i16};
+        self.step = if invert_phase {
+            !step as i16
+        } else {
+            step as i16
+        };
+
         self.mode = mode;
 
         if rate < 44 {
@@ -153,7 +158,7 @@ impl Envelope {
     fn tick(&mut self) -> bool {
         let (actual_step, actual_increment) = if self.mode == EnvelopeMode::Exponential {
             if self.direction == EnvelopeDirection::Decrease {
-                (((self.step * self.volume) >> 15), self.increment)
+                (((self.step as i32 * self.volume as i32) >> 15) as i16, self.increment)
             } else {
                 if self.volume >= 0x6000 {
                     if self.rate < 40 {
@@ -170,7 +175,6 @@ impl Envelope {
         } else {
             (self.step, self.increment)
         };
-
 
         self.counter += actual_increment as u32;
 
@@ -206,14 +210,14 @@ impl Envelope {
 pub struct Adsr {
     pub phase: AdsrPhase,
     attack_mode: EnvelopeMode,
-    attack_step: u8,
+    attack_step: i8,
     attack_shift: u8,
     attack_rate: u8,
     decay_shift: u8,
     sustain_level: u16,
     sustain_mode: EnvelopeMode,
     sustain_direction: EnvelopeDirection,
-    sustain_step: u8,
+    sustain_step: i8,
     sustain_shift: u8,
     sustain_rate: u8,
     release_mode: EnvelopeMode,
@@ -271,14 +275,9 @@ impl Adsr {
     */
     pub fn write_lower(&mut self, value: u16) {
         self.value = (self.value & 0xffff0000) | value as u32;
-        self.sustain_level = value & 0xf;
-        self.attack_step = match (value >> 8) & 0x3 {
-            0 => 7,
-            1 => 6,
-            2 => 5,
-            3 => 4,
-            _ => unreachable!()
-        };
+        self.sustain_level = ((value & 0xf) + 1) * 0x800;
+
+        self.attack_step = (7 - ((value >> 8) & 0x3)) as i8;
 
         self.attack_shift = ((value >> 10) & 0x1f) as u8;
         self.attack_rate = ((value >> 8) & 0x7f) as u8;
@@ -299,21 +298,21 @@ impl Adsr {
             1 => EnvelopeMode::Exponential,
             _ => unreachable!()
         };
-        self.sustain_step = match (value >> 6) & 0x3 {
-            0 => 7,
-            1 => 6,
-            2 => 5,
-            3 => 4,
-            _ => unreachable!()
-        };
 
-        self.sustain_rate = (((value >> 6)) & 0x7f) as u8;
-        self.sustain_shift = (((value >> 8) & 0x1f)) as u8;
         self.sustain_direction = match (value >> 14) & 1 {
             0 => EnvelopeDirection::Increase,
             1 => EnvelopeDirection::Decrease,
             _ => unreachable!()
         };
+
+        self.sustain_step = if self.sustain_direction == EnvelopeDirection::Increase {
+            7 - ((value >> 6) & 0x3) as i8
+        } else {
+            -8 + ((value >> 6) & 0x3) as i8
+        };
+
+        self.sustain_rate = (((value >> 6)) & 0x7f) as u8;
+        self.sustain_shift = (((value >> 8) & 0x1f)) as u8;
 
         self.sustain_mode = match value >> 15 {
             0 => EnvelopeMode::Linear,
@@ -326,6 +325,10 @@ impl Adsr {
     pub fn tick(&mut self) {
         if self.envelope.increment > 0 {
             self.envelope.tick();
+        }
+
+        if self.current_target < 0 {
+            return;
         }
 
         let reached_target = match self.phase {
@@ -346,6 +349,7 @@ impl Adsr {
                 AdsrPhase::Idle => AdsrPhase::Idle,
                 AdsrPhase::Release => AdsrPhase::Idle,
             };
+
             self.update_envelope();
         }
     }
@@ -361,11 +365,11 @@ impl Adsr {
                     0x7f,
                     self.attack_mode,
                     EnvelopeDirection::Increase,
-                    false)
-                    ;
+                    false
+                );
             }
             AdsrPhase::Decay => {
-                self.current_target = 0;
+                self.current_target = self.sustain_level as i16;
                 self.envelope.reset(
                     self.decay_shift << 2,
                     self.decay_shift as i8,
@@ -377,11 +381,11 @@ impl Adsr {
                 );
             }
             AdsrPhase::Sustain => {
-                self.current_target = 0;
+                self.current_target = -1;
                 self.envelope.reset(
                     self.sustain_rate,
                     self.sustain_shift as i8,
-                    self.sustain_step as i8,
+                    if self.sustain_direction == EnvelopeDirection::Decrease { !self.sustain_step as i8 } else { self.sustain_step as i8 },
                     0x7f,
                     self.sustain_mode,
                     self.sustain_direction,
@@ -480,13 +484,8 @@ impl Voice {
     }
 
     fn get_sweep_params(value: u16) -> (u8, i8, i8, EnvelopeMode, EnvelopeDirection, bool) {
-        let sweep_step = match value & 0x3 {
-            0 => 7,
-            1 => 6,
-            2 => 5,
-            3 => 4,
-            _ => unreachable!()
-        };
+
+
         let sweep_shift = (value >> 2) & 0x1f;
         let sweep_rate = value & 0x7f;
 
@@ -496,6 +495,12 @@ impl Voice {
             0 => EnvelopeDirection::Increase,
             1 => EnvelopeDirection::Decrease,
             _ => unreachable!()
+        };
+
+        let sweep_step = if direction == EnvelopeDirection::Increase {
+            7 - ((value & 0x3) as i8)
+        } else {
+            -8 + ((value & 0x3) as i8)
         };
 
         let mode = match (value >> 14) & 1 {
@@ -562,7 +567,7 @@ impl Voice {
         let old = self.get_interpolate_sample(sample_index as isize - 1);
         let new = self.get_interpolate_sample(sample_index as isize);
 
-        let mut out: i32 = (GAUSSIAN_TABLE[0xff - interpolation_index] * oldest as i32) >> 15;
+        let mut out = (GAUSSIAN_TABLE[0xff - interpolation_index] * oldest as i32) >> 15;
         out += (GAUSSIAN_TABLE[0x1ff - interpolation_index] * older) >> 15;
         out += (GAUSSIAN_TABLE[0x100 - interpolation_index] * old) >> 15;
         out += (GAUSSIAN_TABLE[interpolation_index] * new) >> 15;
