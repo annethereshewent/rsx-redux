@@ -166,14 +166,14 @@ impl SPU {
     }
 
     pub fn write_voices(&mut self, address: usize, value: u16) {
-        let voice = (address - 0x1f801c00) / 16;
-        let channel = (address - 0x1f801c00) & 0xf;
+        let voice = ((address >> 4) & 0x1f) as usize;
+        let channel = address & 0xf;
 
         self.voices[voice as usize].write(channel, value);
     }
 
     pub fn read_voices(&self, address: usize) -> u16 {
-        let voice = (address - 0x1f801c00) / 16;
+        let voice = ((address >> 4) & 0x1f) as usize;
         let channel = (address - 0x1f801c00) & 0xf;
 
         self.voices[voice as usize].read(channel)

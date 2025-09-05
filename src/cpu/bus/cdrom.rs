@@ -43,10 +43,10 @@ enum Mode2Form {
 }
 
 struct CDSubheader {
-    file_num: u8,
-    channel_num: u8,
+    _file_num: u8,
+    _channel_num: u8,
     read_mode: CDReadMode,
-    form: Mode2Form
+    _form: Mode2Form
 }
 
 impl CDSubheader {
@@ -71,19 +71,19 @@ impl CDSubheader {
         };
 
         Self {
-            file_num,
-            channel_num,
+            _file_num: file_num,
+            _channel_num: channel_num,
             read_mode,
-            form
+            _form: form
         }
     }
 
     pub fn new() -> Self {
         Self {
-            file_num: 0,
-            channel_num: 0,
+            _file_num: 0,
+            _channel_num: 0,
             read_mode: CDReadMode::Data,
-            form: Mode2Form::Form1
+            _form: Mode2Form::Form1
         }
     }
 }

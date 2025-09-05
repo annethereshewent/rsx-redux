@@ -56,8 +56,6 @@ impl CPU {
 
     pub fn reserved(&mut self, instruction: Instruction) -> usize {
         panic!("invalid instruction received: 0x{:x}", instruction.0);
-
-        2
     }
 
     pub fn bcondz(&mut self, instruction: Instruction) -> usize {
@@ -90,16 +88,12 @@ impl CPU {
         2
     }
 
-    pub fn bltzal(&mut self, instruction: Instruction) -> usize {
+    pub fn bltzal(&mut self, _instruction: Instruction) -> usize {
         todo!("bltzal");
-
-        2
     }
 
-    pub fn bgezal(&mut self, instruction: Instruction) -> usize {
+    pub fn bgezal(&mut self, _instruction: Instruction) -> usize {
         todo!("bgezal");
-
-        2
     }
 
     pub fn j(&mut self, instruction: Instruction) -> usize {
@@ -252,8 +246,6 @@ impl CPU {
 
     pub fn cop1(&mut self, _instruction: Instruction) -> usize {
         panic!("cop1 nonexistent in playstation");
-
-        2
     }
 
     pub fn cop2(&mut self, instruction: Instruction) -> usize {
@@ -282,8 +274,6 @@ impl CPU {
 
     pub fn cop3(&mut self, _instruction: Instruction) -> usize {
         panic!("cop3 nonexistent in playstation");
-
-        2
     }
 
     pub fn lb(&mut self, instruction: Instruction) -> usize {
@@ -452,16 +442,12 @@ impl CPU {
         2
     }
 
-    pub fn lwc0(&mut self, instruction: Instruction) -> usize {
+    pub fn lwc0(&mut self, _instruction: Instruction) -> usize {
         todo!("lwc0");
-
-        2
     }
 
-    pub fn lwc1(&mut self, instruction: Instruction) -> usize {
+    pub fn lwc1(&mut self, _instruction: Instruction) -> usize {
         todo!("lwc1");
-
-        2
     }
 
     pub fn lwc2(&mut self, instruction: Instruction) -> usize {
@@ -474,19 +460,16 @@ impl CPU {
         2
     }
 
-    pub fn lwc3(&mut self, instruction: Instruction) -> usize {
+    pub fn lwc3(&mut self, _instruction: Instruction) -> usize {
         todo!("lwc3");
-        2
     }
 
-    pub fn swc0(&mut self, instruction: Instruction) -> usize {
+    pub fn swc0(&mut self, _instruction: Instruction) -> usize {
         todo!("swc0");
-        2
     }
 
-    pub fn swc1(&mut self, instruction: Instruction) -> usize {
+    pub fn swc1(&mut self, _instruction: Instruction) -> usize {
         todo!("swc1");
-        2
     }
 
     pub fn swc2(&mut self, instruction: Instruction) -> usize {
@@ -499,9 +482,8 @@ impl CPU {
         2
     }
 
-    pub fn swc3(&mut self, instruction: Instruction) -> usize {
+    pub fn swc3(&mut self, _instruction: Instruction) -> usize {
         todo!("swc3");
-        2
     }
 
     pub fn sll(&mut self, instruction: Instruction) -> usize {
@@ -587,10 +569,8 @@ impl CPU {
         2
     }
 
-    pub fn break_(&mut self, instruction: Instruction) -> usize {
+    pub fn break_(&mut self, _instruction: Instruction) -> usize {
         todo!("break");
-
-        2
     }
 
     pub fn mfhi(&mut self, instruction: Instruction) -> usize {
@@ -693,10 +673,8 @@ impl CPU {
         2
     }
 
-    pub fn sub(&mut self, instruction: Instruction) -> usize {
+    pub fn sub(&mut self, _instruction: Instruction) -> usize {
         todo!("sub");
-
-        2
     }
 
     pub fn subu(&mut self, instruction: Instruction) -> usize {

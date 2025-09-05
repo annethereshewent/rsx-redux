@@ -437,49 +437,47 @@ impl ADPCMBlock {
 
 #[derive(Copy, Clone)]
 pub struct Voice {
-    // volume_left: i32,
-    // volume_right: i32,
     start_address: u32,
     sample_rate: u16,
     repeat_address: u32,
     pub adsr: Adsr,
-    current_adsr_volume: i16,
     current_address: u32,
-    pitch_counter: i32,
+    pitch_counter: u32,
     has_samples: bool,
     is_first_block: bool,
-    last_samples: [i16; 2],
+    last_decoded_samples: [i16; 2],
+    last_gaussian_samples: [i16; 4],
     current_samples: [i16; NUM_BLOCK_SAMPLES],
     current_block: ADPCMBlock,
     pub last_volume: i32,
     left_envelope: Envelope,
     right_envelope: Envelope,
     using_left_envelope: bool,
-    using_right_envelope: bool
+    using_right_envelope: bool,
+    ignore_loop_address: bool
 }
 
 impl Voice {
     pub fn new() -> Self {
         Self {
             adsr: Adsr::new(),
-            // volume_left: 0,
-            // volume_right: 0,
             start_address: 0,
             sample_rate: 0,
             repeat_address: 0,
-            current_adsr_volume: 0,
             current_address: 0,
             pitch_counter: 0,
             has_samples: false,
             is_first_block: false,
-            last_samples: [0; 2],
+            last_decoded_samples: [0; 2],
             current_samples: [0; NUM_BLOCK_SAMPLES],
             current_block: ADPCMBlock::new(),
             last_volume: 0,
             left_envelope: Envelope::new(),
             right_envelope: Envelope::new(),
             using_left_envelope: false,
-            using_right_envelope: false
+            using_right_envelope: false,
+            last_gaussian_samples: [0; 4],
+            ignore_loop_address: false
         }
     }
 
@@ -555,8 +553,11 @@ impl Voice {
                     self.adsr.update_envelope();
                 }
             }
-            0xc => self.current_adsr_volume = value as i16,
-            0xe => self.repeat_address = value as u32 * 8,
+            0xc => self.adsr.envelope.volume = value as i16,
+            0xe => {
+                self.ignore_loop_address = !self.is_first_block && self.adsr.phase == AdsrPhase::Idle;
+                self.repeat_address = value as u32 * 8;
+            }
             _ => panic!("invalid channel given: 0x{:x}", channel)
         }
     }
@@ -600,7 +601,7 @@ impl Voice {
 
             self.has_samples = true;
 
-            if self.current_block.loop_start && !self.is_first_block && self.adsr.phase != AdsrPhase::Idle {
+            if self.current_block.loop_start && !self.ignore_loop_address {
                 self.repeat_address = self.current_address;
             }
         }
@@ -622,16 +623,16 @@ impl Voice {
 
         self.last_volume = volume;
 
-        let mut step = self.sample_rate as i32;
+        let mut step = self.sample_rate as u32;
 
         if self.adsr.phase != AdsrPhase::Idle {
             self.adsr.tick();
         }
 
         if pitch_modulate {
-            let factor = SPU::clamp(previous_volume, -0x8000, 0x7fff) as i32 + 0x80000;
+            let factor = (SPU::clamp(previous_volume, -0x8000, 0x7fff) as i32 + 0x80000) as u32;
 
-            step = ((step * factor) >> 15) & 0xffff;
+            step = ((step * factor) >> 15) as i16 as u16 as u32;
         }
 
         if step > 0x3fff {
@@ -642,9 +643,9 @@ impl Voice {
 
         let mut sample_index = self.pitch_counter >> 12;
 
-        if sample_index >= NUM_BLOCK_SAMPLES as i32 {
+        if sample_index >= NUM_BLOCK_SAMPLES as u32{
             self.is_first_block = false;
-            sample_index -= NUM_BLOCK_SAMPLES as i32;
+            sample_index -= NUM_BLOCK_SAMPLES as u32;
 
             self.has_samples = false;
 
@@ -658,11 +659,9 @@ impl Voice {
 
                 self.current_address = self.repeat_address;
 
-                if !self.current_block.loop_repeat {
-                    if !noise_enable {
-                        self.adsr.envelope.volume = 0;
-                        self.adsr.phase = AdsrPhase::Idle;
-                    }
+                if !self.current_block.loop_repeat && !noise_enable {
+                    self.adsr.envelope.volume = 0;
+                    self.adsr.phase = AdsrPhase::Idle;
                 }
             }
         }
@@ -682,7 +681,7 @@ impl Voice {
 
     fn get_interpolate_sample(&self, index: isize) -> i32 {
         if index < 0 {
-            self.current_samples[(index + 3) as usize] as i32
+            self.last_gaussian_samples[(index + 3) as usize] as i32
         } else {
             self.current_samples[index as usize] as i32
         }
@@ -691,6 +690,13 @@ impl Voice {
     fn decode_adpcm_block(&mut self, block: &ADPCMBlock) {
         let positive_filter = POS_FILTER_TABLE[block.filter as usize];
         let negative_filter = NEG_FILTER_TABLE[block.filter as usize];
+
+        let mut j = 0;
+
+        for i in 24..self.current_samples.len() {
+            self.last_gaussian_samples[j] = self.current_samples[i];
+            j += 1;
+        }
 
         for i in 0..NUM_BLOCK_SAMPLES {
             let byte = block.sample_blocks[i / 2];
@@ -703,15 +709,17 @@ impl Voice {
 
             let mut sample = (((nibble as i16) << 12) as i32) >> block.shift as i32;
 
-            sample += ((self.last_samples[0] * positive_filter as i16) >> 6) as i32;
-            sample += ((self.last_samples[1] * negative_filter as i16) >> 6) as i32;
+            sample += ((self.last_decoded_samples[0] * positive_filter as i16) >> 6) as i32;
+            sample += ((self.last_decoded_samples[1] * negative_filter as i16) >> 6) as i32;
 
-            self.last_samples[1] = self.last_samples[0];
-            self.last_samples[0] = SPU::clamp(sample, -0x8000, 0x7fff);
+            self.last_decoded_samples[1] = self.last_decoded_samples[0];
+            self.last_decoded_samples[0] = SPU::clamp(sample, -0x8000, 0x7fff);
 
-            self.current_samples[i] = self.last_samples[0];
+            self.current_samples[i] = self.last_decoded_samples[0];
         }
 
+
+        self.current_block = *block;
     }
 
     fn read_adpcm_block(&mut self, sound_ram: &[u8]) -> ADPCMBlock {
@@ -768,7 +776,7 @@ impl Voice {
             0x6 => (self.start_address / 8) as u16,
             0x8 => self.adsr.value as u16,
             0xa => (self.adsr.value >> 16) as u16,
-            0xc => self.current_adsr_volume as u16,
+            0xc => self.adsr.envelope.volume as u16,
             0xe => (self.repeat_address / 8) as u16,
             _ => panic!("invalid channel given: 0x{:x}", channel)
         }
