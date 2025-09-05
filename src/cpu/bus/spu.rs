@@ -15,6 +15,15 @@ pub const NUM_SAMPLES: usize = 8192 * 2;
 
 const SPU_CYCLES: usize = 768;
 
+const CAPTURE_SIZE: usize = 0x400;
+
+enum CaptureIndexes {
+    _CdLeft = 0,
+    _CdRight = 1,
+    Voice1 = 2,
+    Voice3 = 3
+}
+
 pub struct SPU {
     pub main_volume_left: u16,
     pub main_volume_right: u16,
@@ -360,11 +369,18 @@ impl SPU {
             right_total += right;
         }
 
+        self.write_to_capture(CaptureIndexes::Voice1 as usize, self.voices[1].last_volume as u16);
+        self.write_to_capture(CaptureIndexes::Voice3 as usize, self.voices[3].last_volume as u16);
+
         self.producer.try_push(Self::clamp(left_total, -0x8000, 0x7fff)).unwrap_or(());
         self.producer.try_push(Self::clamp(right_total, -0x8000, 0x7fff)).unwrap_or(());
 
         self.update_keystatus();
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
+    }
+
+    fn write_to_capture(&mut self, capture_index: usize, volume: u16) {
+        unsafe { *(&mut self.sound_ram[CAPTURE_SIZE * capture_index] as *mut u8 as *mut u16) = volume };
     }
 }
