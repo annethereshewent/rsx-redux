@@ -114,11 +114,8 @@ impl Reverb {
     BufferAddress = MAX(mBASE, (BufferAddress+2) AND 7FFFEh)
     Wait one 22050Hz cycle, then repeat the above stuff
     */
-    pub fn calculate_right(&mut self, reverb_right: i16, sound_ram: &mut SoundRam) {
-        let rin = SPU::apply_volume(
-            SPU::to_f32(reverb_right),
-            self.v_rin
-        );
+    pub fn calculate_right(&mut self, reverb_right: f32, sound_ram: &mut SoundRam) {
+        let rin = SPU::apply_volume(reverb_right, self.v_rin);
 
         let d_r_same = sound_ram.readf32(self.calculate_address(self.d_r_same as usize));
         let mr_same2 = sound_ram.readf32(self.calculate_address(self.mr_same as usize - 2));
@@ -178,9 +175,9 @@ impl Reverb {
 
     }
 
-    pub fn calculate_left(&mut self, reverb_left: i16, sound_ram: &mut SoundRam) {
+    pub fn calculate_left(&mut self, reverb_left: f32, sound_ram: &mut SoundRam) {
         let lin = SPU::apply_volume(
-            SPU::to_f32(reverb_left),
+                reverb_left,
             self.v_lin
         );
 

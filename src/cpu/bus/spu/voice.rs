@@ -562,18 +562,18 @@ impl Voice {
         }
     }
 
-    fn interpolate(&mut self, interpolation_index: usize, sample_index: usize) -> i32 {
+    fn interpolate(&mut self, interpolation_index: usize, sample_index: usize) -> f32 {
         let oldest = self.get_interpolate_sample(sample_index as isize - 3);
         let older = self.get_interpolate_sample(sample_index as isize - 2);
         let old = self.get_interpolate_sample(sample_index as isize - 1);
         let new = self.get_interpolate_sample(sample_index as isize);
 
-        let mut out = (GAUSSIAN_TABLE[0xff - interpolation_index] * oldest as i32) >> 15;
+        let mut out = (GAUSSIAN_TABLE[0xff - interpolation_index] * oldest) >> 15;
         out += (GAUSSIAN_TABLE[0x1ff - interpolation_index] * older) >> 15;
         out += (GAUSSIAN_TABLE[0x100 - interpolation_index] * old) >> 15;
         out += (GAUSSIAN_TABLE[interpolation_index] * new) >> 15;
 
-        out
+        SPU::to_f32(out as i16)
     }
 
     pub fn generate_samples(
@@ -585,9 +585,9 @@ impl Voice {
         pitch_modulate: bool,
         previous_volume: i32,
         noise_enable: bool
-    ) -> (i32, i32, bool) {
+    ) -> (f32, f32, bool) {
         if self.adsr.phase == AdsrPhase::Idle && !irq9_enable {
-            return (0, 0, false);
+            return (0.0, 0.0, false);
         }
 
         let mut endx = false;
@@ -616,12 +616,12 @@ impl Voice {
                 self.interpolate(interpolation_index as usize, sample_index as usize)
             };
 
-            (sample * self.adsr.envelope.volume as i32) >> 15
+            sample * SPU::to_f32(self.adsr.envelope.volume)
         } else {
-            0
+            0.0
         };
 
-        self.last_volume = volume;
+        self.last_volume = SPU::to_i16(volume) as i32;
 
         let mut step = self.sample_rate as u32;
 
@@ -666,8 +666,8 @@ impl Voice {
             }
         }
 
-        let left = (volume * self.left_envelope.volume as i32) >> 15;
-        let right = (volume * self.right_envelope.volume as i32) >> 15;
+        let left = volume * SPU::to_f32(self.left_envelope.volume);
+        let right = volume * SPU::to_f32(self.right_envelope.volume);
 
         if self.using_left_envelope {
             self.using_left_envelope = self.left_envelope.tick();

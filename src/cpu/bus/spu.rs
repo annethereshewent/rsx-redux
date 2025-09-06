@@ -124,6 +124,17 @@ impl SPU {
         value as i16
     }
 
+    pub fn clampf32(value: f32) -> f32 {
+        if value < -1.0 {
+            return -1.0;
+        }
+        if value > 1.0 {
+            return 1.0;
+        }
+
+        value
+    }
+
     fn to_f32(sample: i16) -> f32 {
         if sample < 0 {
             -sample as f32 / i16::MIN as f32
@@ -256,11 +267,11 @@ impl SPU {
     }
 
     pub fn tick(&mut self, interrupt_register: &mut InterruptRegister, scheduler: &mut Scheduler) {
-        let mut left_total: i32 = 0;
-        let mut right_total: i32 = 0;
+        let mut left_total: f32 = 0.0;
+        let mut right_total: f32 = 0.0;
 
-        let mut reverb_left: i32 = 0;
-        let mut reverb_right: i32 = 0;
+        let mut reverb_left: f32 = 0.0;
+        let mut reverb_right: f32 = 0.0;
 
         for i in 0..self.voices.len() {
             let previous_out = if i > 0 {
@@ -292,26 +303,19 @@ impl SPU {
             }
         }
 
-        let mut left_total = Self::to_f32(
-            Self::clamp(left_total, -0x8000, 0x7fff)
-        );
-        let mut right_total = Self::to_f32(
-            Self::clamp(right_total, -0x8000, 0x7fff)
-        );
-
         if self.spucnt.contains(SpuControlRegister::REVERB_MASTER_ENABLE) {
             left_total += self.reverb.reverb_out_left;
             right_total += self.reverb.reverb_out_right;
 
             if self.reverb.is_left {
                 self.reverb.calculate_left(
-                    SPU::clamp(reverb_left, -0x8000, 0x7fff),
+                    reverb_left,
                     &mut self.sound_ram
                 );
 
             } else {
                 self.reverb.calculate_right(
-                    SPU::clamp(reverb_right, -0x8000, 0x7fff),
+                    reverb_right,
                     &mut self.sound_ram
                 );
             }
@@ -322,8 +326,8 @@ impl SPU {
         self.write_to_capture(CaptureIndexes::Voice1 as usize, self.voices[1].last_volume as u16);
         self.write_to_capture(CaptureIndexes::Voice3 as usize, self.voices[3].last_volume as u16);
 
-        self.producer.try_push(left_total).unwrap_or(());
-        self.producer.try_push(right_total).unwrap_or(());
+        self.producer.try_push(SPU::clampf32(left_total)).unwrap_or(());
+        self.producer.try_push(SPU::clampf32(right_total)).unwrap_or(());
 
         self.update_keystatus();
 
