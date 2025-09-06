@@ -20,19 +20,19 @@ pub const VRAM_HEIGHT: usize = 512;
 use crate::renderer::Renderer;
 
 pub struct PsxAudioCallback {
-    pub consumer: Caching<Arc<SharedRb<Heap<i16>>>, false, true>
+    pub consumer: Caching<Arc<SharedRb<Heap<f32>>>, false, true>
 }
 
 impl AudioCallback for PsxAudioCallback {
-    type Channel = i16;
+    type Channel = f32;
 
     fn callback(&mut self, buf: &mut [Self::Channel]) {
-        let mut left_sample: i16 = 0;
-        let mut right_sample: i16 = 0;
+        let mut left_sample: f32 = 0.0;
+        let mut right_sample: f32 = 0.0;
 
         if self.consumer.vacant_len() > 2 {
-            left_sample = *self.consumer.try_peek().unwrap_or(&0);
-            right_sample = *self.consumer.try_peek().unwrap_or(&0);
+            left_sample = *self.consumer.try_peek().unwrap_or(&0.0);
+            right_sample = *self.consumer.try_peek().unwrap_or(&0.0);
         }
 
         let mut is_left_sample = true;
@@ -62,7 +62,7 @@ pub struct Frontend {
 }
 
 impl Frontend {
-    pub fn new(gpu: &GPU, consumer: Caching<Arc<SharedRb<Heap<i16>>>, false, true>) -> Self {
+    pub fn new(gpu: &GPU, consumer: Caching<Arc<SharedRb<Heap<f32>>>, false, true>) -> Self {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
 

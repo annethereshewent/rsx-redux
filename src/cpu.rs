@@ -42,7 +42,7 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>) -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>) -> Self {
         /*
         00h=SPECIAL 08h=ADDI  10h=COP0 18h=N/A   20h=LB   28h=SB   30h=LWC0 38h=SWC0
         01h=BcondZ  09h=ADDIU 11h=COP1 19h=N/A   21h=LH   29h=SH   31h=LWC1 39h=SWC1

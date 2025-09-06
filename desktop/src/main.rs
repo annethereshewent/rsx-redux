@@ -23,7 +23,7 @@ fn main() {
     let bios = fs::read("SCPH1001.bin").unwrap();
 
 
-    let ringbuffer = HeapRb::<i16>::new(NUM_SAMPLES);
+    let ringbuffer = HeapRb::<f32>::new(NUM_SAMPLES);
 
     let (producer, consumer) = ringbuffer.split();
 

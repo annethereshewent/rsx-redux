@@ -1,6 +1,6 @@
 use std::cmp;
 
-use crate::cpu::bus::spu::SPU;
+use crate::cpu::bus::spu::{SoundRam, SPU};
 
 pub struct Reverb {
     m_base: u32,
@@ -39,8 +39,8 @@ pub struct Reverb {
     v_l_out: i16,
     v_r_out: i16,
     buffer_address: u32,
-    pub reverb_out_left: i16,
-    pub reverb_out_right: i16,
+    pub reverb_out_left: f32,
+    pub reverb_out_right: f32,
     pub is_left: bool
 }
 
@@ -83,8 +83,8 @@ impl Reverb {
             v_l_out: 0,
             v_r_out: 0,
             buffer_address: 0,
-            reverb_out_left: 0,
-            reverb_out_right: 0,
+            reverb_out_left: 0.0,
+            reverb_out_right: 0.0,
             is_left: true
         }
     }
@@ -114,117 +114,129 @@ impl Reverb {
     BufferAddress = MAX(mBASE, (BufferAddress+2) AND 7FFFEh)
     Wait one 22050Hz cycle, then repeat the above stuff
     */
-    pub fn calculate_right(&mut self, reverb_right: i16, sound_ram: &mut [u8]) {
-        let rin = SPU::apply_volume(reverb_right as i32, self.v_rin as i32);
+    pub fn calculate_right(&mut self, reverb_right: i16, sound_ram: &mut SoundRam) {
+        let rin = SPU::apply_volume(
+            SPU::to_f32(reverb_right),
+            self.v_rin
+        );
 
-        let d_r_same = unsafe { *(&sound_ram[self.calculate_address(self.d_r_same as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let mr_same2 = unsafe { *(&sound_ram[self.calculate_address(self.mr_same as usize - 2)] as *const u8 as *const u16) } as i16 as i32;
+        let d_r_same = sound_ram.readf32(self.calculate_address(self.d_r_same as usize));
+        let mr_same2 = sound_ram.readf32(self.calculate_address(self.mr_same as usize - 2));
 
         let mr_same_val =
-            rin + SPU::apply_volume(d_r_same, self.v_wall as i32) -
-            SPU::apply_volume(mr_same2, self.v_iir as i32) + mr_same2;
+            rin + SPU::apply_volume(d_r_same, self.v_wall) -
+            SPU::apply_volume(mr_same2, self.v_iir) + mr_same2;
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.mr_same as usize)] as *mut u8 as *mut u16) = mr_same_val as u16 };
+        sound_ram.writef32(
+            self.calculate_address(self.mr_same as usize),
+            mr_same_val
+        );
 
-        let dl_diff = unsafe { *(&sound_ram[self.calculate_address(self.d_l_diff as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let mr_diff2 = unsafe { *(&sound_ram[self.calculate_address(self.m_r_diff as usize - 2)] as *const u8 as *const u16) } as i16 as i32;
+        let dl_diff = sound_ram.readf32(self.calculate_address(self.d_l_diff as usize));
+        let mr_diff2 = sound_ram.readf32(self.calculate_address(self.m_r_diff as usize - 2));
 
-        let dl_diff_volume = SPU::apply_volume(dl_diff, self.v_wall as i32);
+        let dl_diff_volume = SPU::apply_volume(dl_diff, self.v_wall);
 
         let mr_diff_val = SPU::apply_volume(
             rin + dl_diff_volume - mr_diff2,
-            self.v_iir as i32
-        ) + mr_diff2 as i32;
+            self.v_iir
+        ) + mr_diff2;
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.m_r_diff as usize)] as *mut u8 as *mut u16) = mr_diff_val as u16 };
+        sound_ram.writef32(self.calculate_address(self.m_r_diff as usize), mr_diff_val);
 
-        let mr_comb1 = unsafe { *(&sound_ram[self.calculate_address(self.m_r_comb1 as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let mr_comb2 = unsafe { *(&sound_ram[self.calculate_address(self.m_r_comb2 as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let mr_comb3 = unsafe { *(&sound_ram[self.calculate_address(self.m_r_comb3 as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let mr_comb4 = unsafe { *(&sound_ram[self.calculate_address(self.m_r_comb4 as usize)] as *const u8 as *const u16) } as i16 as i32;
+        let mr_comb1 = sound_ram.readf32(self.calculate_address(self.m_r_comb1 as usize));
+        let mr_comb2 = sound_ram.readf32(self.calculate_address(self.m_r_comb2 as usize));
+        let mr_comb3 = sound_ram.readf32(self.calculate_address(self.m_r_comb3 as usize));
+        let mr_comb4 = sound_ram.readf32(self.calculate_address(self.m_r_comb4 as usize));
 
-        let mut rout = SPU::apply_volume(mr_comb1, self.v_comb1 as i32) +
-            SPU::apply_volume(mr_comb2, self.v_comb2 as i32) +
-            SPU::apply_volume(mr_comb3, self.v_comb3 as i32) +
-            SPU::apply_volume(mr_comb4, self.v_comb4 as i32);
+        let mut rout = SPU::apply_volume(mr_comb1, self.v_comb1) +
+            SPU::apply_volume(mr_comb2, self.v_comb2) +
+            SPU::apply_volume(mr_comb3, self.v_comb3) +
+            SPU::apply_volume(mr_comb4, self.v_comb4);
 
-        let rapf1 = unsafe { *(&sound_ram[self.calculate_address(self.m_rapf1 as usize - self.d_apf1 as usize)] as *const u8 as *const u16) } as i16 as i32;
+        let rapf1 = sound_ram.readf32(self.calculate_address(self.m_rapf1 as usize - self.d_apf1 as usize));
 
-        rout = rout - SPU::apply_volume(rapf1, self.v_apf1 as i32);
+        rout = rout - SPU::apply_volume(rapf1, self.v_apf1);
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.m_rapf1 as usize)] as *mut u8 as *mut u16) = rout as u16 };
+        sound_ram.writef32(self.calculate_address(self.m_rapf1 as usize), rout);
 
-        rout = SPU::apply_volume(rout, self.v_apf1 as i32) + rapf1 as i32;
+        rout = SPU::apply_volume(rout, self.v_apf1) + rapf1;
 
-        let rapf2 = unsafe { *(&sound_ram[self.calculate_address(self.m_rapf2 as usize - self.d_apf2 as usize)] as *const u8 as *const u16) } as i16 as i32;
+        let rapf2 = sound_ram.readf32(self.calculate_address(self.m_rapf2 as usize - self.d_apf2 as usize));
 
-        rout = rout - SPU::apply_volume(rapf2, self.v_apf2 as i32);
+        rout = rout - SPU::apply_volume(rapf2, self.v_apf2);
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.m_rapf2 as usize)] as *mut u8 as *mut u16) = rout as u16 };
+        sound_ram.writef32(self.calculate_address(self.m_rapf2 as usize), rout);
 
-        rout = SPU::apply_volume(rout, self.v_apf2 as i32) + rapf2;
+        rout = SPU::apply_volume(rout, self.v_apf2) + rapf2;
 
-        let right_output = SPU::apply_volume(rout, self.v_r_out as i32);
+        let right_output = SPU::apply_volume(rout, self.v_r_out);
 
-        self.reverb_out_right = SPU::clamp(right_output, -0x8000, 0x7fff);
+        self.reverb_out_right = right_output;
 
         self.buffer_address = cmp::max(self.m_base, (self.buffer_address + 2) & 0x7_fffe);
 
     }
 
-    pub fn calculate_left(&mut self, reverb_left: i16, sound_ram: &mut [u8]) {
-        let lin = SPU::apply_volume(reverb_left as i32, self.v_lin as i32);
+    pub fn calculate_left(&mut self, reverb_left: i16, sound_ram: &mut SoundRam) {
+        let lin = SPU::apply_volume(
+            SPU::to_f32(reverb_left),
+            self.v_lin
+        );
 
-        let d_l_same = (unsafe { *(&sound_ram[self.calculate_address(self.d_l_same as usize)] as *const u8 as *const u16) } as i16 as i32);
-        let m_l_same2 = (unsafe { *(&sound_ram[self.calculate_address(self.ml_same as usize - 2)] as *const u8 as *const u16) } as i16 as i32);
+        let d_l_same = sound_ram.readf32(self.calculate_address(self.d_l_same as usize));
+        let ml_same2 = sound_ram.readf32(self.calculate_address(self.ml_same as usize - 2));
 
         let ml_same_val =
-            lin + SPU::apply_volume(d_l_same,  self.v_wall as i32) -
-            SPU::apply_volume(m_l_same2, self.v_iir as i32) + m_l_same2;
+            lin + SPU::apply_volume(d_l_same, self.v_wall) -
+            SPU::apply_volume(ml_same2, self.v_iir) + ml_same2;
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.ml_same as usize)] as *mut u8 as *mut u16) = ml_same_val as u16 };
+        sound_ram.writef32(
+            self.calculate_address(self.ml_same as usize),
+            ml_same_val
+        );
 
-        let dr_diff = unsafe { *(&sound_ram[self.calculate_address(self.d_r_diff as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let ml_diff2 = unsafe { *(&sound_ram[self.calculate_address(self.m_l_diff as usize - 2)] as *const u8 as *const u16) } as i16 as i32;
+        let dr_diff = sound_ram.readf32(self.calculate_address(self.d_r_diff as usize));
+        let ml_diff2 = sound_ram.readf32(self.calculate_address(self.m_l_diff as usize - 2));
 
-        let dr_diff_volume = SPU::apply_volume(dr_diff, self.v_wall as i32);
+        let dr_diff_volume = SPU::apply_volume(dr_diff, self.v_wall);
 
         let ml_diff_val = SPU::apply_volume(
             lin + dr_diff_volume - ml_diff2,
-            self.v_iir as i32
+            self.v_iir
         ) + ml_diff2;
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.m_l_diff as usize)] as *mut u8 as *mut u16) = ml_diff_val as u16 };
+        sound_ram.writef32(self.calculate_address(self.m_l_diff as usize), ml_diff_val);
 
-        let ml_comb1 = unsafe { *(&sound_ram[self.calculate_address(self.m_l_comb1 as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let ml_comb2 = unsafe { *(&sound_ram[self.calculate_address(self.m_l_comb2 as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let ml_comb3 = unsafe { *(&sound_ram[self.calculate_address(self.m_l_comb3 as usize)] as *const u8 as *const u16) } as i16 as i32;
-        let ml_comb4 = unsafe { *(&sound_ram[self.calculate_address(self.m_l_comb4 as usize)] as *const u8 as *const u16) } as i16 as i32;
+        let ml_comb1 = sound_ram.readf32(self.calculate_address(self.m_l_comb1 as usize));
+        let ml_comb2 = sound_ram.readf32(self.calculate_address(self.m_l_comb2 as usize));
+        let ml_comb3 = sound_ram.readf32(self.calculate_address(self.m_l_comb3 as usize));
+        let ml_comb4 = sound_ram.readf32(self.calculate_address(self.m_l_comb4 as usize));
 
-        let mut lout = SPU::apply_volume(ml_comb1, self.v_comb1 as i32) +
-            SPU::apply_volume(ml_comb2, self.v_comb2 as i32) +
-            SPU::apply_volume(ml_comb3, self.v_comb3 as i32) +
-            SPU::apply_volume(ml_comb4 as i32, self.v_comb4 as i32);
+        let mut lout = SPU::apply_volume(ml_comb1, self.v_comb1) +
+            SPU::apply_volume(ml_comb2, self.v_comb2) +
+            SPU::apply_volume(ml_comb3, self.v_comb3) +
+            SPU::apply_volume(ml_comb4, self.v_comb4);
 
-        let lapf1 = unsafe { *(&sound_ram[self.calculate_address(self.m_lapf1 as usize - self.d_apf1 as usize)] as *const u8 as *const u16) } as i16 as i32;
+        let lapf1 = sound_ram.readf32(self.calculate_address(self.m_lapf1 as usize - self.d_apf1 as usize));
 
-        lout = lout - SPU::apply_volume(lapf1, self.v_apf1 as i32);
+        lout = lout - SPU::apply_volume(lapf1, self.v_apf1);
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.m_lapf1 as usize)] as *mut u8 as *mut u16) = lout as u16 };
+        sound_ram.writef32(self.calculate_address(self.m_lapf1 as usize), lout);
 
-        lout = SPU::apply_volume(lout, self.v_apf1 as i32) + lapf1;
+        lout = SPU::apply_volume(lout, self.v_apf1) + lapf1;
 
-        let lapf2 = unsafe { *(&sound_ram[self.calculate_address(self.m_lapf2 as usize - self.d_apf2 as usize)] as *const u8 as *const u16) } as i16 as i32;
+        let lapf2 = sound_ram.readf32(self.calculate_address(self.m_lapf2 as usize - self.d_apf2 as usize));
 
-        lout = lout - SPU::apply_volume(lapf2, self.v_apf2 as i32);
+        lout = lout - SPU::apply_volume(lapf2, self.v_apf2);
 
-        unsafe { *(&mut sound_ram[self.calculate_address(self.m_lapf2 as usize)] as *mut u8 as *mut u16) = lout as u16 };
+        sound_ram.writef32(self.calculate_address(self.m_lapf2 as usize), lout);
 
-        lout = SPU::apply_volume(lout, self.v_apf2 as i32) + lapf2;
+        lout = SPU::apply_volume(lout, self.v_apf2) + lapf2;
 
-        let left_output = SPU::apply_volume(lout, self.v_l_out as i32);
+        let left_output = SPU::apply_volume(lout, self.v_l_out);
 
-        self.reverb_out_left = SPU::clamp(left_output, -0x8000, 0x7fff);
+        self.reverb_out_left = left_output;
     }
 
     /*

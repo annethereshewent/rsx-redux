@@ -50,7 +50,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>) -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>) -> Self {
         let mut scheduler = Scheduler::new();
         Self {
             bios: Vec::new(),

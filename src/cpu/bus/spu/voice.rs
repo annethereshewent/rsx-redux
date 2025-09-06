@@ -1,6 +1,6 @@
 use std::{cmp, i16};
 
-use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, spu::SPU};
+use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, spu::{SoundRam, SPU}};
 
 pub const VOLUME_MIN: i32 = -0x8000;
 pub const VOLUME_MAX: i32 = 0x7fff;
@@ -578,7 +578,7 @@ impl Voice {
 
     pub fn generate_samples(
         &mut self,
-        sound_ram: &[u8],
+        sound_ram: &SoundRam,
         irq_address: u32,
         irq9_enable: bool,
         interrupt_register: &mut InterruptRegister,
@@ -722,17 +722,17 @@ impl Voice {
         self.current_block = *block;
     }
 
-    fn read_adpcm_block(&mut self, sound_ram: &[u8]) -> ADPCMBlock {
+    fn read_adpcm_block(&mut self, sound_ram: &SoundRam) -> ADPCMBlock {
         let mut block = ADPCMBlock::new();
 
-        let shift_filter = sound_ram[self.current_address as usize];
+        let shift_filter = sound_ram.read8(self.current_address as usize);
 
         block.shift = shift_filter & 0xf;
         block.filter = (shift_filter >> 4) & 0xf;
 
         self.current_address = (self.current_address + 1) & 0x7_ffff;
 
-        let flags = sound_ram[self.current_address as usize];
+        let flags = sound_ram.read8(self.current_address as usize);
 
         block.loop_end = flags & 1 == 1;
         block.loop_repeat = (flags >> 1) & 1 == 1;
@@ -741,7 +741,7 @@ impl Voice {
         self.current_address = (self.current_address + 1) & 0x7_ffff;
 
         for i in 0..14 {
-            block.sample_blocks[i] = sound_ram[self.current_address as usize];
+            block.sample_blocks[i] = sound_ram.read8(self.current_address as usize);
 
             self.current_address = (self.current_address + 1) & 0x7_ffff;
         }

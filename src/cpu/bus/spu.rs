@@ -18,6 +18,38 @@ const SPU_CYCLES: usize = 768;
 
 const CAPTURE_SIZE: usize = 0x400;
 
+pub struct SoundRam {
+    ram: Box<[u8]>
+}
+
+impl SoundRam {
+    pub fn new() -> Self {
+        Self {
+            ram: vec![0; SOUND_RAM_SIZE].into_boxed_slice(),
+        }
+    }
+
+    pub fn read16(&self, address: usize) -> u16 {
+        unsafe { *(&self.ram[address] as *const u8 as *const u16) }
+    }
+
+    pub fn read8(&self, address: usize) -> u8 {
+        self.ram[address]
+    }
+
+    pub fn readf32(&self, address: usize) -> f32 {
+        SPU::to_f32(self.read16(address) as i16)
+    }
+
+    pub fn write16(&mut self, address: usize, value: u16) {
+        unsafe { *(&mut self.ram[address] as *mut u8 as *mut u16) = value };
+    }
+
+    pub fn writef32(&mut self, address: usize, value: f32) {
+        unsafe { *(&mut self.ram[address] as *mut u8 as *mut u16 ) = SPU::to_i16(value) as u16 };
+    }
+}
+
 enum CaptureIndexes {
     _CdLeft = 0,
     _CdRight = 1,
@@ -44,13 +76,13 @@ pub struct SPU {
     irq_address: u32,
     voices: [Voice; 24],
     sample_fifo: VecDeque<u16>,
-    sound_ram: Box<[u8]>,
-    producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>,
+    sound_ram: SoundRam,
+    producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>,
     endx: u32
 }
 
 impl SPU {
-    pub fn new(producer: Caching<Arc<SharedRb<Heap<i16>>>, true, false>, scheduler: &mut Scheduler) -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>, scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
         Self {
             main_volume_left: 0,
@@ -69,17 +101,16 @@ impl SPU {
             current_ram_address: 0,
             voices: [Voice::new(); 24],
             keyon: 0,
-
             sample_fifo: VecDeque::new(),
-            sound_ram: vec![0; SOUND_RAM_SIZE].into_boxed_slice(),
+            sound_ram: SoundRam::new(),
             producer,
             endx: 0,
             reverb: Reverb::new()
         }
     }
 
-    fn apply_volume(sample: i32, volume: i32) -> i32 {
-        (sample * volume) >> 15
+    fn apply_volume(sample: f32, volume: i16) -> f32 {
+        sample * SPU::to_f32(volume)
     }
 
     pub fn clamp(value: i32, min: i32, max: i32) -> i16 {
@@ -92,6 +123,23 @@ impl SPU {
 
         value as i16
     }
+
+    fn to_f32(sample: i16) -> f32 {
+        if sample < 0 {
+            -sample as f32 / i16::MIN as f32
+        } else {
+            sample as f32 / i16::MAX as f32
+        }
+    }
+
+    fn to_i16(sample: f32) -> i16 {
+        if sample < 0.0 {
+            (-sample * i16::MIN as f32) as i16
+        } else {
+            (sample * i16::MAX as f32) as i16
+        }
+    }
+
     /*
     15-12 Unknown/Unused (seems to be usually zero)
     11    Writing to First/Second half of Capture Buffers (0=First, 1=Second)
@@ -171,7 +219,10 @@ impl SPU {
                         if self.current_ram_address == self.irq_address && self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE) {
                             interrupt_register.insert(InterruptRegister::SPU);
                         }
-                        unsafe { *(&mut self.sound_ram[self.current_ram_address as usize] as *mut u8 as *mut u16 ) = self.sample_fifo.pop_front().unwrap() };
+                        self.sound_ram.write16(
+                            self.current_ram_address as usize,
+                            self.sample_fifo.pop_front().unwrap()
+                        );
                         self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
                     }
                 }
@@ -241,9 +292,16 @@ impl SPU {
             }
         }
 
+        let mut left_total = Self::to_f32(
+            Self::clamp(left_total, -0x8000, 0x7fff)
+        );
+        let mut right_total = Self::to_f32(
+            Self::clamp(right_total, -0x8000, 0x7fff)
+        );
+
         if self.spucnt.contains(SpuControlRegister::REVERB_MASTER_ENABLE) {
-            left_total += self.reverb.reverb_out_left as i32;
-            right_total += self.reverb.reverb_out_right as i32;
+            left_total += self.reverb.reverb_out_left;
+            right_total += self.reverb.reverb_out_right;
 
             if self.reverb.is_left {
                 self.reverb.calculate_left(
@@ -264,8 +322,8 @@ impl SPU {
         self.write_to_capture(CaptureIndexes::Voice1 as usize, self.voices[1].last_volume as u16);
         self.write_to_capture(CaptureIndexes::Voice3 as usize, self.voices[3].last_volume as u16);
 
-        self.producer.try_push(Self::clamp(left_total, -0x8000, 0x7fff)).unwrap_or(());
-        self.producer.try_push(Self::clamp(right_total, -0x8000, 0x7fff)).unwrap_or(());
+        self.producer.try_push(left_total).unwrap_or(());
+        self.producer.try_push(right_total).unwrap_or(());
 
         self.update_keystatus();
 
@@ -273,6 +331,7 @@ impl SPU {
     }
 
     fn write_to_capture(&mut self, capture_index: usize, volume: u16) {
-        unsafe { *(&mut self.sound_ram[CAPTURE_SIZE * capture_index] as *mut u8 as *mut u16) = volume };
+        // unsafe { *(&mut self.sound_ram[CAPTURE_SIZE * capture_index] as *mut u8 as *mut u16) = volume };
+        self.sound_ram.write16(CAPTURE_SIZE * capture_index, volume)
     }
 }
