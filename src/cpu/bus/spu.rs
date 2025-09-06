@@ -242,15 +242,23 @@ impl SPU {
         }
 
         if self.spucnt.contains(SpuControlRegister::REVERB_MASTER_ENABLE) {
-            let (reverb_out_left, reverb_out_right) =
-                self.reverb.calculate_reverb(
-                    Self::clamp(reverb_left, -0x8000, 0x7ffff),
-                    Self::clamp(reverb_right, -0x8000, 0x7fff),
+            left_total += self.reverb.reverb_out_left as i32;
+            right_total += self.reverb.reverb_out_right as i32;
+
+            if self.reverb.is_left {
+                self.reverb.calculate_left(
+                    SPU::clamp(reverb_left, -0x8000, 0x7fff),
                     &mut self.sound_ram
                 );
 
-            left_total += reverb_out_left;
-            right_total += reverb_out_right;
+            } else {
+                self.reverb.calculate_right(
+                    SPU::clamp(reverb_right, -0x8000, 0x7fff),
+                    &mut self.sound_ram
+                );
+            }
+
+            self.reverb.is_left = !self.reverb.is_left;
         }
 
         self.write_to_capture(CaptureIndexes::Voice1 as usize, self.voices[1].last_volume as u16);
