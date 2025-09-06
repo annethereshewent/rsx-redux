@@ -1,0 +1,1 @@
+This is a Playstation emulator written in Rust. It's a rewrite of the RSX emulator, with hardware rendering being the primary feature. Currently only supports Metal, but OpenGL and WebGL coming soon! Web version and iOS ports will eventually be available.
