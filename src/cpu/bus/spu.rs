@@ -78,10 +78,8 @@ impl SPU {
         }
     }
 
-    fn apply_volume(sample: i32, volume: i32, rounding: bool) -> i32 {
-        let shift = if rounding { 14 } else { 15 };
-
-        (sample * volume) >> shift
+    fn apply_volume(sample: i32, volume: i32) -> i32 {
+        (sample * volume) >> 15
     }
 
     pub fn clamp(value: i32, min: i32, max: i32) -> i16 {
