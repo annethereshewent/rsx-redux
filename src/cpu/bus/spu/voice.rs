@@ -709,8 +709,10 @@ impl Voice {
 
             let mut sample = (((nibble as i16) << 12) as i32) >> block.shift as i32;
 
-            sample += ((self.last_decoded_samples[0] * positive_filter as i16) >> 6) as i32;
-            sample += ((self.last_decoded_samples[1] * negative_filter as i16) >> 6) as i32;
+            let filter =
+                (32 + self.last_decoded_samples[0] as i32 * positive_filter as i32 + self.last_decoded_samples[1] as i32 * negative_filter as i32) / 64;
+
+            sample += filter;
 
             self.last_decoded_samples[1] = self.last_decoded_samples[0];
             self.last_decoded_samples[0] = SPU::clamp(sample, -0x8000, 0x7fff);
