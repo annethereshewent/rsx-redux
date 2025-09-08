@@ -37,6 +37,7 @@ pub struct Bus {
     exp2_delay: DelayRegister,
     cache_config: u32,
     pub(crate) main_ram: Box<[u8]>,
+    scratchpad: Box<[u8]>,
     pub spu: SPU,
     exp1_post: u8,
     pub interrupt_mask: InterruptRegister,
@@ -76,7 +77,8 @@ impl Bus {
             cdrom: CDRom::new(&mut scheduler),
             scheduler,
             dma: Dma::new(),
-            mdec: Mdec::new()
+            mdec: Mdec::new(),
+            scratchpad: vec![0; 0x400].into_boxed_slice()
         }
     }
 
@@ -97,6 +99,7 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
+            0x1f800000..=0x1f8003ff => unsafe { *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u32 )},
             0x1f801014 => self.spu_delay.read(),
             0x1f801060 => self.ram_size,
             0x1f801070 => self.interrupt_stat.bits(),
@@ -116,6 +119,8 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16) as u32 },
+            0x1f800000..=0x1f8003ff => unsafe { *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u16) as u32 },
+            0x1f80104a => { println!("warning: joypad not implemented yet"); 0xff },
             0x1f801070 => self.interrupt_stat.bits() & 0xffff,
             0x1f801072 => (self.interrupt_stat.bits() >> 16) & 0xffff,
             0x1f801074 => self.interrupt_mask.bits() & 0xffff,
@@ -130,6 +135,8 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
+            0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] as u32,
+            0x1f801040 => { println!("warning: joypad not implemented yet"); 0xff },
             0x1f801800..=0x1f801803 => {
                 self.cdrom.read(address) as u32
             }
@@ -144,6 +151,7 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u32 ) = value },
+            0x1f800000..=0x1f8003ff => unsafe { *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u32 ) = value },
             0x1f801000 => self.exp1_base_address = value & 0xffffff | (0x1f << 24), // TODO: implement
             0x1f801004 => {
                 self.exp2_base_address = value & 0xffffff | (0x1f << 24);
@@ -190,6 +198,8 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
+            0x1f800000..=0x1f8003ff => unsafe { *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u16) = value },
+            0x1f80104a => println!("warning: joypad not implemented yet"), // TODO: Joypad
             0x1f801070 => {
                 let new_stat = self.interrupt_stat.bits() & value as u32;
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
@@ -205,6 +215,7 @@ impl Bus {
             0x1f801120 => self.timers[2].counter = value as u32,
             0x1f801124 => self.timers[2].write_counter_register(value, &mut self.scheduler),
             0x1f801128 => self.timers[2].counter_target = value,
+
             0x1f801c00..=0x1f801e7f => self.spu.write16(address, value, &mut self.interrupt_stat),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
@@ -215,6 +226,8 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
+            0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
+            0x1f801040 => println!("warning: joypad not implemented yet"),
             0x1f801800 => {
                 self.cdrom.write_bank(value);
             }

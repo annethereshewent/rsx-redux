@@ -16,8 +16,12 @@ pub const RA_REGISTER: usize = 31;
 
 #[derive(Copy, Clone)]
 pub enum ExceptionType {
+    Interrupt = 0x0,
+    LoadAddressError = 0x4,
+    StoreAddressError = 0x5,
     Syscall = 0x8,
-    Interrupt = 0x0
+    Break = 0x9,
+    Overflow = 0xc
 }
 
 pub struct CPU {
@@ -303,32 +307,32 @@ impl CPU {
 
         let mut index = 0x10;
 
-        self.pc = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32) };
+        self.pc = unsafe { *(&bytes[index] as *const u8 as *const u32) };
         self.next_pc = self.pc + 4;
 
         index += 4;
 
-        self.r[28] = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+        self.r[28] = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
 
         index += 4;
 
-        let file_dest = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+        let file_dest = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
 
         index += 4;
 
         // let file_size = util::read_word(&bytes, index);
-        let file_size = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 ) };
+        let file_size = unsafe { *(&bytes[index] as *const u8 as *const u32 ) };
 
         index += 0x10 + 4;
 
         // let sp_base = util::read_word(&bytes, index);
-        let sp_base = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+        let sp_base = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
 
         index += 4;
 
         if sp_base != 0 {
             // let sp_offset = util::read_word(&bytes, index);
-            let sp_offset = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+            let sp_offset = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
 
             self.r[29] = sp_base + sp_offset;
             self.r[30] = self.r[29];
