@@ -36,7 +36,7 @@ pub struct Bus {
     exp3_delay: DelayRegister,
     exp2_delay: DelayRegister,
     cache_config: u32,
-    main_ram: Box<[u8]>,
+    pub(crate) main_ram: Box<[u8]>,
     pub spu: SPU,
     exp1_post: u8,
     pub interrupt_mask: InterruptRegister,

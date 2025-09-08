@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, fs, sync::Arc};
 
 use bus::{scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
@@ -38,11 +38,12 @@ pub struct CPU {
     ignored_load_delay: Option<usize>,
     branch_taken: bool,
     in_delay_slot: bool,
-    output: String
+    output: String,
+    exe_file: Option<String>
 }
 
 impl CPU {
-    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>) -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>, exe_file: Option<String>) -> Self {
         /*
         00h=SPECIAL 08h=ADDI  10h=COP0 18h=N/A   20h=LB   28h=SB   30h=LWC0 38h=SWC0
         01h=BcondZ  09h=ADDIU 11h=COP1 19h=N/A   21h=LH   29h=SH   31h=LWC1 39h=SWC1
@@ -215,7 +216,8 @@ impl CPU {
             in_delay_slot: false,
             branch_taken: false,
             output: "".to_string(),
-            gte: Gte::new()
+            gte: Gte::new(),
+            exe_file
         }
     }
 
@@ -296,6 +298,50 @@ impl CPU {
         self.bus.gpu.frame_finished = false;
     }
 
+    pub fn load_exe(&mut self, filename: &str) {
+        let bytes = fs::read(filename).unwrap();
+
+        let mut index = 0x10;
+
+        self.pc = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32) };
+        self.next_pc = self.pc + 4;
+
+        index += 4;
+
+        self.r[28] = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+
+        index += 4;
+
+        let file_dest = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+
+        index += 4;
+
+        // let file_size = util::read_word(&bytes, index);
+        let file_size = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 ) };
+
+        index += 0x10 + 4;
+
+        // let sp_base = util::read_word(&bytes, index);
+        let sp_base = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+
+        index += 4;
+
+        if sp_base != 0 {
+            // let sp_offset = util::read_word(&bytes, index);
+            let sp_offset = unsafe { *(&bytes[index] as *const u8 as *const u16 as *const u32 )};
+
+            self.r[29] = sp_base + sp_offset;
+            self.r[30] = self.r[29];
+        }
+
+        index = 0x800;
+
+        for i in 0..file_size {
+            self.bus.main_ram[((file_dest + i) & 0x1f_ffff) as usize] = bytes[index];
+            index += 1;
+        }
+    }
+
     pub fn step(&mut self) {
         self.r[0] = 0;
 
@@ -325,6 +371,13 @@ impl CPU {
         self.update_tty();
 
         self.previous_pc = self.pc;
+
+        if self.previous_pc == 0x80030000 {
+            if let Some(exe_file) = &self.exe_file {
+                let exe_file = exe_file.clone();
+                self.load_exe(exe_file.as_str());
+            }
+        }
 
         self.pc = self.next_pc;
 

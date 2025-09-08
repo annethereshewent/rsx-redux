@@ -18,6 +18,12 @@ fn main() {
 
     let file = File::open(&args[1]).unwrap();
 
+    let mut exe_file: Option<String> = None;
+
+    if args.len() >= 3 {
+        exe_file = Some(args[2].to_string());
+    }
+
     let game_data = unsafe  { Mmap::map(&file).unwrap() };
 
     let bios = fs::read("SCPH1001.bin").unwrap();
@@ -27,7 +33,7 @@ fn main() {
 
     let (producer, consumer) = ringbuffer.split();
 
-    let mut cpu = CPU::new(producer);
+    let mut cpu = CPU::new(producer, exe_file);
     cpu.bus.load_bios(bios);
     cpu.bus.cdrom.load_game_arm64(game_data);
 
