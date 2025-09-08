@@ -229,11 +229,9 @@ impl CDRom {
 
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn load_game_arm64(&mut self, game: Mmap) {
+    pub fn load_game_desktop(&mut self, game: Mmap) {
         self.game_data = Some(game);
     }
-
-
 
     fn read_hintsts(&self) -> u8 {
         self.irqs | 0x7 << 5

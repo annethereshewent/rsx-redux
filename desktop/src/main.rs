@@ -35,7 +35,7 @@ fn main() {
 
     let mut cpu = CPU::new(producer, exe_file);
     cpu.bus.load_bios(bios);
-    cpu.bus.cdrom.load_game_arm64(game_data);
+    cpu.bus.cdrom.load_game_desktop(game_data);
 
     let mut frontend = Frontend::new(&cpu.bus.gpu, consumer);
 
