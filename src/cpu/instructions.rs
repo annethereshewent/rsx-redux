@@ -673,12 +673,18 @@ impl CPU {
     pub fn div(&mut self, instruction: Instruction) -> usize {
         self.tick(1);
 
-        let dividend = self.r[instruction.rs()] as i64;
-        let divisor = self.r[instruction.rt()] as i64;
+        let dividend = self.r[instruction.rs()] as i32;
+        let divisor = self.r[instruction.rt()] as i32;
 
-        if divisor != 0 {
+        if (dividend as u32) == 0x8000_0000 && divisor == -1 {
+            self.lo = dividend as u32;
+            self.hi = 0;
+        } else if divisor != 0 {
             self.lo = (dividend / divisor) as u32;
             self.hi = (dividend % divisor) as u32;
+        } else {
+            self.lo = if dividend >= 0 { -1  as i32 as u32 } else { 1 };
+            self.hi = dividend as u32;
         }
 
         2
@@ -687,25 +693,27 @@ impl CPU {
     pub fn divu(&mut self, instruction: Instruction) -> usize {
         self.tick(1);
 
-        let dividend = self.r[instruction.rs()] as u64;
-        let divisor = self.r[instruction.rt()] as u64;
+        let dividend = self.r[instruction.rs()];
+        let divisor = self.r[instruction.rt()];
 
         if divisor != 0 {
             self.lo = (dividend / divisor) as u32;
             self.hi = (dividend % divisor) as u32;
+        } else {
+            self.lo = 0xffff_ffff;
+            self.hi = dividend;
         }
 
         2
     }
 
     pub fn add(&mut self, instruction: Instruction) -> usize{
-        let (result, overflow) = self.r[instruction.rs()].overflowing_add(self.r[instruction.rt()]);
-
-        if overflow {
-            self.enter_exception(ExceptionType::Overflow);
-        } else {
+        if let Some(result) = (self.r[instruction.rs()] as i32).checked_add(self.r[instruction.rt()] as i32) {
             self.r[instruction.rd()] = result as u32;
             self.ignored_load_delay = Some(instruction.rd());
+
+        } else {
+            self.enter_exception(ExceptionType::Overflow);
         }
 
         2
@@ -719,9 +727,9 @@ impl CPU {
     }
 
     pub fn sub(&mut self, instruction: Instruction) -> usize {
-        if let Some(result) = self.r[instruction.rs()].checked_sub(instruction.immediate16()) {
+        if let Some(result) = (self.r[instruction.rs()] as i32).checked_sub(self.r[instruction.rt()] as i32) {
 
-            self.r[instruction.rd()] = result;
+            self.r[instruction.rd()] = result as u32;
 
             self.ignored_load_delay = Some(instruction.rd());
         } else {

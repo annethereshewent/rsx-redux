@@ -120,7 +120,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16) as u32 },
             0x1f800000..=0x1f8003ff => unsafe { *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u16) as u32 },
-            0x1f80104a => { println!("warning: joypad not implemented yet"); 0xff },
+            0x1f80104a => 0xff,
             0x1f801070 => self.interrupt_stat.bits() & 0xffff,
             0x1f801072 => (self.interrupt_stat.bits() >> 16) & 0xffff,
             0x1f801074 => self.interrupt_mask.bits() & 0xffff,
@@ -136,7 +136,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] as u32,
-            0x1f801040 => { println!("warning: joypad not implemented yet"); 0xff },
+            0x1f801040 => 0xff,
             0x1f801800..=0x1f801803 => {
                 self.cdrom.read(address) as u32
             }
@@ -199,7 +199,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
             0x1f800000..=0x1f8003ff => unsafe { *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u16) = value },
-            0x1f80104a => println!("warning: joypad not implemented yet"), // TODO: Joypad
+            0x1f80104a => (), // println!("warning: joypad not implemented yet"), // TODO: Joypad
             0x1f801070 => {
                 let new_stat = self.interrupt_stat.bits() & value as u32;
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
@@ -227,7 +227,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
-            0x1f801040 => println!("warning: joypad not implemented yet"),
+            0x1f801040 => (), // println!("warning: joypad not implemented yet"),
             0x1f801800 => {
                 self.cdrom.write_bank(value);
             }
