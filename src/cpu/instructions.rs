@@ -1,4 +1,4 @@
-use super::{cop0::CauseRegister, ExceptionType, CPU, RA_REGISTER};
+use super::{ExceptionType, CPU, RA_REGISTER};
 pub struct Instruction(pub u32);
 
 impl Instruction {
@@ -57,40 +57,21 @@ impl CPU {
         panic!("invalid instruction received: 0x{:x}", instruction.0);
     }
 
-    // pub fn bcondz(&mut self, instruction: Instruction) -> usize {
-    //     match instruction.rt() {
-    //         0x0 => self.bltz(instruction),
-    //         0x1 => self.bgez(instruction),
-    //         0x10 => self.bltzal(instruction),
-    //         0x11 => self.bgezal(instruction),
-    //         _ => 2
-    //     }
-    // }
-
     pub fn bcondz(&mut self, instruction: Instruction) -> usize {
-        let result = (((self.r[instruction.rs()] as i32) < 0) as u32) ^ instruction.bcond();
-
-        let link = (instruction.rt() & 0x1e) == 0x10;
-
-        if link {
-            let ra = self.next_pc;
-            self.r[RA_REGISTER] = self.next_pc;
+        let bits = instruction.rt();
+        match (bits & 1, (bits & 0x1e) ) {
+            (0, 0x10) => self.bltzal(instruction),
+            (1, 0x10) => self.bgezal(instruction),
+            (0, _) => self.bltz(instruction),
+            (1, _) => self.bgez(instruction),
+            _ => unreachable!()
         }
-
-        self.branch_taken = true;
-
-        if result == 1 {
-            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
-        }
-
-        2
     }
 
     pub fn bltz(&mut self, instruction: Instruction) -> usize {
         if (self.r[instruction.rs()] as i32) < 0 {
-            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
         2
@@ -98,19 +79,20 @@ impl CPU {
 
     pub fn bgez(&mut self, instruction: Instruction) -> usize {
         if (self.r[instruction.rs()] as i32) >= 0 {
-            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
         2
     }
 
     pub fn bltzal(&mut self, instruction: Instruction) -> usize {
+        let val = self.r[instruction.rs()];
         self.r[RA_REGISTER] = self.next_pc;
-        if (self.r[instruction.rs()] as i32) < 0 {
-            self.branch_taken = true;
+        self.ignored_load_delay = Some(RA_REGISTER);
 
+        if (val as i32) < 0 {
+            self.branch_taken = true;
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
@@ -118,10 +100,12 @@ impl CPU {
     }
 
     pub fn bgezal(&mut self, instruction: Instruction) -> usize {
+        let val = self.r[instruction.rs()];
         self.r[RA_REGISTER] = self.next_pc;
-        if (self.r[instruction.rs()] as i32) >= 0 {
-            self.branch_taken = true;
+        self.ignored_load_delay = Some(RA_REGISTER);
 
+        if (val as i32) >= 0 {
+            self.branch_taken = true;
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
@@ -160,7 +144,6 @@ impl CPU {
         if self.r[instruction.rs()] != self.r[instruction.rt()] {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -170,7 +153,6 @@ impl CPU {
         if self.r[instruction.rs()] as i32 <= 0 {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -180,7 +162,6 @@ impl CPU {
         if (self.r[instruction.rs()] as i32) > 0 {
            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
            self.branch_taken = true;
-           self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -612,7 +593,6 @@ impl CPU {
         self.ignored_load_delay = Some(instruction.rd());
 
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }
