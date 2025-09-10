@@ -1,6 +1,4 @@
 use super::{cop0::CauseRegister, ExceptionType, CPU, RA_REGISTER};
-
-
 pub struct Instruction(pub u32);
 
 impl Instruction {
@@ -39,6 +37,9 @@ impl Instruction {
     pub fn cop_code(&self) -> u32 {
         (self.0 >> 21) & 0x1f
     }
+    pub fn bcond(&self) -> u32 {
+        (self.0 >> 16) & 0b1
+    }
 }
 
 impl CPU {
@@ -49,8 +50,6 @@ impl CPU {
             let special_op = instruction & 0x3f;
             return self.special_instructions[special_op as usize](self, Instruction(instruction));
         }
-
-
         self.instructions[op as usize](self, Instruction(instruction))
     }
 
@@ -58,14 +57,33 @@ impl CPU {
         panic!("invalid instruction received: 0x{:x}", instruction.0);
     }
 
+    // pub fn bcondz(&mut self, instruction: Instruction) -> usize {
+    //     match instruction.rt() {
+    //         0x0 => self.bltz(instruction),
+    //         0x1 => self.bgez(instruction),
+    //         0x10 => self.bltzal(instruction),
+    //         0x11 => self.bgezal(instruction),
+    //         _ => 2
+    //     }
+    // }
+
     pub fn bcondz(&mut self, instruction: Instruction) -> usize {
-        match instruction.rt() {
-            0x0 => self.bltz(instruction),
-            0x1 => self.bgez(instruction),
-            0x10 => self.bltzal(instruction),
-            0x11 => self.bgezal(instruction),
-            _ => 2
+        let result = (((self.r[instruction.rs()] as i32) < 0) as u32) ^ instruction.bcond();
+
+        let link = (instruction.rt() & 0x1e) == 0x10;
+
+        if link {
+            let ra = self.next_pc;
+            self.r[RA_REGISTER] = self.next_pc;
         }
+
+        self.branch_taken = true;
+
+        if result == 1 {
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
+
+        2
     }
 
     pub fn bltz(&mut self, instruction: Instruction) -> usize {
@@ -89,10 +107,10 @@ impl CPU {
     }
 
     pub fn bltzal(&mut self, instruction: Instruction) -> usize {
+        self.r[RA_REGISTER] = self.next_pc;
         if (self.r[instruction.rs()] as i32) < 0 {
-            self.r[RA_REGISTER] = self.next_pc;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
+
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
@@ -100,10 +118,10 @@ impl CPU {
     }
 
     pub fn bgezal(&mut self, instruction: Instruction) -> usize {
+        self.r[RA_REGISTER] = self.next_pc;
         if (self.r[instruction.rs()] as i32) >= 0 {
-            self.r[RA_REGISTER] = self.next_pc;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
+
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
@@ -111,9 +129,9 @@ impl CPU {
     }
 
     pub fn j(&mut self, instruction: Instruction) -> usize {
-        self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
+        self.next_pc = (self.pc & 0xf000_0000) | instruction.immediate26() << 2;
+
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }
@@ -125,7 +143,6 @@ impl CPU {
 
         self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }
@@ -134,7 +151,6 @@ impl CPU {
        if self.r[instruction.rs()] == self.r[instruction.rt()] {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -305,7 +321,6 @@ impl CPU {
 
     pub fn lh(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-
         if address & 1 == 0 {
             self.update_load(
                 instruction.rt(),
@@ -315,24 +330,22 @@ impl CPU {
             self.cop0.bad_addr = address;
             self.enter_exception(ExceptionType::LoadAddressError);
         }
-
-
         2
     }
 
     pub fn lwl(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-
         let mut result = self.r[instruction.rt()];
 
         if let Some((register, value)) = self.delayed_load {
             if register == instruction.rt() {
+
                 result = value;
             }
         }
 
-        let aligned_word = self.bus.mem_read32(address & !3);
-
+        let aligned_address = address & !3;
+        let aligned_word = self.bus.mem_read32(aligned_address);
         result = match address & 0x3 {
             0 => (result & 0xffffff) | (aligned_word << 24),
             1 => (result & 0xffff) | (aligned_word << 16),
@@ -364,7 +377,6 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         let value = self.bus.mem_read8(address);
-
         self.update_load(instruction.rt(), value);
 
         2
@@ -385,7 +397,6 @@ impl CPU {
 
     pub fn lwr(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-
         let mut result = self.r[instruction.rt()];
 
         if let Some((register, value)) = self.delayed_load {
@@ -394,8 +405,9 @@ impl CPU {
             }
         }
 
-        let aligned_word = self.bus.mem_read32(address & !3);
+        let aligned_address = address & !3;
 
+        let aligned_word = self.bus.mem_read32(aligned_address);
         result = match address & 0x3 {
             0 => aligned_word,
             1 => (result & 0xff000000) | (aligned_word >> 8),
@@ -587,7 +599,6 @@ impl CPU {
         self.next_pc = self.r[instruction.rs()];
 
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }

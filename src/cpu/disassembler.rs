@@ -57,7 +57,7 @@ impl CPU {
                     taken = (self.r[instr.rs()] as i32) >= 0;
                     "BGEZAL"
                 }
-                _ => panic!("unknown value for BcondZ given: 0x{:x}", instr.rt())
+                _ => "UNKNOWN"
             },
             0x2 => "J",
             0x3 => "JAL",

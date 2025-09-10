@@ -359,6 +359,17 @@ impl CPU {
         self.branch_taken = false;
         self.cop0.cause.remove(CauseRegister::BD);
 
+        if self.pc & 0x3 != 0 {
+            self.cop0.bad_addr = self.pc;
+            self.enter_exception(ExceptionType::LoadAddressError);
+
+            if should_transfer {
+                self.transfer_load();
+            }
+
+            return;
+        }
+
         let opcode = self.bus.mem_read32(self.pc);
 
         if self.check_irqs() {
@@ -367,6 +378,10 @@ impl CPU {
 
             if (opcode >> 25) == 0x25 {
                 self.gte.execute_command(Instruction(opcode));
+            }
+
+            if should_transfer {
+                self.transfer_load();
             }
 
             return;
