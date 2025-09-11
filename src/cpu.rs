@@ -14,6 +14,7 @@ pub mod gte;
 
 pub const RA_REGISTER: usize = 31;
 
+#[derive(Copy, Clone)]
 pub struct Registers([u32; 32]);
 
 impl Index<usize> for Registers {
@@ -64,7 +65,8 @@ pub struct CPU {
     branch_taken: bool,
     in_delay_slot: bool,
     output: String,
-    exe_file: Option<String>
+    exe_file: Option<String>,
+    should_transfer_load: bool
 }
 
 impl CPU {
@@ -242,7 +244,8 @@ impl CPU {
             branch_taken: false,
             output: "".to_string(),
             gte: Gte::new(),
-            exe_file
+            exe_file,
+            should_transfer_load: false
         }
     }
 
@@ -372,7 +375,7 @@ impl CPU {
 
         self.handle_interrupts();
 
-        let should_transfer = self.delayed_load.is_some();
+        self.should_transfer_load = self.delayed_load.is_some();
         self.ignored_load_delay = None;
 
         self.in_delay_slot = self.branch_taken;
@@ -384,9 +387,11 @@ impl CPU {
             self.cop0.bad_addr = self.pc;
             self.enter_exception(ExceptionType::LoadAddressError);
 
-            if should_transfer {
+            if self.should_transfer_load {
                 self.transfer_load();
             }
+
+            self.should_transfer_load = false;
 
             return;
         }
@@ -401,9 +406,11 @@ impl CPU {
                 self.gte.execute_command(Instruction(opcode));
             }
 
-            if should_transfer {
+            if self.should_transfer_load {
                 self.transfer_load();
             }
+
+            self.should_transfer_load = false;
 
             return;
         }
@@ -432,12 +439,13 @@ impl CPU {
 
         self.tick(cycles);
 
-
         self.handle_events();
 
-        if should_transfer {
+        if self.should_transfer_load {
             self.transfer_load();
         }
+
+        self.should_transfer_load = false;
     }
 
     fn handle_events(&mut self) {

@@ -292,10 +292,7 @@ impl CPU {
 
         let value = self.bus.mem_read8(address) as i8 as i16 as i32 as u32;
 
-        self.update_load(
-            instruction.rt(),
-            value
-        );
+        self.update_load(instruction.rt(), value);
 
         2
     }
@@ -785,7 +782,7 @@ impl CPU {
                 self.r[pending_index] = pending_value;
             }
         }
-
+        self.should_transfer_load = false;
         self.delayed_load = Some((index, value));
     }
 }
