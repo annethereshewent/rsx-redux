@@ -4,7 +4,7 @@ use ringbuf::{storage::Heap, traits::Producer, wrap::caching::Caching, SharedRb}
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
 use voice::Voice;
 
-use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, spu::reverb::Reverb};
+use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, spu::{reverb::Reverb, voice::AdsrPhase}};
 
 pub mod spu_control_register;
 pub mod voice;
@@ -169,6 +169,10 @@ impl SPU {
         let voice = ((address >> 4) & 0x1f) as usize;
         let channel = address & 0xf;
 
+        if channel == 6 {
+            println!("setting start address for voice {voice} to 0x{:x}", value as u32 * 8);
+        }
+
         self.voices[voice as usize].write(channel, value);
     }
 
@@ -256,6 +260,7 @@ impl SPU {
                 }
 
                 if (self.keyon >> i) & 1 == 1 {
+                    println!("updating keyon for voice {i}");
                     self.endx &= !(1 << i);
                     self.voices[i].update_keyon();
                 }
@@ -279,7 +284,13 @@ impl SPU {
             } else {
                 0
             };
+
             let voice = &mut self.voices[i];
+
+            if voice.adsr.phase == AdsrPhase::Idle {
+                continue;
+            }
+
             let (left, right, endx) = voice.generate_samples(
                 &self.sound_ram,
                 self.irq_address,

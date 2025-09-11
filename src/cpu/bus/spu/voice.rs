@@ -454,7 +454,8 @@ pub struct Voice {
     right_envelope: Envelope,
     using_left_envelope: bool,
     using_right_envelope: bool,
-    ignore_loop_address: bool
+    ignore_loop_address: bool,
+    repeat_address_io_write: bool
 }
 
 impl Voice {
@@ -477,7 +478,8 @@ impl Voice {
             using_left_envelope: false,
             using_right_envelope: false,
             last_gaussian_samples: [0; 4],
-            ignore_loop_address: false
+            ignore_loop_address: false,
+            repeat_address_io_write: false
         }
     }
 
@@ -557,6 +559,8 @@ impl Voice {
             0xe => {
                 self.ignore_loop_address = !self.is_first_block && self.adsr.phase == AdsrPhase::Idle;
                 self.repeat_address = value as u32 * 8;
+
+                self.repeat_address_io_write = true;
             }
             _ => panic!("invalid channel given: 0x{:x}", channel)
         }
@@ -753,6 +757,12 @@ impl Voice {
 
     pub fn update_keyon(&mut self) {
         self.current_address = self.start_address;
+
+        if !self.repeat_address_io_write {
+            self.repeat_address = self.start_address;
+        }
+
+        self.repeat_address_io_write = false;
 
         self.adsr.phase = AdsrPhase::Attack;
         self.adsr.envelope.volume = 0;
