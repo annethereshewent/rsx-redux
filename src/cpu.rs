@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs, sync::Arc};
+use std::{collections::HashSet, fs, ops::{Index, IndexMut}, sync::Arc};
 
 use bus::{scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
@@ -14,6 +14,27 @@ pub mod gte;
 
 pub const RA_REGISTER: usize = 31;
 
+pub struct Registers([u32; 32]);
+
+impl Index<usize> for Registers {
+    type Output = u32;
+    fn index(&self, idx: usize) -> &Self::Output {
+        &self.0[idx]
+    }
+}
+
+impl IndexMut<usize> for Registers {
+    fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
+        if idx == 0 {
+            // Always hand out a dummy zero reference for $zero.
+            // Returning &mut 0 would be UB, so we point into slot 0
+            // but also force it back to 0 whenever it's accessed.
+            self.0[0] = 0;
+        }
+        &mut self.0[idx]
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum ExceptionType {
     Interrupt = 0x0,
@@ -25,7 +46,7 @@ pub enum ExceptionType {
 }
 
 pub struct CPU {
-    r: [u32; 32],
+    r: Registers,
     delayed_load: Option<(usize, u32)>,
     pc: u32,
     previous_pc: u32,
@@ -203,7 +224,7 @@ impl CPU {
         ];
 
         Self {
-            r: [0; 32],
+            r: Registers([0; 32]),
             pc: 0xbfc00000,
             previous_pc: 0xbfc00000,
             next_pc: 0xbfc00004,
