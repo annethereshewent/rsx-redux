@@ -169,10 +169,6 @@ impl SPU {
         let voice = ((address >> 4) & 0x1f) as usize;
         let channel = address & 0xf;
 
-        if channel == 6 {
-            println!("setting start address for voice {voice} to 0x{:x}", value as u32 * 8);
-        }
-
         self.voices[voice as usize].write(channel, value);
     }
 
@@ -260,7 +256,6 @@ impl SPU {
                 }
 
                 if (self.keyon >> i) & 1 == 1 {
-                    println!("updating keyon for voice {i}");
                     self.endx &= !(1 << i);
                     self.voices[i].update_keyon();
                 }
