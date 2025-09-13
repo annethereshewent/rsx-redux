@@ -99,7 +99,7 @@ pub enum AdsrPhase {
     Idle
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct Envelope {
     counter: u32,
     increment: u16,
@@ -128,7 +128,7 @@ impl Envelope {
     fn reset(&mut self, rate: u8, shift: i8, step: i8, rate_mask: u8, mode: EnvelopeMode, direction: EnvelopeDirection, invert: bool) {
         self.counter = 0;
         self.increment = 0x8000;
-        self.rate = rate as u8;
+        self.rate = rate;
         self.invert_phase = invert;
         self.direction = direction;
 
@@ -276,6 +276,8 @@ impl Adsr {
     pub fn write_lower(&mut self, value: u16) {
         self.value = (self.value & 0xffff0000) | value as u32;
         self.sustain_level = ((value & 0xf) + 1) * 0x800;
+
+        self.decay_shift = ((value >> 4) & 0xf) as u8;
 
         self.attack_step = (7 - ((value >> 8) & 0x3)) as i8;
 
