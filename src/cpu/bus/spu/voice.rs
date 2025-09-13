@@ -606,10 +606,6 @@ impl Voice {
             self.decode_adpcm_block(&block);
 
             self.has_samples = true;
-
-            if self.current_block.loop_start && !self.ignore_loop_address {
-                self.repeat_address = self.current_address;
-            }
         }
 
         let interpolation_index = (self.pitch_counter >> 4) & 0xff;
@@ -649,7 +645,7 @@ impl Voice {
 
         let mut sample_index = self.pitch_counter >> 12;
 
-        if sample_index >= NUM_BLOCK_SAMPLES as u32{
+        if sample_index >= NUM_BLOCK_SAMPLES as u32 {
             self.is_first_block = false;
             sample_index -= NUM_BLOCK_SAMPLES as u32;
 
@@ -745,6 +741,10 @@ impl Voice {
         block.loop_end = flags & 1 == 1;
         block.loop_repeat = (flags >> 1) & 1 == 1;
         block.loop_start = (flags >> 2) & 1 == 1;
+
+        if block.loop_start && !self.ignore_loop_address {
+            self.repeat_address = self.current_address - 1;
+        }
 
         self.current_address = (self.current_address + 1) & 0x7_ffff;
 
