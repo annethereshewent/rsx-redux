@@ -300,9 +300,10 @@ impl CPU {
     pub fn lh(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
         if address & 1 == 0 {
+            let value = self.bus.mem_read16(address) as i16 as i32 as u32;
             self.update_load(
                 instruction.rt(),
-                self.bus.mem_read16(address) as i16 as i32 as u32
+                value
             );
         } else {
             self.cop0.bad_addr = address;
@@ -364,7 +365,8 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         if address & 1 == 0 {
-            self.update_load(instruction.rt(), self.bus.mem_read16(address));
+            let value = self.bus.mem_read16(address);
+            self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
             self.enter_exception(ExceptionType::LoadAddressError);
