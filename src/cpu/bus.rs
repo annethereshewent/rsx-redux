@@ -161,6 +161,7 @@ impl Bus {
                 self.scheduler.tick(5);
                 self.interrupt_mask.bits() >> 16
             }
+            0x1f801120 => self.timers[2].counter,
             0x1f801c00..=0x1f801e7f => {
                 self.scheduler.tick(5);
                 self.spu.read16(address) as u32
@@ -228,6 +229,7 @@ impl Bus {
                 &mut self.scheduler,
                 &mut self.main_ram,
                 &mut self.gpu,
+                &mut self.spu,
                 &mut self.cdrom,
                 &mut self.mdec,
                 &mut self.interrupt_stat
