@@ -3,10 +3,8 @@ name = "rsx-redux-desktop"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies.rsx-redux]
-path = "../"
-
 [dependencies]
+rsx-redux = { path = "..", default-features = false }
 sdl2 = "0.37"
 objc2-metal = "0.3.1"
 objc2 = "0.6.1"
@@ -15,3 +13,10 @@ sdl2-sys = "0.37.0"
 objc2-quartz-core = { version = "0.3.1", features = ["CAMetalLayer"] }
 objc2-core-foundation = "0.3.1"
 memmap2 = "0.9.7"
+ringbuf="0.4.8"
+
+
+[features]
+default = ["rsx-redux/old_spu"]
+old_spu = ["rsx-redux/old_spu"]
+new_spu = ["rsx-redux/new_spu"]

@@ -35,7 +35,12 @@ use objc2_metal::{
     MTLRenderPipelineDescriptor,
     MTLVertexFormat,
     MTLBlendOperation,
-    MTLBlendFactor
+    MTLBlendFactor,
+    MTLCompareFunction,
+    MTLStencilOperation,
+    MTLDepthStencilState,
+    MTLDepthStencilDescriptor,
+    MTLStencilDescriptor
 };
 use objc2_quartz_core::{CAMetalLayer, CAMetalDrawable};
 use rsx_redux::cpu::bus::gpu::{
@@ -107,7 +112,11 @@ pub struct Renderer {
     vertices: [FbVertex; 4],
     buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
     already_encoded: bool,
-    pass2_poly: Option<Polygon>
+    pass2_poly: Option<Polygon>,
+    no_mask: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
+    check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
+    set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
+    both: Retained<ProtocolObject<dyn MTLDepthStencilState>>
 }
 
 impl Renderer {
@@ -329,6 +338,11 @@ impl Renderer {
             }
         }
 
+        let no_mask    = Self::make_stencil_state(&device, MTLCompareFunction::Always, MTLStencilOperation::Keep);
+        let check_only = Self::make_stencil_state(&device, MTLCompareFunction::Equal, MTLStencilOperation::Keep);
+        let set_only   = Self::make_stencil_state(&device, MTLCompareFunction::Always, MTLStencilOperation::Replace);
+        let both       = Self::make_stencil_state(&device, MTLCompareFunction::Equal,  MTLStencilOperation::Replace);
+
         Self {
             metal_layer,
             command_queue,
@@ -346,8 +360,34 @@ impl Renderer {
             vertices,
             buffer,
             already_encoded: false,
-            pass2_poly: None
+            pass2_poly: None,
+            no_mask,
+            check_only,
+            set_only,
+            both
         }
+    }
+
+    fn make_stencil_state(
+        device: &Retained<ProtocolObject<dyn MTLDevice>>,
+        cmp: MTLCompareFunction,
+        pass_op: MTLStencilOperation
+    ) -> Retained<ProtocolObject<dyn MTLDepthStencilState>> {
+        let ds = unsafe { MTLDepthStencilDescriptor::new() };
+        ds.setDepthCompareFunction(MTLCompareFunction::Always);
+        ds.setDepthWriteEnabled(false);
+
+        let front = unsafe { MTLStencilDescriptor::new() };
+        front.setStencilCompareFunction(cmp);
+        front.setReadMask(0xFF);
+        front.setWriteMask(0xFF);
+        front.setDepthStencilPassOperation(pass_op);
+        front.setStencilFailureOperation(MTLStencilOperation::Keep);
+        front.setDepthFailureOperation(MTLStencilOperation::Keep);
+        ds.setFrontFaceStencil(Some(&front));
+        ds.setBackFaceStencil(Some(&front));
+
+        device.newDepthStencilStateWithDescriptor(&ds).unwrap()
     }
 
 
@@ -482,8 +522,19 @@ impl Renderer {
                 encoder.setRenderPipelineState(&self.pipeline_state);
             }
 
-            unsafe { encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0) };
-            unsafe { encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len()) };
+            let stencil_state = match (gpu.force_mask_bit, gpu.preserve_masked_pixels) {
+                (false, false) => &self.no_mask,
+                (true, false) => &self.set_only,
+                (false, true) => &self.check_only,
+                (true, true) => &self.both
+            };
+
+            unsafe {
+                encoder.setDepthStencilState(Some(stencil_state));
+                encoder.setStencilReferenceValue(if gpu.force_mask_bit { 1 } else { 0 });
+                encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
+                encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
+            }
         }
     }
 

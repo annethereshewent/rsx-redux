@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cdrom::CDRom;
 use dma::dma::Dma;
 use gpu::GPU;
@@ -6,11 +8,18 @@ use registers::{
     delay_register::DelayRegister,
     interrupt_register::InterruptRegister
 };
+use ringbuf::{storage::Heap, wrap::caching::Caching, SharedRb};
 use scheduler::Scheduler;
+#[cfg(feature="old_spu")]
+use spu_legacy::SPU;
+#[cfg(feature="new_spu")]
 use spu::SPU;
 use timer::Timer;
 
 pub mod registers;
+#[cfg(feature="old_spu")]
+pub mod spu_legacy;
+#[cfg(feature="new_spu")]
 pub mod spu;
 pub mod timer;
 pub mod scheduler;
@@ -33,8 +42,9 @@ pub struct Bus {
     exp3_delay: DelayRegister,
     exp2_delay: DelayRegister,
     cache_config: u32,
-    main_ram: Box<[u8]>,
-    spu: SPU,
+    pub(crate) main_ram: Box<[u8]>,
+    scratchpad: Box<[u8]>,
+    pub spu: SPU,
     exp1_post: u8,
     pub interrupt_mask: InterruptRegister,
     pub interrupt_stat: InterruptRegister,
@@ -47,7 +57,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new() -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>) -> Self {
         let mut scheduler = Scheduler::new();
         Self {
             bios: Vec::new(),
@@ -64,7 +74,7 @@ impl Bus {
             exp2_delay: DelayRegister::new(),
             cache_config: 0,
             main_ram: vec![0; 0x200000].into_boxed_slice(),
-            spu: SPU::new(),
+            spu: SPU::new(producer, &mut scheduler),
             exp1_post: 0,
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
             interrupt_stat: InterruptRegister::from_bits_truncate(0),
@@ -73,7 +83,8 @@ impl Bus {
             cdrom: CDRom::new(&mut scheduler),
             scheduler,
             dma: Dma::new(),
-            mdec: Mdec::new()
+            mdec: Mdec::new(),
+            scratchpad: vec![0; 0x400].into_boxed_slice()
         }
     }
 
@@ -94,30 +105,67 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u32 ) },
+            0x1f800000..=0x1f8003ff => unsafe { *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u32 )},
             0x1f801014 => self.spu_delay.read(),
             0x1f801060 => self.ram_size,
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
-            0x1f801080..=0x1f8010f4 => self.dma.read_registers(address),
+            0x1f801080..=0x1f8010f4 => {
+                self.scheduler.tick(5);
+                self.dma.read_registers(address)
+            }
             0x1f801110 => self.timers[1].counter,
-            0x1f801810 => self.gpu.read_gpu(),
-            0x1f801814 => self.gpu.read_stat(),
-            0x1f801820..=0x1f801824 => self.mdec.read(address),
-            0x1fc00000..=0x1fc80000 => unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) },
+            0x1f801810 => {
+                self.scheduler.tick(5);
+                self.gpu.read_gpu()
+            }
+            0x1f801814 => {
+                self.scheduler.tick(5);
+                self.gpu.read_stat()
+            }
+            0x1f801820..=0x1f801824 => {
+                self.scheduler.tick(5);
+                self.mdec.read(address)
+            }
+            0x1fc00000..=0x1fc80000 => {
+                if (self.cache_config >> 11) & 1 == 0 {
+                    self.scheduler.tick(4);
+                }
+
+                unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32 ) }
+            }
             _ => todo!("(mem_read32) address: 0x{:x}", address)
         }
     }
 
-    pub fn mem_read16(&self, address: u32) -> u32 {
+    pub fn mem_read16(&mut self, address: u32) -> u32 {
         let address = Self::translate_address(address);
 
         match address {
             0x00000000..=0x001fffff => unsafe { *(&self.main_ram[address] as *const u8 as *const u16) as u32 },
-            0x1f801070 => self.interrupt_stat.bits() & 0xffff,
-            0x1f801072 => (self.interrupt_stat.bits() >> 16) & 0xffff,
-            0x1f801074 => self.interrupt_mask.bits() & 0xffff,
-            0x1f801076 => self.interrupt_mask.bits() >> 16,
-            0x1f801c00..=0x1f801e7f => self.spu.read16(address) as u32,
+            0x1f800000..=0x1f8003ff => unsafe { *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u16) as u32 },
+            0x1f80104a => 0xff,
+            0x1f801070 => {
+                self.scheduler.tick(5);
+                self.interrupt_stat.bits() & 0xffff
+            }
+            0x1f801072 => {
+                self.scheduler.tick(5);
+                (self.interrupt_stat.bits() >> 16) & 0xffff
+            }
+            0x1f801074 => {
+                self.scheduler.tick(5);
+                self.interrupt_mask.bits() & 0xffff
+            }
+            0x1f801076 => {
+                self.scheduler.tick(5);
+                self.interrupt_mask.bits() >> 16
+            }
+            0x1f801120 => self.timers[2].counter,
+            0x1f801c00..=0x1f801e7f => {
+                self.scheduler.tick(5);
+                self.spu.read16(address) as u32
+            }
             _ => todo!("(mem_read16) address: 0x{:x}", address)
         }
     }
@@ -127,11 +175,22 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
+            0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] as u32,
+            0x1f801040 =>{
+                self.scheduler.tick(5);
+                0xff
+            } // joypad, not implemented yet
             0x1f801800..=0x1f801803 => {
+                self.scheduler.tick(5);
                 self.cdrom.read(address) as u32
             }
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
-            0x1fc00000..=0x1fc80000 => self.bios[address - 0x1fc00000] as u32,
+            0x1fc00000..=0x1fc80000 =>{
+                if (self.cache_config >> 1) & 1 == 0 {
+                    self.scheduler.tick(4);
+                }
+                self.bios[address - 0x1fc00000] as u32
+            }
             _ => todo!("(mem_read8) address 0x{:x}", address)
         }
     }
@@ -139,8 +198,13 @@ impl Bus {
     pub fn mem_write32(&mut self, address: u32, value: u32) {
         let address = Self::translate_address(address);
 
+        if (0x1f801000..=0x1f802000).contains(&address) {
+            self.scheduler.tick(5);
+        }
+
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u32 ) = value },
+            0x1f800000..=0x1f8003ff => unsafe { *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u32 ) = value },
             0x1f801000 => self.exp1_base_address = value & 0xffffff | (0x1f << 24), // TODO: implement
             0x1f801004 => {
                 self.exp2_base_address = value & 0xffffff | (0x1f << 24);
@@ -165,6 +229,7 @@ impl Bus {
                 &mut self.scheduler,
                 &mut self.main_ram,
                 &mut self.gpu,
+                &mut self.spu,
                 &mut self.cdrom,
                 &mut self.mdec,
                 &mut self.interrupt_stat
@@ -185,8 +250,14 @@ impl Bus {
     pub fn mem_write16(&mut self, address: u32, value: u16) {
         let address = Self::translate_address(address);
 
+        if (0x1f801000..=0x1f802000).contains(&address) {
+            self.scheduler.tick(5);
+        }
+
         match address {
             0x00000000..=0x001fffff => unsafe { *(&mut self.main_ram[address] as *mut u8 as *mut u16 ) = value },
+            0x1f800000..=0x1f8003ff => unsafe { *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u16) = value },
+            0x1f80104a => (), // println!("warning: joypad not implemented yet"), // TODO: Joypad
             0x1f801070 => {
                 let new_stat = self.interrupt_stat.bits() & value as u32;
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
@@ -202,7 +273,10 @@ impl Bus {
             0x1f801120 => self.timers[2].counter = value as u32,
             0x1f801124 => self.timers[2].write_counter_register(value, &mut self.scheduler),
             0x1f801128 => self.timers[2].counter_target = value,
+            #[cfg(feature="old_spu")]
             0x1f801c00..=0x1f801e7f => self.spu.write16(address, value),
+            #[cfg(feature="new_spu")]
+            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value, &mut self.interrupt_stat),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
     }
@@ -212,13 +286,20 @@ impl Bus {
 
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
+            0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
+            0x1f801040 => (), // println!("warning: joypad not implemented yet"),
             0x1f801800 => {
+                self.scheduler.tick(5);
                 self.cdrom.write_bank(value);
             }
             0x1f801801..=0x1f801803 => {
+                self.scheduler.tick(5);
                 self.cdrom.write(address, value);
             }
-            0x1f802041 => self.exp1_post = value,
+            0x1f802041 => {
+                self.scheduler.tick(5);
+                self.exp1_post = value;
+            }
             _ => todo!("(mem_write8) address: 0x{:x}", address)
         }
     }

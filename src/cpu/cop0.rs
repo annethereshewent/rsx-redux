@@ -42,7 +42,8 @@ pub struct COP0 {
     pub bdam: u32,
     pub bpcm: u32,
     pub cause: CauseRegister,
-    pub epc: u32
+    pub epc: u32,
+    pub bad_addr: u32
 }
 
 bitflags! {
@@ -104,15 +105,20 @@ impl COP0 {
             bdam: 0,
             bpcm: 0,
             cause: CauseRegister::from_bits_retain(0),
-            epc: 0
+            epc: 0,
+            bad_addr: 0
         }
     }
 
     pub fn mfc0(&self, index: usize) -> u32 {
         match index {
+            0x6 => self.tar,
+            0x7 => self.dcic,
+            0x8 => self.bad_addr,
             0xc => self.sr.bits(),
             0xd => self.cause.bits(),
             0xe => self.epc,
+            0xf => 0x0000_0002,
             _ => todo!("mfc0 index: {index}")
         }
     }

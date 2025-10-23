@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 
+#[derive(PartialEq, Copy, Clone)]
 pub enum SoundRamTransferMode {
     Stop = 0,
     ManualWrite = 1,

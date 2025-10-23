@@ -1,9 +1,10 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fs, ops::{Index, IndexMut}, sync::Arc};
 
 use bus::{scheduler::EventType, Bus};
 use cop0::{CauseRegister, StatusRegister, COP0};
 use gte::Gte;
 use instructions::Instruction;
+use ringbuf::{storage::Heap, wrap::caching::Caching, SharedRb};
 
 pub mod bus;
 pub mod instructions;
@@ -14,13 +15,39 @@ pub mod gte;
 pub const RA_REGISTER: usize = 31;
 
 #[derive(Copy, Clone)]
+pub struct Registers([u32; 32]);
+
+impl Index<usize> for Registers {
+    type Output = u32;
+    fn index(&self, idx: usize) -> &Self::Output {
+        &self.0[idx]
+    }
+}
+
+impl IndexMut<usize> for Registers {
+    fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
+        if idx == 0 {
+            // Always hand out a dummy zero reference for $zero.
+            // Returning &mut 0 would be UB, so we point into slot 0
+            // but also force it back to 0 whenever it's accessed.
+            self.0[0] = 0;
+        }
+        &mut self.0[idx]
+    }
+}
+
+#[derive(Copy, Clone)]
 pub enum ExceptionType {
+    Interrupt = 0x0,
+    LoadAddressError = 0x4,
+    StoreAddressError = 0x5,
     Syscall = 0x8,
-    Interrupt = 0x0
+    Break = 0x9,
+    Overflow = 0xc
 }
 
 pub struct CPU {
-    r: [u32; 32],
+    r: Registers,
     delayed_load: Option<(usize, u32)>,
     pc: u32,
     previous_pc: u32,
@@ -37,11 +64,13 @@ pub struct CPU {
     ignored_load_delay: Option<usize>,
     branch_taken: bool,
     in_delay_slot: bool,
-    output: String
+    output: String,
+    exe_file: Option<String>,
+    should_transfer_load: bool
 }
 
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>, exe_file: Option<String>) -> Self {
         /*
         00h=SPECIAL 08h=ADDI  10h=COP0 18h=N/A   20h=LB   28h=SB   30h=LWC0 38h=SWC0
         01h=BcondZ  09h=ADDIU 11h=COP1 19h=N/A   21h=LH   29h=SH   31h=LWC1 39h=SWC1
@@ -197,13 +226,13 @@ impl CPU {
         ];
 
         Self {
-            r: [0; 32],
+            r: Registers([0; 32]),
             pc: 0xbfc00000,
             previous_pc: 0xbfc00000,
             next_pc: 0xbfc00004,
             hi: 0,
             lo: 0,
-            bus: Bus::new(),
+            bus: Bus::new(producer),
             instructions,
             special_instructions,
             delayed_load: None,
@@ -214,7 +243,9 @@ impl CPU {
             in_delay_slot: false,
             branch_taken: false,
             output: "".to_string(),
-            gte: Gte::new()
+            gte: Gte::new(),
+            exe_file,
+            should_transfer_load: false
         }
     }
 
@@ -295,18 +326,75 @@ impl CPU {
         self.bus.gpu.frame_finished = false;
     }
 
+    pub fn load_exe(&mut self, filename: &str) {
+        let bytes = fs::read(filename).unwrap();
+
+        let mut index = 0x10;
+
+        self.pc = unsafe { *(&bytes[index] as *const u8 as *const u32) };
+        self.next_pc = self.pc + 4;
+
+        index += 4;
+
+        self.r[28] = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
+
+        index += 4;
+
+        let file_dest = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
+
+        index += 4;
+
+        // let file_size = util::read_word(&bytes, index);
+        let file_size = unsafe { *(&bytes[index] as *const u8 as *const u32 ) };
+
+        index += 0x10 + 4;
+
+        // let sp_base = util::read_word(&bytes, index);
+        let sp_base = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
+
+        index += 4;
+
+        if sp_base != 0 {
+            // let sp_offset = util::read_word(&bytes, index);
+            let sp_offset = unsafe { *(&bytes[index] as *const u8 as *const u32 )};
+
+            self.r[29] = sp_base + sp_offset;
+            self.r[30] = self.r[29];
+        }
+
+        index = 0x800;
+
+        for i in 0..file_size {
+            self.bus.main_ram[((file_dest + i) & 0x1f_ffff) as usize] = bytes[index];
+            index += 1;
+        }
+    }
+
     pub fn step(&mut self) {
         self.r[0] = 0;
 
         self.handle_interrupts();
 
-        let should_transfer = self.delayed_load.is_some();
+        self.should_transfer_load = self.delayed_load.is_some();
         self.ignored_load_delay = None;
 
         self.in_delay_slot = self.branch_taken;
         self.cop0.cause.set(CauseRegister::BT, self.in_delay_slot);
         self.branch_taken = false;
         self.cop0.cause.remove(CauseRegister::BD);
+
+        if self.pc & 0x3 != 0 {
+            self.cop0.bad_addr = self.pc;
+            self.enter_exception(ExceptionType::LoadAddressError);
+
+            if self.should_transfer_load {
+                self.transfer_load();
+            }
+
+            self.should_transfer_load = false;
+
+            return;
+        }
 
         let opcode = self.bus.mem_read32(self.pc);
 
@@ -318,12 +406,25 @@ impl CPU {
                 self.gte.execute_command(Instruction(opcode));
             }
 
+            if self.should_transfer_load {
+                self.transfer_load();
+            }
+
+            self.should_transfer_load = false;
+
             return;
         }
 
         self.update_tty();
 
         self.previous_pc = self.pc;
+
+        if self.previous_pc == 0x80030000 {
+            if let Some(exe_file) = &self.exe_file {
+                let exe_file = exe_file.clone();
+                self.load_exe(exe_file.as_str());
+            }
+        }
 
         self.pc = self.next_pc;
 
@@ -338,6 +439,16 @@ impl CPU {
 
         self.tick(cycles);
 
+        self.handle_events();
+
+        if self.should_transfer_load {
+            self.transfer_load();
+        }
+
+        self.should_transfer_load = false;
+    }
+
+    fn handle_events(&mut self) {
         if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
                 EventType::Vblank => self.bus.gpu.handle_vblank(
@@ -371,12 +482,9 @@ impl CPU {
                 EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler),
                 EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
                 EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
-                EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler)
+                EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler),
+                EventType::TickSpu => self.bus.spu.tick(&mut self.bus.interrupt_stat, &mut self.bus.scheduler)
             }
-        }
-
-        if should_transfer {
-            self.transfer_load();
         }
     }
 

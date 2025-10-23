@@ -1,4 +1,4 @@
-use crate::cpu::bus::{cdrom::CDRom, gpu::GPU, mdec::Mdec, registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
+use crate::cpu::bus::{cdrom::CDRom, gpu::GPU, mdec::Mdec, registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, spu_legacy::SPU};
 
 use super::{dma_channel_control_register::{DmaChannelControlRegister, SyncMode}, dma_control_register::DmaControlRegister, dma_interrupt_register::DmaInterruptRegister};
 
@@ -94,17 +94,17 @@ impl Dma {
         let block_size = dma_channel.block_size;
         let num_blocks = dma_channel.num_blocks;
 
-        for _ in 0..num_blocks {
-            for _ in 0..block_size {
-                let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
+        let num_words = block_size * num_blocks;
 
-                mdec.write_command(word);
+        for _ in 0..num_words {
+            let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
 
-                if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
-                    current_address -= 4;
-                } else {
-                    current_address += 4;
-                }
+            mdec.write_command(word);
+
+            if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                current_address -= 4;
+            } else {
+                current_address += 4;
             }
         }
     }
@@ -218,8 +218,26 @@ impl Dma {
         }
     }
 
-    fn start_spu_transfer(&mut self) {
-        todo!("spu transfer");
+    fn start_spu_transfer(&mut self, ram: &mut [u8],  spu: &mut SPU) {
+        let channel = &mut self.channels[SPU];
+
+        let mut current_address = channel.base_address;
+
+        assert_eq!(channel.control.sync_mode(), SyncMode::Slice);
+
+        if !channel.control.contains(DmaChannelControlRegister::TRANSFER_DIR) {
+            panic!("only transfers from ram to spu allowed");
+        }
+
+        let num_words = channel.num_blocks * channel.block_size;
+
+        for _ in 0..num_words {
+            let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
+
+            spu.dma_write(word);
+
+            current_address += 4;
+        }
     }
 
     fn start_pio_transfer(&mut self) {
@@ -277,6 +295,7 @@ impl Dma {
         scheduler: &mut Scheduler,
         ram: &mut [u8],
         gpu: &mut GPU,
+        spu: &mut SPU,
         cdrom: &mut CDRom,
         mdec: &mut Mdec,
         interrupt_stat: &mut InterruptRegister
@@ -336,7 +355,7 @@ impl Dma {
                     }
                 }
                 3 => self.start_cdrom_transfer(ram, cdrom),
-                4 => self.start_spu_transfer(),
+                4 => self.start_spu_transfer(ram, spu),
                 5 => self.start_pio_transfer(),
                 6 => self.start_otc_transfer(ram, interrupt_stat),
                 _ => todo!("dma transfer for channel {channel}")

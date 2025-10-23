@@ -21,7 +21,8 @@ pub enum EventType {
     CDSeek,
     CDStat,
     CDRead,
-    Timer(usize)
+    Timer(usize),
+    TickSpu
 }
 
 pub struct Scheduler {

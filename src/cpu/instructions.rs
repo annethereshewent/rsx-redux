@@ -1,6 +1,4 @@
-use super::{cop0::CauseRegister, ExceptionType, CPU, RA_REGISTER};
-
-
+use super::{ExceptionType, CPU, RA_REGISTER};
 pub struct Instruction(pub u32);
 
 impl Instruction {
@@ -39,6 +37,9 @@ impl Instruction {
     pub fn cop_code(&self) -> u32 {
         (self.0 >> 21) & 0x1f
     }
+    pub fn bcond(&self) -> u32 {
+        (self.0 >> 16) & 0b1
+    }
 }
 
 impl CPU {
@@ -49,32 +50,28 @@ impl CPU {
             let special_op = instruction & 0x3f;
             return self.special_instructions[special_op as usize](self, Instruction(instruction));
         }
-
-
         self.instructions[op as usize](self, Instruction(instruction))
     }
 
     pub fn reserved(&mut self, instruction: Instruction) -> usize {
         panic!("invalid instruction received: 0x{:x}", instruction.0);
-
-        2
     }
 
     pub fn bcondz(&mut self, instruction: Instruction) -> usize {
-        match instruction.rt() {
-            0x0 => self.bltz(instruction),
-            0x1 => self.bgez(instruction),
-            0x10 => self.bltzal(instruction),
-            0x11 => self.bgezal(instruction),
-            _ => panic!("invalid option given for BcondZ: 0x{:x}", instruction.rt())
+        let bits = instruction.rt();
+        match (bits & 1, (bits & 0x1e) ) {
+            (0, 0x10) => self.bltzal(instruction),
+            (1, 0x10) => self.bgezal(instruction),
+            (0, _) => self.bltz(instruction),
+            (1, _) => self.bgez(instruction),
+            _ => unreachable!()
         }
     }
 
     pub fn bltz(&mut self, instruction: Instruction) -> usize {
         if (self.r[instruction.rs()] as i32) < 0 {
-            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
         2
@@ -82,30 +79,43 @@ impl CPU {
 
     pub fn bgez(&mut self, instruction: Instruction) -> usize {
         if (self.r[instruction.rs()] as i32) >= 0 {
-            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
         }
 
         2
     }
 
     pub fn bltzal(&mut self, instruction: Instruction) -> usize {
-        todo!("bltzal");
+        let val = self.r[instruction.rs()];
+        self.r[RA_REGISTER] = self.next_pc;
+        self.ignored_load_delay = Some(RA_REGISTER);
+
+        if (val as i32) < 0 {
+            self.branch_taken = true;
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
 
         2
     }
 
     pub fn bgezal(&mut self, instruction: Instruction) -> usize {
-        todo!("bgezal");
+        let val = self.r[instruction.rs()];
+        self.r[RA_REGISTER] = self.next_pc;
+        self.ignored_load_delay = Some(RA_REGISTER);
+
+        if (val as i32) >= 0 {
+            self.branch_taken = true;
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+        }
 
         2
     }
 
     pub fn j(&mut self, instruction: Instruction) -> usize {
-        self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
+        self.next_pc = (self.pc & 0xf000_0000) | instruction.immediate26() << 2;
+
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }
@@ -117,7 +127,6 @@ impl CPU {
 
         self.next_pc = (self.pc & 0xf0000000) | instruction.immediate26() << 2;
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }
@@ -126,7 +135,6 @@ impl CPU {
        if self.r[instruction.rs()] == self.r[instruction.rt()] {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -136,7 +144,6 @@ impl CPU {
         if self.r[instruction.rs()] != self.r[instruction.rt()] {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -146,7 +153,6 @@ impl CPU {
         if self.r[instruction.rs()] as i32 <= 0 {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
-            self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -156,7 +162,6 @@ impl CPU {
         if (self.r[instruction.rs()] as i32) > 0 {
            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
            self.branch_taken = true;
-           self.cop0.cause.insert(CauseRegister::BD);
         }
 
         2
@@ -166,7 +171,7 @@ impl CPU {
         let (result, overflow) = (self.r[instruction.rs()] as i32).overflowing_add(instruction.signed_immediate16());
 
         if overflow {
-            todo!("raise checked add exception");
+            self.enter_exception(ExceptionType::Overflow);
         } else {
             self.r[instruction.rt()] = result as u32;
             self.ignored_load_delay = Some(instruction.rt());
@@ -252,8 +257,6 @@ impl CPU {
 
     pub fn cop1(&mut self, _instruction: Instruction) -> usize {
         panic!("cop1 nonexistent in playstation");
-
-        2
     }
 
     pub fn cop2(&mut self, instruction: Instruction) -> usize {
@@ -282,8 +285,6 @@ impl CPU {
 
     pub fn cop3(&mut self, _instruction: Instruction) -> usize {
         panic!("cop3 nonexistent in playstation");
-
-        2
     }
 
     pub fn lb(&mut self, instruction: Instruction) -> usize {
@@ -291,37 +292,39 @@ impl CPU {
 
         let value = self.bus.mem_read8(address) as i8 as i16 as i32 as u32;
 
-        self.update_load(
-            instruction.rt(),
-            value
-        );
+        self.update_load(instruction.rt(), value);
 
         2
     }
 
     pub fn lh(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-        self.update_load(
-            instruction.rt(),
-            self.bus.mem_read16(address) as i16 as i32 as u32
-        );
-
+        if address & 1 == 0 {
+            let value = self.bus.mem_read16(address) as i16 as i32 as u32;
+            self.update_load(
+                instruction.rt(),
+                value
+            );
+        } else {
+            self.cop0.bad_addr = address;
+            self.enter_exception(ExceptionType::LoadAddressError);
+        }
         2
     }
 
     pub fn lwl(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-
         let mut result = self.r[instruction.rt()];
 
         if let Some((register, value)) = self.delayed_load {
             if register == instruction.rt() {
+
                 result = value;
             }
         }
 
-        let aligned_word = self.bus.mem_read32(address & !3);
-
+        let aligned_address = address & !3;
+        let aligned_word = self.bus.mem_read32(aligned_address);
         result = match address & 0x3 {
             0 => (result & 0xffffff) | (aligned_word << 24),
             1 => (result & 0xffff) | (aligned_word << 16),
@@ -337,8 +340,14 @@ impl CPU {
 
     pub fn lw(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-        let value = self.bus.mem_read32(address);
-        self.update_load(instruction.rt(), value);
+
+        if address & 0x3 == 0 {
+            let value = self.bus.mem_read32(address);
+            self.update_load(instruction.rt(), value);
+        } else {
+            self.cop0.bad_addr = address;
+            self.enter_exception(ExceptionType::LoadAddressError);
+        }
 
         2
     }
@@ -347,7 +356,6 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         let value = self.bus.mem_read8(address);
-
         self.update_load(instruction.rt(), value);
 
         2
@@ -356,14 +364,19 @@ impl CPU {
     pub fn lhu(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.update_load(instruction.rt(), self.bus.mem_read16(address));
+        if address & 1 == 0 {
+            let value = self.bus.mem_read16(address);
+            self.update_load(instruction.rt(), value);
+        } else {
+            self.cop0.bad_addr = address;
+            self.enter_exception(ExceptionType::LoadAddressError);
+        }
 
         2
     }
 
     pub fn lwr(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-
         let mut result = self.r[instruction.rt()];
 
         if let Some((register, value)) = self.delayed_load {
@@ -372,8 +385,9 @@ impl CPU {
             }
         }
 
-        let aligned_word = self.bus.mem_read32(address & !3);
+        let aligned_address = address & !3;
 
+        let aligned_word = self.bus.mem_read32(aligned_address);
         result = match address & 0x3 {
             0 => aligned_word,
             1 => (result & 0xff000000) | (aligned_word >> 8),
@@ -400,7 +414,12 @@ impl CPU {
     pub fn sh(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        self.store16(address, self.r[instruction.rt()] as u16);
+        if address & 1 == 0 {
+            self.store16(address, self.r[instruction.rt()] as u16);
+        } else {
+            self.cop0.bad_addr = address;
+            self.enter_exception(ExceptionType::StoreAddressError);
+        }
 
         2
     }
@@ -426,9 +445,15 @@ impl CPU {
 
     pub fn sw(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
-        let value = self.r[instruction.rt()];
 
-        self.store32(address, value);
+        if address & 0x3 == 0 {
+            let value = self.r[instruction.rt()];
+
+            self.store32(address, value);
+        } else {
+            self.cop0.bad_addr = address;
+            self.enter_exception(ExceptionType::StoreAddressError);
+        }
 
         2
     }
@@ -452,16 +477,12 @@ impl CPU {
         2
     }
 
-    pub fn lwc0(&mut self, instruction: Instruction) -> usize {
+    pub fn lwc0(&mut self, _instruction: Instruction) -> usize {
         todo!("lwc0");
-
-        2
     }
 
-    pub fn lwc1(&mut self, instruction: Instruction) -> usize {
+    pub fn lwc1(&mut self, _instruction: Instruction) -> usize {
         todo!("lwc1");
-
-        2
     }
 
     pub fn lwc2(&mut self, instruction: Instruction) -> usize {
@@ -474,19 +495,16 @@ impl CPU {
         2
     }
 
-    pub fn lwc3(&mut self, instruction: Instruction) -> usize {
+    pub fn lwc3(&mut self, _instruction: Instruction) -> usize {
         todo!("lwc3");
-        2
     }
 
-    pub fn swc0(&mut self, instruction: Instruction) -> usize {
+    pub fn swc0(&mut self, _instruction: Instruction) -> usize {
         todo!("swc0");
-        2
     }
 
-    pub fn swc1(&mut self, instruction: Instruction) -> usize {
+    pub fn swc1(&mut self, _instruction: Instruction) -> usize {
         todo!("swc1");
-        2
     }
 
     pub fn swc2(&mut self, instruction: Instruction) -> usize {
@@ -499,9 +517,8 @@ impl CPU {
         2
     }
 
-    pub fn swc3(&mut self, instruction: Instruction) -> usize {
+    pub fn swc3(&mut self, _instruction: Instruction) -> usize {
         todo!("swc3");
-        2
     }
 
     pub fn sll(&mut self, instruction: Instruction) -> usize {
@@ -562,7 +579,6 @@ impl CPU {
         self.next_pc = self.r[instruction.rs()];
 
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }
@@ -576,7 +592,6 @@ impl CPU {
         self.ignored_load_delay = Some(instruction.rd());
 
         self.branch_taken = true;
-        self.cop0.cause.insert(CauseRegister::BD);
 
         2
     }
@@ -587,8 +602,8 @@ impl CPU {
         2
     }
 
-    pub fn break_(&mut self, instruction: Instruction) -> usize {
-        todo!("break");
+    pub fn break_(&mut self, _instruction: Instruction) -> usize {
+        self.enter_exception(ExceptionType::Break);
 
         2
     }
@@ -651,9 +666,15 @@ impl CPU {
         let dividend = self.r[instruction.rs()] as i32;
         let divisor = self.r[instruction.rt()] as i32;
 
-        if divisor != 0 {
+        if (dividend as u32) == 0x8000_0000 && divisor == -1 {
+            self.lo = dividend as u32;
+            self.hi = 0;
+        } else if divisor != 0 {
             self.lo = (dividend / divisor) as u32;
             self.hi = (dividend % divisor) as u32;
+        } else {
+            self.lo = if dividend >= 0 { -1  as i32 as u32 } else { 1 };
+            self.hi = dividend as u32;
         }
 
         2
@@ -666,21 +687,23 @@ impl CPU {
         let divisor = self.r[instruction.rt()];
 
         if divisor != 0 {
-            self.lo = dividend / divisor;
-            self.hi = dividend % divisor;
+            self.lo = (dividend / divisor) as u32;
+            self.hi = (dividend % divisor) as u32;
+        } else {
+            self.lo = 0xffff_ffff;
+            self.hi = dividend;
         }
 
         2
     }
 
     pub fn add(&mut self, instruction: Instruction) -> usize{
-        let (result, overflow) = self.r[instruction.rs()].overflowing_add(self.r[instruction.rt()]);
-
-        if overflow {
-            todo!("raise checked add exception");
-        } else {
+        if let Some(result) = (self.r[instruction.rs()] as i32).checked_add(self.r[instruction.rt()] as i32) {
             self.r[instruction.rd()] = result as u32;
             self.ignored_load_delay = Some(instruction.rd());
+
+        } else {
+            self.enter_exception(ExceptionType::Overflow);
         }
 
         2
@@ -694,7 +717,14 @@ impl CPU {
     }
 
     pub fn sub(&mut self, instruction: Instruction) -> usize {
-        todo!("sub");
+        if let Some(result) = (self.r[instruction.rs()] as i32).checked_sub(self.r[instruction.rt()] as i32) {
+
+            self.r[instruction.rd()] = result as u32;
+
+            self.ignored_load_delay = Some(instruction.rd());
+        } else {
+            self.enter_exception(ExceptionType::Overflow);
+        }
 
         2
     }
@@ -754,7 +784,7 @@ impl CPU {
                 self.r[pending_index] = pending_value;
             }
         }
-
+        self.should_transfer_load = false;
         self.delayed_load = Some((index, value));
     }
 }
