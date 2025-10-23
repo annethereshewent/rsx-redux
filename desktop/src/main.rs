@@ -4,7 +4,12 @@ use frontend::Frontend;
 use memmap2::Mmap;
 use objc2_core_foundation::CGSize;
 use ringbuf::{traits::Split, HeapRb};
-use rsx_redux::cpu::{bus::spu_legacy::NUM_SAMPLES, CPU};
+use rsx_redux::cpu::CPU;
+
+#[cfg(feature="old_spu")]
+use rsx_redux::cpu::bus::spu_legacy::NUM_SAMPLES;
+#[cfg(feature="new_spu")]
+use rsx_redux::cpu::bus::spu::NUM_SAMPLES;
 
 pub mod frontend;
 pub mod renderer;

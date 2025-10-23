@@ -10,11 +10,17 @@ use registers::{
 };
 use ringbuf::{storage::Heap, wrap::caching::Caching, SharedRb};
 use scheduler::Scheduler;
+#[cfg(feature="old_spu")]
 use spu_legacy::SPU;
+#[cfg(feature="new_spu")]
+use spu::SPU;
 use timer::Timer;
 
 pub mod registers;
+#[cfg(feature="old_spu")]
 pub mod spu_legacy;
+#[cfg(feature="new_spu")]
+pub mod spu;
 pub mod timer;
 pub mod scheduler;
 pub mod gpu;
@@ -265,8 +271,10 @@ impl Bus {
             0x1f801120 => self.timers[2].counter = value as u32,
             0x1f801124 => self.timers[2].write_counter_register(value, &mut self.scheduler),
             0x1f801128 => self.timers[2].counter_target = value,
-
+            #[cfg(feature="old_spu")]
             0x1f801c00..=0x1f801e7f => self.spu.write16(address, value),
+            #[cfg(feature="new_spu")]
+            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value, &mut self.interrupt_stat),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
     }

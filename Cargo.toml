@@ -10,3 +10,8 @@ priority-queue = "2.5.0"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 memmap2 = "0.9.7"
 ringbuf="0.4.8"
+
+[features]
+default = ["old_spu"]
+old_spu = []
+new_spu = []
