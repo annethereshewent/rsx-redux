@@ -10,11 +10,11 @@ use registers::{
 };
 use ringbuf::{storage::Heap, wrap::caching::Caching, SharedRb};
 use scheduler::Scheduler;
-use spu::SPU;
+use spu_legacy::SPU;
 use timer::Timer;
 
 pub mod registers;
-pub mod spu;
+pub mod spu_legacy;
 pub mod timer;
 pub mod scheduler;
 pub mod gpu;
@@ -266,7 +266,7 @@ impl Bus {
             0x1f801124 => self.timers[2].write_counter_register(value, &mut self.scheduler),
             0x1f801128 => self.timers[2].counter_target = value,
 
-            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value, &mut self.interrupt_stat),
+            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value),
             _ => todo!("(mem_write16) address: 0x{:x}", address)
         }
     }
