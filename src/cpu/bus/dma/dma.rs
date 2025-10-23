@@ -97,16 +97,14 @@ impl Dma {
         let num_words = block_size * num_blocks;
 
         for _ in 0..num_words {
-            for _ in 0..block_size {
-                let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
+            let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32 ) };
 
-                mdec.write_command(word);
+            mdec.write_command(word);
 
-                if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
-                    current_address -= 4;
-                } else {
-                    current_address += 4;
-                }
+            if dma_channel.control.contains(DmaChannelControlRegister::DECREMENT) {
+                current_address -= 4;
+            } else {
+                current_address += 4;
             }
         }
     }
