@@ -154,7 +154,8 @@ impl Bus {
             0x1f800000..=0x1f8003ff => unsafe {
                 *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u16) as u32
             },
-            0x1f80104a => 0xff,
+            0x1f801044 => self.peripherals.read_stat() as u32,
+            0x1f80104a => self.peripherals.read_ctrl() as u32,
             0x1f801070 => {
                 self.scheduler.tick(5);
                 self.interrupt_stat.bits() & 0xffff
@@ -186,6 +187,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] as u32,
+            0x1f801040 => self.peripherals.read_byte() as u32,
             0x1f801800..=0x1f801803 => {
                 self.scheduler.tick(5);
                 self.cdrom.read(address) as u32
@@ -271,6 +273,7 @@ impl Bus {
             0x1f800000..=0x1f8003ff => unsafe {
                 *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u16) = value
             },
+            0x1f801048 => self.peripherals.write_mode(value),
             0x1f80104a => self.peripherals.write_ctrl(value),
             0x1f80104e => self.peripherals.write_reload_rate(value),
             0x1f801070 => {
@@ -310,6 +313,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
+            0x1f801040 => self.peripherals.write_byte(value),
             0x1f801800 => {
                 self.scheduler.tick(5);
                 self.cdrom.write_bank(value);
