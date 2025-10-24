@@ -26,9 +26,8 @@ impl Peripherals {
     pub fn write_ctrl(&mut self, value: u16) {
         self.ctrl = SIOControl::from_bits_retain(value);
 
-        if self.ctrl.contains(SIOControl::ACK) {
-            todo!("implement sio ctrl ack");
-        }
+        // TODO: handle Acknowledgements as well as bits
+        // related to them
 
         if self.ctrl.contains(SIOControl::RESET) {
             println!("todo: reset SIO registers");
