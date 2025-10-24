@@ -43,7 +43,7 @@ pub struct COP0 {
     pub bpcm: u32,
     pub cause: CauseRegister,
     pub epc: u32,
-    pub bad_addr: u32
+    pub bad_addr: u32,
 }
 
 bitflags! {
@@ -106,7 +106,7 @@ impl COP0 {
             bpcm: 0,
             cause: CauseRegister::from_bits_retain(0),
             epc: 0,
-            bad_addr: 0
+            bad_addr: 0,
         }
     }
 
@@ -119,7 +119,7 @@ impl COP0 {
             0xd => self.cause.bits(),
             0xe => self.epc,
             0xf => 0x0000_0002,
-            _ => todo!("mfc0 index: {index}")
+            _ => todo!("mfc0 index: {index}"),
         }
     }
 
@@ -133,7 +133,7 @@ impl COP0 {
             0xb => self.bpcm = value,
             0xc => self.sr = StatusRegister::from_bits_retain(value),
             0xd => self.cause.write(value),
-            _ => todo!("mtc0 index: 0x{:x}", index)
+            _ => todo!("mtc0 index: 0x{:x}", index),
         }
     }
 

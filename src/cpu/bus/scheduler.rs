@@ -22,7 +22,7 @@ pub enum EventType {
     CDStat,
     CDRead,
     Timer(usize),
-    TickSpu
+    TickSpu,
 }
 
 pub struct Scheduler {
@@ -69,7 +69,7 @@ impl Scheduler {
 
         let mut vec: Vec<(EventType, usize)> = Vec::new();
 
-        while let Some((event_type, Reverse(cycles)))= self.queue.pop() {
+        while let Some((event_type, Reverse(cycles))) = self.queue.pop() {
             let new_cycles = cycles - to_subtract;
 
             vec.push((event_type, new_cycles));
@@ -90,4 +90,3 @@ impl Scheduler {
         }
     }
 }
-

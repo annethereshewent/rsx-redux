@@ -1,19 +1,19 @@
 #[derive(Copy, Clone)]
 pub enum BusWidth {
     Bit8 = 0,
-    Bit16 = 1
+    Bit16 = 1,
 }
 
 #[derive(Copy, Clone)]
 pub enum DmaTiming {
     Normal = 0,
-    UseBits = 1
+    UseBits = 1,
 }
 
 #[derive(Copy, Clone)]
 pub enum WideDma {
     Normal = 0,
-    Override = 1
+    Override = 1,
 }
 pub struct DelayRegister {
     pub write_delay: u32,
@@ -31,7 +31,7 @@ pub struct DelayRegister {
     pub dma_timing: DmaTiming,
     pub wide_dma: WideDma,
     pub wait: bool,
-    pub dma_timing_override: u32
+    pub dma_timing_override: u32,
 }
 
 impl DelayRegister {
@@ -52,7 +52,7 @@ impl DelayRegister {
             dma_timing_override: 0,
             dma_timing: DmaTiming::Normal,
             wide_dma: WideDma::Normal,
-            wait: false
+            wait: false,
         }
     }
 
@@ -66,7 +66,7 @@ impl DelayRegister {
         self.bus_width = match (value >> 12) & 1 {
             0 => BusWidth::Bit8,
             1 => BusWidth::Bit16,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         self.auto_increment = (value >> 13) & 1 == 1;
         self.unknown = (value >> 14) & 0x3;
@@ -78,30 +78,30 @@ impl DelayRegister {
         self.dma_timing = match (value >> 29) & 1 {
             0 => DmaTiming::Normal,
             1 => DmaTiming::UseBits,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         self.wide_dma = match (value >> 30) & 1 {
             0 => WideDma::Normal,
             1 => WideDma::Override,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         self.wait = (value >> 31) == 1;
     }
 
     pub fn read(&self) -> u32 {
-        self.write_delay |
-            self.read_delay << 4 |
-            (self.recovery_period as u32) << 8 |
-            (self.hold_period as u32) << 9 |
-            (self.floating_period as u32) << 10 |
-            (self.prestrobe_period as u32) << 11 |
-            (self.bus_width as u32) << 12 |
-            (self.auto_increment as u32) << 13 |
-            self.unknown << 14 |
-            self.num_addr_bits << 16 |
-            self.dma_timing_override << 24 |
-            (self.dma_timing as u32) << 29 |
-            (self.wide_dma as u32) << 30 |
-            (self.wait as u32) << 31
+        self.write_delay
+            | self.read_delay << 4
+            | (self.recovery_period as u32) << 8
+            | (self.hold_period as u32) << 9
+            | (self.floating_period as u32) << 10
+            | (self.prestrobe_period as u32) << 11
+            | (self.bus_width as u32) << 12
+            | (self.auto_increment as u32) << 13
+            | self.unknown << 14
+            | self.num_addr_bits << 16
+            | self.dma_timing_override << 24
+            | (self.dma_timing as u32) << 29
+            | (self.wide_dma as u32) << 30
+            | (self.wait as u32) << 31
     }
 }

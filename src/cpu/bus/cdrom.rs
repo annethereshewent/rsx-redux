@@ -3,7 +3,10 @@ use std::collections::VecDeque;
 use memmap2::Mmap;
 use registers::HntmaskRegister;
 
-use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
+use super::{
+    registers::interrupt_register::InterruptRegister,
+    scheduler::{EventType, Scheduler},
+};
 
 pub mod registers;
 
@@ -16,7 +19,7 @@ pub const CD_READ_CYCLES: usize = 451584;
 enum CDMode {
     None,
     Mode1,
-    Mode2
+    Mode2,
 }
 
 impl CDMode {
@@ -24,29 +27,28 @@ impl CDMode {
         match byte {
             1 => CDMode::Mode1,
             2 => CDMode::Mode2,
-            _ => CDMode::None
+            _ => CDMode::None,
         }
     }
 }
-
 
 #[derive(Debug)]
 enum CDReadMode {
     Video,
     Audio,
-    Data
+    Data,
 }
 
 enum Mode2Form {
     Form1,
-    Form2
+    Form2,
 }
 
 struct CDSubheader {
     _file_num: u8,
     _channel_num: u8,
     read_mode: CDReadMode,
-    _form: Mode2Form
+    _form: Mode2Form,
 }
 
 impl CDSubheader {
@@ -74,7 +76,7 @@ impl CDSubheader {
             _file_num: file_num,
             _channel_num: channel_num,
             read_mode,
-            _form: form
+            _form: form,
         }
     }
 
@@ -83,7 +85,7 @@ impl CDSubheader {
             _file_num: 0,
             _channel_num: 0,
             read_mode: CDReadMode::Data,
-            _form: Mode2Form::Form1
+            _form: Mode2Form::Form1,
         }
     }
 }
@@ -93,7 +95,7 @@ struct CDHeader {
     mm: u8,
     ss: u8,
     sect: u8,
-    mode: CDMode
+    mode: CDMode,
 }
 
 impl CDHeader {
@@ -102,7 +104,7 @@ impl CDHeader {
             ss: 0,
             sect: 0,
             mm: 0,
-            mode: CDMode::None
+            mode: CDMode::None,
         }
     }
     pub fn from_buf(buf: &[u8]) -> CDHeader {
@@ -111,12 +113,7 @@ impl CDHeader {
         let sect = CDRom::bcd_to_u8(buf[2]);
         let mode = CDMode::from(buf[3]);
 
-        Self {
-            mm,
-            ss,
-            sect,
-            mode
-        }
+        Self { mm, ss, sect, mode }
     }
 }
 
@@ -124,7 +121,7 @@ impl CDHeader {
 struct Msf {
     pub ass: u8,
     pub asect: u8,
-    pub amm: u8
+    pub amm: u8,
 }
 
 impl Msf {
@@ -132,7 +129,7 @@ impl Msf {
         Self {
             ass: 0,
             amm: 0,
-            asect: 0
+            asect: 0,
         }
     }
 }
@@ -140,7 +137,7 @@ impl Msf {
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum ControllerStatus {
     Idle,
-    Busy
+    Busy,
 }
 
 pub struct CDRom {
@@ -174,7 +171,7 @@ pub struct CDRom {
     buffer_index: usize,
     reading_buffer: bool,
     pre_seek: bool,
-    pending_stat: Option<u8>
+    pending_stat: Option<u8>,
 }
 
 impl CDRom {
@@ -211,10 +208,9 @@ impl CDRom {
             output_buffer: [0; 0x930],
             reading_buffer: false,
             pre_seek: false,
-            pending_stat: None
+            pending_stat: None,
         }
     }
-
 
     pub fn transfer_response(&mut self, scheduler: &mut Scheduler) {
         if self.result_fifo.len() < 16 && self.controller_response_fifo.len() > 0 {
@@ -227,7 +223,6 @@ impl CDRom {
         }
     }
 
-
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_game_desktop(&mut self, game: Mmap) {
         self.game_data = Some(game);
@@ -238,23 +233,23 @@ impl CDRom {
     }
 
     fn read_response(&mut self) -> u8 {
-        if self.result_fifo.is_empty() { 0 } else { self.result_fifo.pop_front().unwrap() }
+        if self.result_fifo.is_empty() {
+            0
+        } else {
+            self.result_fifo.pop_front().unwrap()
+        }
     }
 
     pub fn read_data_buffer(&mut self) -> u32 {
-        (self.read_data_buffer_byte() as u32) |
-            (self.read_data_buffer_byte() as u32) << 8 |
-            (self.read_data_buffer_byte() as u32) << 16 |
-            (self.read_data_buffer_byte() as u32) << 24
+        (self.read_data_buffer_byte() as u32)
+            | (self.read_data_buffer_byte() as u32) << 8
+            | (self.read_data_buffer_byte() as u32) << 16
+            | (self.read_data_buffer_byte() as u32) << 24
     }
 
     fn read_data_buffer_byte(&mut self) -> u8 {
         if !self.output_buffer_empty() {
-            let offset = if self.sector_size == 0x924 {
-                0xc
-            } else {
-                0x18
-            };
+            let offset = if self.sector_size == 0x924 { 0xc } else { 0x18 };
 
             let value = self.output_buffer[self.buffer_index + offset];
 
@@ -277,9 +272,9 @@ impl CDRom {
             0x1f801803 => match self.bank {
                 0 | 2 => self.hntmask.bits(),
                 1 | 3 => self.read_hintsts(),
-                _ => todo!("address: 0x{:x}, bank = {}", address, self.bank)
-            }
-            _ => todo!("address: 0x{:x}, bank = {}", address, self.bank)
+                _ => todo!("address: 0x{:x}, bank = {}", address, self.bank),
+            },
+            _ => todo!("address: 0x{:x}, bank = {}", address, self.bank),
         }
     }
     /*
@@ -292,12 +287,12 @@ impl CDRom {
     7   BUSYSTS  Busy status           (R, 1=HC05 busy acknowledging command)
     */
     pub fn read_hsts(&self) -> u8 {
-        (self.bank as u8) |
-            (self.parameter_fifo.is_empty() as u8) << 3 |
-            ((self.parameter_fifo.len() < 16) as u8) << 4 |
-            (!self.result_fifo.is_empty() as u8) << 5 |
-            (!self.output_buffer_empty() as u8) << 6 |
-            ((self.controller_status != ControllerStatus::Idle) as u8) << 7
+        (self.bank as u8)
+            | (self.parameter_fifo.is_empty() as u8) << 3
+            | ((self.parameter_fifo.len() < 16) as u8) << 4
+            | (!self.result_fifo.is_empty() as u8) << 5
+            | (!self.output_buffer_empty() as u8) << 6
+            | ((self.controller_status != ControllerStatus::Idle) as u8) << 7
     }
 
     /*
@@ -335,7 +330,11 @@ impl CDRom {
         self.controller_response_fifo.push_back(val);
     }
 
-    pub fn process_irqs(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    pub fn process_irqs(
+        &mut self,
+        scheduler: &mut Scheduler,
+        interrupt_register: &mut InterruptRegister,
+    ) {
         if self.irqs & self.hntmask.enable_irq() != 0 {
             interrupt_register.insert(InterruptRegister::CDROM);
         }
@@ -372,19 +371,18 @@ impl CDRom {
         }
     }
 
-
     pub fn execute_subcommand(&mut self, subcommand: u8) {
         match subcommand {
             0x20 => {
                 // get date
                 // PSX/PSone date in byte form
-                let bytes = [0x99,0x2,0x1,0xC3];
+                let bytes = [0x99, 0x2, 0x1, 0xC3];
 
                 for byte in bytes {
                     self.controller_response_fifo.push_back(byte);
                 }
             }
-            _ => todo!("subcommand = 0x{:x}", subcommand)
+            _ => todo!("subcommand = 0x{:x}", subcommand),
         }
     }
 
@@ -445,7 +443,7 @@ impl CDRom {
             0x19 => self.commandx19(),
             0x1a => self.get_id(scheduler),
             0x1e => scheduler.schedule(EventType::CDGetTOC, 44100 * CDROM_CYCLES),
-            _ => todo!("command byte 0x{:x}", self.command)
+            _ => todo!("command byte 0x{:x}", self.command),
         }
 
         scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
@@ -471,13 +469,16 @@ impl CDRom {
             }
             self.subheader = CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]);
 
-            if self.current_header.mm != self.current_msf.amm || self.current_header.ss != self.current_msf.ass || self.current_header.sect != self.current_msf.asect {
+            if self.current_header.mm != self.current_msf.amm
+                || self.current_header.ss != self.current_msf.ass
+                || self.current_header.sect != self.current_msf.asect
+            {
                 panic!("mismatch between header and current msf");
             }
 
             match self.subheader.read_mode {
                 CDReadMode::Data => self.read_data(),
-                CDReadMode::Audio | CDReadMode::Video => todo!("read audio/video cds")
+                CDReadMode::Audio | CDReadMode::Video => todo!("read audio/video cds"),
             }
 
             self.current_msf.asect += 1;
@@ -492,16 +493,23 @@ impl CDRom {
             }
         }
         if self.is_reading {
-            scheduler.schedule(EventType::CDRead, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES });
+            scheduler.schedule(
+                EventType::CDRead,
+                if self.double_speed {
+                    CD_READ_CYCLES / 2
+                } else {
+                    CD_READ_CYCLES
+                },
+            );
         }
-
     }
 
     fn read_data(&mut self) {
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
 
-            self.output_buffer.copy_from_slice(&game_data[pointer..pointer + 0x930]);
+            self.output_buffer
+                .copy_from_slice(&game_data[pointer..pointer + 0x930]);
 
             let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
 
@@ -525,8 +533,14 @@ impl CDRom {
             self.is_seeking = false;
             self.is_playing = false;
 
-            scheduler.schedule(EventType::CDRead, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES } );
-
+            scheduler.schedule(
+                EventType::CDRead,
+                if self.double_speed {
+                    CD_READ_CYCLES / 2
+                } else {
+                    CD_READ_CYCLES
+                },
+            );
         } else {
             self.is_seeking = true;
             self.is_reading = false;
@@ -581,9 +595,16 @@ impl CDRom {
                     self.is_seeking = false;
                     self.is_playing = false;
 
-                    scheduler.schedule(event, if self.double_speed { CD_READ_CYCLES / 2 } else { CD_READ_CYCLES })
+                    scheduler.schedule(
+                        event,
+                        if self.double_speed {
+                            CD_READ_CYCLES / 2
+                        } else {
+                            CD_READ_CYCLES
+                        },
+                    )
                 }
-                _ => ()
+                _ => (),
             }
         }
     }
@@ -680,20 +701,20 @@ impl CDRom {
                 }
                 1 => self.write_control(value),
                 2 | 3 => (), // TODO: SPU CD Audio stuff
-                _ => todo!("bank = {}", self.bank)
-            }
+                _ => todo!("bank = {}", self.bank),
+            },
             0x1f801801 => match self.bank {
                 0 => self.command_latch = Some(value),
                 2 | 3 => (), // TODO: SPU CD Audio stuff
-                _ => todo!("bank = {}", self.bank)
-            }
+                _ => todo!("bank = {}", self.bank),
+            },
             0x1f801802 => match self.bank {
                 0 => self.parameter_fifo.push_back(value),
                 1 => self.hntmask.write(value),
                 2 | 3 => (), // TODO: SPU CD Audio stuff
-                _ => todo!("bank = {}", self.bank)
-            }
-            _ => todo!("(cdrom) address: 0x{:x}", address)
+                _ => todo!("bank = {}", self.bank),
+            },
+            _ => todo!("(cdrom) address: 0x{:x}", address),
         }
     }
 

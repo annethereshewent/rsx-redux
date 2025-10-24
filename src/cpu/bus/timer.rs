@@ -1,6 +1,9 @@
 use counter_mode_register::CounterModeRegister;
 
-use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
+use super::{
+    registers::interrupt_register::InterruptRegister,
+    scheduler::{EventType, Scheduler},
+};
 
 pub mod counter_mode_register;
 
@@ -16,7 +19,7 @@ pub struct Timer {
     pub is_active: bool,
     pub switch_free_run: Option<bool>,
     prescalar_cycles: Option<isize>,
-    pub in_xblank: bool // either vblank or hblank, depending on the timer
+    pub in_xblank: bool, // either vblank or hblank, depending on the timer
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -40,7 +43,7 @@ impl Timer {
             is_active: false,
             switch_free_run: None,
             prescalar_cycles: None,
-            in_xblank: false
+            in_xblank: false,
         }
     }
 
@@ -65,24 +68,26 @@ impl Timer {
             0 => match self.counter_register.clock_source() {
                 0 | 2 => ClockSource::SystemClock,
                 1 | 3 => ClockSource::DotClock,
-                _ => unreachable!()
-            }
+                _ => unreachable!(),
+            },
             1 => match self.counter_register.clock_source() {
                 0 | 2 => ClockSource::SystemClock,
                 1 | 3 => ClockSource::Hblank,
-                _ => unreachable!()
-            }
+                _ => unreachable!(),
+            },
             2 => match self.counter_register.clock_source() {
                 0 | 2 => ClockSource::SystemClock,
                 1 | 3 => ClockSource::SystemClockDiv8,
-                _ => unreachable!()
+                _ => unreachable!(),
             },
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
-        if self.timer_id == 2 &&
-            self.counter_register.contains(CounterModeRegister::SYNC_ENABLE) &&
-            [1,2].contains(&self.counter_register.sync_mode())
+        if self.timer_id == 2
+            && self
+                .counter_register
+                .contains(CounterModeRegister::SYNC_ENABLE)
+            && [1, 2].contains(&self.counter_register.sync_mode())
         {
             return;
         }
@@ -90,8 +95,6 @@ impl Timer {
         self.is_active = true;
 
         self.schedule_next_timer(scheduler, false);
-
-
     }
 
     pub fn read_counter(&self, scheduler: &Scheduler) -> u32 {
@@ -100,12 +103,13 @@ impl Timer {
                 2 => match self.counter_register.clock_source() {
                     0 | 2 => 1,
                     1 | 3 => 8,
-                    _ => unreachable!()
-                }
-                _ => 1
+                    _ => unreachable!(),
+                },
+                _ => 1,
             };
 
-            return (self.initial_time + (scheduler.cycles - self.initial_cycles) / prescalar) as u32;
+            return (self.initial_time + (scheduler.cycles - self.initial_cycles) / prescalar)
+                as u32;
         }
 
         self.counter
@@ -116,13 +120,22 @@ impl Timer {
             0 => interrupt_stat.insert(InterruptRegister::TMR0),
             1 => interrupt_stat.insert(InterruptRegister::TMR1),
             2 => interrupt_stat.insert(InterruptRegister::TMR2),
-            _ => unreachable!("shouldn't happen")
+            _ => unreachable!("shouldn't happen"),
         }
     }
 
-    pub fn tick(&mut self, cycles: usize, scheduler: &mut Scheduler, interrupt_stat: &mut InterruptRegister) {
+    pub fn tick(
+        &mut self,
+        cycles: usize,
+        scheduler: &mut Scheduler,
+        interrupt_stat: &mut InterruptRegister,
+    ) {
         if self.is_active {
-            if [0,1].contains(&self.timer_id) && self.counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
+            if [0, 1].contains(&self.timer_id)
+                && self
+                    .counter_register
+                    .contains(CounterModeRegister::SYNC_ENABLE)
+            {
                 if self.counter_register.sync_mode() == 2 && !self.in_xblank {
                     return;
                 }
@@ -155,12 +168,22 @@ impl Timer {
         }
     }
 
-    fn check_if_overflow(&mut self, previous_counter: u32, scheduler: &mut Scheduler, interrupt_stat: &mut InterruptRegister) {
-        if (self.counter >= 0xffff && !self.counter_register.contains(CounterModeRegister::RESET_COUNTER)) ||
-            (previous_counter < self.counter_target as u32 &&
-                self.counter >= self.counter_target as u32 &&
-                self.counter_register.contains(CounterModeRegister::RESET_COUNTER
-        )) {
+    fn check_if_overflow(
+        &mut self,
+        previous_counter: u32,
+        scheduler: &mut Scheduler,
+        interrupt_stat: &mut InterruptRegister,
+    ) {
+        if (self.counter >= 0xffff
+            && !self
+                .counter_register
+                .contains(CounterModeRegister::RESET_COUNTER))
+            || (previous_counter < self.counter_target as u32
+                && self.counter >= self.counter_target as u32
+                && self
+                    .counter_register
+                    .contains(CounterModeRegister::RESET_COUNTER))
+        {
             self.on_overflow_or_target(scheduler, interrupt_stat);
         }
     }
@@ -168,11 +191,11 @@ impl Timer {
     fn update_prescalar(&mut self, cycles_left: isize) {
         // we add cycles_left because it's either 0 or a negative number,
         // and we want to subtract the cycles left from the prescalar
-        self.prescalar_cycles =  match self.clock_source {
+        self.prescalar_cycles = match self.clock_source {
             ClockSource::DotClock => Some(165 + cycles_left),
             ClockSource::Hblank => None,
             ClockSource::SystemClockDiv8 => Some(8 + cycles_left),
-            ClockSource::SystemClock => None
+            ClockSource::SystemClock => None,
         };
     }
 
@@ -180,36 +203,81 @@ impl Timer {
         self.clock_source = match self.counter_register.clock_source() {
             0 | 2 => ClockSource::SystemClock,
             1 | 3 => ClockSource::SystemClockDiv8,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         self.initial_time = self.counter as usize;
         self.initial_cycles = scheduler.cycles;
 
-        if !self.counter_register.contains(CounterModeRegister::SYNC_ENABLE) || self.switch_free_run.is_some() {
+        if !self
+            .counter_register
+            .contains(CounterModeRegister::SYNC_ENABLE)
+            || self.switch_free_run.is_some()
+        {
             if self.clock_source == ClockSource::SystemClock {
-                if !self.counter_register.contains(CounterModeRegister::RESET_COUNTER) || ((self.counter_target as u32) < self.counter) {
-                    scheduler.schedule(EventType::Timer(self.timer_id), (0xffff - self.counter) as usize);
-                } else if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
-                    let cycles = if overflow_target_zero && self.counter_target == 0 { 0xffff } else { self.counter_target as u32 - self.counter };
+                if !self
+                    .counter_register
+                    .contains(CounterModeRegister::RESET_COUNTER)
+                    || ((self.counter_target as u32) < self.counter)
+                {
+                    scheduler.schedule(
+                        EventType::Timer(self.timer_id),
+                        (0xffff - self.counter) as usize,
+                    );
+                } else if self
+                    .counter_register
+                    .contains(CounterModeRegister::RESET_COUNTER)
+                {
+                    let cycles = if overflow_target_zero && self.counter_target == 0 {
+                        0xffff
+                    } else {
+                        self.counter_target as u32 - self.counter
+                    };
                     scheduler.schedule(EventType::Timer(self.timer_id), cycles as usize);
                 }
             } else if self.clock_source == ClockSource::SystemClockDiv8 {
-                if !self.counter_register.contains(CounterModeRegister::RESET_COUNTER) || (self.counter_target as u32) < self.counter {
-                    scheduler.schedule(EventType::Timer(self.timer_id), (0xffff - self.counter) as usize * 8);
-                } else if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
-                    let cycles = if overflow_target_zero && self.counter_target == 0 { 0xffff * 8 } else { (self.counter_target as u32 - self.counter) * 8 };
+                if !self
+                    .counter_register
+                    .contains(CounterModeRegister::RESET_COUNTER)
+                    || (self.counter_target as u32) < self.counter
+                {
+                    scheduler.schedule(
+                        EventType::Timer(self.timer_id),
+                        (0xffff - self.counter) as usize * 8,
+                    );
+                } else if self
+                    .counter_register
+                    .contains(CounterModeRegister::RESET_COUNTER)
+                {
+                    let cycles = if overflow_target_zero && self.counter_target == 0 {
+                        0xffff * 8
+                    } else {
+                        (self.counter_target as u32 - self.counter) * 8
+                    };
                     scheduler.schedule(EventType::Timer(self.timer_id), cycles as usize);
                 }
             }
         }
     }
 
-    pub fn on_overflow_or_target(&mut self, scheduler: &mut Scheduler, interrupt_stat: &mut InterruptRegister) {
-        if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) && self.counter_target == 0 && self.counter == 0 {
-            self.counter_register.insert(CounterModeRegister::REACHED_TARGET);
+    pub fn on_overflow_or_target(
+        &mut self,
+        scheduler: &mut Scheduler,
+        interrupt_stat: &mut InterruptRegister,
+    ) {
+        if self
+            .counter_register
+            .contains(CounterModeRegister::RESET_COUNTER)
+            && self.counter_target == 0
+            && self.counter == 0
+        {
+            self.counter_register
+                .insert(CounterModeRegister::REACHED_TARGET);
 
-            if self.counter_register.contains(CounterModeRegister::COUNTER_IRQ_TARGET) {
+            if self
+                .counter_register
+                .contains(CounterModeRegister::COUNTER_IRQ_TARGET)
+            {
                 self.trigger_irq(interrupt_stat);
             }
 
@@ -220,12 +288,15 @@ impl Timer {
             2 => match self.counter_register.clock_source() {
                 0 | 2 => 1,
                 1 | 3 => 8,
-                _ => unreachable!()
-            }
-            _ => 1
+                _ => unreachable!(),
+            },
+            _ => 1,
         };
 
-        let current_cycles = if !self.counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
+        let current_cycles = if !self
+            .counter_register
+            .contains(CounterModeRegister::SYNC_ENABLE)
+        {
             self.initial_time + (scheduler.cycles - self.initial_cycles) / prescalar
         } else {
             self.counter as usize
@@ -234,25 +305,40 @@ impl Timer {
         if current_cycles >= 0xffff {
             self.counter = current_cycles as u32 - 0xffff;
 
-            if !self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
-                self.counter_register.insert(CounterModeRegister::REACHED_FFFF);
+            if !self
+                .counter_register
+                .contains(CounterModeRegister::RESET_COUNTER)
+            {
+                self.counter_register
+                    .insert(CounterModeRegister::REACHED_FFFF);
             }
 
-            if self.counter_register.contains(CounterModeRegister::COUNTER_IRQ_FFFF) {
+            if self
+                .counter_register
+                .contains(CounterModeRegister::COUNTER_IRQ_FFFF)
+            {
                 self.trigger_irq(interrupt_stat);
             }
-        } else if self.counter < self.counter_target as u32 && current_cycles >= self.counter_target as usize {
-            if self.counter_register.contains(CounterModeRegister::RESET_COUNTER) {
+        } else if self.counter < self.counter_target as u32
+            && current_cycles >= self.counter_target as usize
+        {
+            if self
+                .counter_register
+                .contains(CounterModeRegister::RESET_COUNTER)
+            {
                 self.counter = current_cycles as u32 - self.counter_target as u32;
-                self.counter_register.insert(CounterModeRegister::REACHED_TARGET);
+                self.counter_register
+                    .insert(CounterModeRegister::REACHED_TARGET);
             }
 
-            if self.counter_register.contains(CounterModeRegister::COUNTER_IRQ_TARGET) {
+            if self
+                .counter_register
+                .contains(CounterModeRegister::COUNTER_IRQ_TARGET)
+            {
                 self.trigger_irq(interrupt_stat);
             }
         }
         // schedule next timer if applicable
         self.schedule_next_timer(scheduler, false);
-
     }
 }

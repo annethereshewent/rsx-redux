@@ -1,4 +1,4 @@
-use super::{instructions::Instruction, CPU};
+use super::{CPU, instructions::Instruction};
 
 impl CPU {
     pub fn disassemble(&self, instruction: u32) -> String {
@@ -38,8 +38,8 @@ impl CPU {
                 0x27 => "NOR",
                 0x2a => "SLT",
                 0x2b => "SLTU",
-                _ => panic!("unknown instruction received: 0x{:x}", instruction & 0x3f)
-            }
+                _ => panic!("unknown instruction received: 0x{:x}", instruction & 0x3f),
+            },
             0x1 => match instr.rt() {
                 0x0 => {
                     taken = (self.r[instr.rs()] as i32) < 0;
@@ -57,7 +57,7 @@ impl CPU {
                     taken = (self.r[instr.rs()] as i32) >= 0;
                     "BGEZAL"
                 }
-                _ => "UNKNOWN"
+                _ => "UNKNOWN",
             },
             0x2 => "J",
             0x3 => "JAL",
@@ -109,18 +109,28 @@ impl CPU {
             0x39 => "SWC1",
             0x3a => "SWC2",
             0x3b => "SWC3",
-            _ => panic!("invalid value given to disassembler: 0x{:x}", upper)
+            _ => panic!("invalid value given to disassembler: 0x{:x}", upper),
         };
 
-        let taken_str = format!("(Taken? {})", if taken  { "Yes ✅" } else { "No ❌" });
+        let taken_str = format!("(Taken? {})", if taken { "Yes ✅" } else { "No ❌" });
 
         // see https://psx-spx.consoledev.net/cpuspecifications/#cpu-opcode-encoding
         if upper == 0 {
             if instruction & 0b111100 == 0b100 {
-                return format!("{command} r{}, r{}, r{}", instr.rd(), instr.rt(), instr.rs());
+                return format!(
+                    "{command} r{}, r{}, r{}",
+                    instr.rd(),
+                    instr.rt(),
+                    instr.rs()
+                );
             }
             if instruction & 0b111111 <= 0b11 {
-                return format!("{command} r{}, r{}, 0x{:x}", instr.rd(), instr.rt(), instr.immediate5());
+                return format!(
+                    "{command} r{}, r{}, 0x{:x}",
+                    instr.rd(),
+                    instr.rt(),
+                    instr.immediate5()
+                );
             }
             if instruction & 0b111111 == 0b1000 {
                 return format!("{command} 0x{:x} (r{})", self.r[instr.rs()], instr.rs());
@@ -141,7 +151,12 @@ impl CPU {
                 return format!("{command} r{}, r{}", instr.rs(), instr.rt());
             }
             if instruction & 0b110000 == 0b100000 {
-                return format!("{command} r{}, r{}, r{}", instr.rd(), instr.rs(), instr.rt());
+                return format!(
+                    "{command} r{}, r{}, r{}",
+                    instr.rd(),
+                    instr.rs(),
+                    instr.rt()
+                );
             }
         }
 
@@ -150,21 +165,40 @@ impl CPU {
         }
 
         if upper & 0b111110 == 0b10 {
-            return format!("{command} 0x{:x}", (instr.immediate26() << 2) | (self.pc & 0xf0000000));
+            return format!(
+                "{command} 0x{:x}",
+                (instr.immediate26() << 2) | (self.pc & 0xf0000000)
+            );
         }
 
         if upper & 0b111110 == 0b100 {
             let destination = ((self.pc as i32) + (instr.signed_immediate16() << 2)) as u32;
-            return format!("{command} r{}, r{}, 0x{:x} {}", instr.rs(), instr.rt(), destination, taken_str);
+            return format!(
+                "{command} r{}, r{}, 0x{:x} {}",
+                instr.rs(),
+                instr.rt(),
+                destination,
+                taken_str
+            );
         }
 
         if upper & 0b111110 == 0b110 {
             let destination = ((self.pc as i32) + (instr.signed_immediate16() << 2)) as u32;
-            return format!("{command} r{}, 0x{:x} {}", instr.rs(), destination, taken_str);
+            return format!(
+                "{command} r{}, 0x{:x} {}",
+                instr.rs(),
+                destination,
+                taken_str
+            );
         }
 
         if upper & 0b111000 == 0b1000 {
-            return format!("{command} r{}, r{}, 0x{:x}", instr.rt(), instr.rs(), instr.immediate16());
+            return format!(
+                "{command} r{}, r{}, 0x{:x}",
+                instr.rt(),
+                instr.rs(),
+                instr.immediate16()
+            );
         }
 
         if upper & 0b111111 == 0b1111 {
@@ -172,7 +206,12 @@ impl CPU {
         }
 
         if upper & 0b110000 == 0b100000 {
-            return format!("{command} r{}, [r{} + 0x{:x}]", instr.rt(), instr.rs(), instr.immediate16());
+            return format!(
+                "{command} r{}, [r{} + 0x{:x}]",
+                instr.rt(),
+                instr.rs(),
+                instr.immediate16()
+            );
         }
 
         let upper_cop0 = instruction >> 28;
@@ -186,11 +225,26 @@ impl CPU {
                 0x4 => return format!("MTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
                 0x6 => return format!("CTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
                 0x10 => return "RFE".to_string(),
-                _ => format!("GTE 0x{:x}", instr.cop2_command())
-            }
-            0xc => format!("LWC{} r{}, [r{} + 0x{:x}]", processor_number, instr.rt(), instr.rs(), instr.immediate16()),
-            0xe => format!("SWC{} r{}, [r{} + 0x{:x}]", processor_number, instr.rt(), instr.rs(), instr.immediate16()),
-            _ => panic!("invalid option for cop instruction given: 0x{:x}", upper_cop0)
+                _ => format!("GTE 0x{:x}", instr.cop2_command()),
+            },
+            0xc => format!(
+                "LWC{} r{}, [r{} + 0x{:x}]",
+                processor_number,
+                instr.rt(),
+                instr.rs(),
+                instr.immediate16()
+            ),
+            0xe => format!(
+                "SWC{} r{}, [r{} + 0x{:x}]",
+                processor_number,
+                instr.rt(),
+                instr.rs(),
+                instr.immediate16()
+            ),
+            _ => panic!(
+                "invalid option for cop instruction given: 0x{:x}",
+                upper_cop0
+            ),
         }
     }
 }

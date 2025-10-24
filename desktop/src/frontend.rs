@@ -3,16 +3,16 @@ use std::sync::Arc;
 
 use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
+use ringbuf::SharedRb;
 use ringbuf::storage::Heap;
 use ringbuf::traits::{Consumer, Observer};
 use ringbuf::wrap::caching::Caching;
-use ringbuf::SharedRb;
-use rsx_redux::cpu::bus::gpu::GPU;
 use rsx_redux::cpu::CPU;
+use rsx_redux::cpu::bus::gpu::GPU;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::keyboard::Keycode;
-use sdl2::{controller::GameController, event::Event, video::Window, EventPump};
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
+use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 
 pub const VRAM_WIDTH: usize = 1024;
 pub const VRAM_HEIGHT: usize = 512;
@@ -20,7 +20,7 @@ pub const VRAM_HEIGHT: usize = 512;
 use crate::renderer::Renderer;
 
 pub struct PsxAudioCallback {
-    pub consumer: Caching<Arc<SharedRb<Heap<f32>>>, false, true>
+    pub consumer: Caching<Arc<SharedRb<Heap<f32>>>, false, true>,
 }
 
 impl AudioCallback for PsxAudioCallback {
@@ -58,7 +58,7 @@ pub struct Frontend {
     event_pump: EventPump,
     _controller: Option<GameController>,
     pub renderer: Renderer,
-    _device: AudioDevice<PsxAudioCallback>
+    _device: AudioDevice<PsxAudioCallback>,
 }
 
 impl Frontend {
@@ -70,18 +70,12 @@ impl Frontend {
 
         let available = game_controller_subsystem
             .num_joysticks()
-            .map_err(|e| format!("can't enumerate joysticks: {}", e)).unwrap();
+            .map_err(|e| format!("can't enumerate joysticks: {}", e))
+            .unwrap();
 
-        let controller = (0..available)
-            .find_map(|id| {
-            match game_controller_subsystem.open(id) {
-                Ok(c) => {
-                    Some(c)
-                }
-                Err(_) => {
-                    None
-                }
-            }
+        let controller = (0..available).find_map(|id| match game_controller_subsystem.open(id) {
+            Ok(c) => Some(c),
+            Err(_) => None,
         });
 
         let window = video_subsystem
@@ -93,21 +87,22 @@ impl Frontend {
         let metal_view = unsafe { SDL_Metal_CreateView(window.raw()) };
         let metal_layer_ptr = unsafe { SDL_Metal_GetLayer(metal_view) };
 
-        let metal_layer: Retained<CAMetalLayer> = unsafe { Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer).expect("Couldn cast pointer to CAMetalLayer!") };
+        let metal_layer: Retained<CAMetalLayer> = unsafe {
+            Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer)
+                .expect("Couldn cast pointer to CAMetalLayer!")
+        };
 
         let audio_subsystem = sdl_context.audio().unwrap();
 
         let spec = AudioSpecDesired {
             freq: Some(44100),
             channels: Some(2),
-            samples: Some(4096)
+            samples: Some(4096),
         };
 
-        let device = audio_subsystem.open_playback(
-            None,
-            &spec,
-            |_| PsxAudioCallback { consumer }
-        ).unwrap();
+        let device = audio_subsystem
+            .open_playback(None, &spec, |_| PsxAudioCallback { consumer })
+            .unwrap();
 
         device.resume();
 
@@ -116,7 +111,7 @@ impl Frontend {
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
             renderer: Renderer::new(metal_layer, gpu),
-            _device: device
+            _device: device,
         }
     }
 
@@ -126,7 +121,7 @@ impl Frontend {
                 Event::Quit { .. } => {
                     exit(0);
                 }
-                Event::KeyDown { keycode, ..} => {
+                Event::KeyDown { keycode, .. } => {
                     if let Some(keycode) = keycode {
                         if keycode == Keycode::G {
                             cpu.debug_on = !cpu.debug_on
@@ -135,7 +130,7 @@ impl Frontend {
                         }
                     }
                 }
-                _ => ()
+                _ => (),
             }
         }
     }
