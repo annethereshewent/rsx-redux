@@ -23,6 +23,7 @@ pub enum EventType {
     CDRead,
     Timer(usize),
     TickSpu,
+    ControllerByteTransfer,
 }
 
 pub struct Scheduler {

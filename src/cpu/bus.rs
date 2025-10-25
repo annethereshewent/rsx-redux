@@ -274,7 +274,7 @@ impl Bus {
                 *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u16) = value
             },
             0x1f801048 => self.peripherals.write_mode(value),
-            0x1f80104a => self.peripherals.write_ctrl(value),
+            0x1f80104a => self.peripherals.write_ctrl(value, &mut self.scheduler),
             0x1f80104e => self.peripherals.write_reload_rate(value),
             0x1f801070 => {
                 let new_stat = self.interrupt_stat.bits() & value as u32;
@@ -313,7 +313,7 @@ impl Bus {
         match address {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
-            0x1f801040 => self.peripherals.write_byte(value),
+            0x1f801040 => self.peripherals.write_byte(value, &mut self.scheduler),
             0x1f801800 => {
                 self.scheduler.tick(5);
                 self.cdrom.write_bank(value);

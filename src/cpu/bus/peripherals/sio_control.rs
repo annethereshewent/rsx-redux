@@ -3,7 +3,7 @@ use bitflags::bitflags;
 bitflags! {
     pub struct SIOControl: u16 {
         const TX_ENABLE = 1;
-        const DTR_OUTPUT = 1 << 1;
+        const DTR_OUT = 1 << 1;
         const RX_ENABLE = 1 << 2;
         const TX_OUTPUT = 1 << 3;
         const ACK = 1 << 4; // TODO: Reset SIO_STAT.Bits 3,4,5,9

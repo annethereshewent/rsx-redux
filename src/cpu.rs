@@ -528,6 +528,10 @@ impl CPU {
                     .bus
                     .spu
                     .tick(&mut self.bus.interrupt_stat, &mut self.bus.scheduler),
+                EventType::ControllerByteTransfer => self
+                    .bus
+                    .peripherals
+                    .handle_peripherals(&mut self.bus.interrupt_stat, &mut self.bus.scheduler),
             }
         }
     }
