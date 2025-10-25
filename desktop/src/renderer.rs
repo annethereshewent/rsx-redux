@@ -425,10 +425,13 @@ impl Renderer {
         let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
 
         let depth = if let Some(texpage) = polygon.texpage {
+            if texpage.texture_page_colors == TexturePageColors::Bit15 {
+                println!("[WARN]15 bpp textures used");
+            }
             match texpage.texture_page_colors {
                 TexturePageColors::Bit4 => 0,
+                TexturePageColors::Bit8 => 1,
                 TexturePageColors::Bit15 => 2,
-                _ => todo!("{:?}", texpage.texture_page_colors),
             }
         } else {
             -1
@@ -522,12 +525,6 @@ impl Renderer {
             let primitive_type = MTLPrimitiveType::Triangle;
 
             if polygon.semitransparent {
-                if polygon.transparent_mode != 2 {
-                    println!(
-                        "[WARN]Semitransparent mode {} used",
-                        polygon.transparent_mode
-                    );
-                }
                 match polygon.transparent_mode {
                     0 => encoder.setRenderPipelineState(&self.pipeline_state),
                     1 => encoder.setRenderPipelineState(&self.semiadd_pipeline_state),

@@ -84,7 +84,7 @@ enum TransferType {
     ToVram,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TexturePageColors {
     Bit4 = 0,
     Bit8 = 1,
