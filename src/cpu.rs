@@ -263,7 +263,7 @@ impl CPU {
         for i in 0..self.bus.timers.len() {
             let timer = &mut self.bus.timers[i];
 
-            if timer.is_active && timer.clock_source != ClockSource::Hblank {
+            if timer.is_active && timer.clock_source != ClockSource::Hblank && timer.clock_source != ClockSource::DotClock {
                 timer.tick(cycles, &mut self.bus.interrupt_stat);
             }
         }

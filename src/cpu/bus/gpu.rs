@@ -224,6 +224,7 @@ pub struct GPU {
     pub vram_transfer_halfwords: Vec<u16>,
     pub transfer_params: Option<CPUTransferParams>,
     pub resolution_changed: bool,
+    dotclock_cycles: usize,
 }
 
 impl GPU {
@@ -293,6 +294,7 @@ impl GPU {
             vram_transfer_halfwords: Vec::new(),
             transfer_params: None,
             resolution_changed: false,
+            dotclock_cycles: 0
         }
     }
 
@@ -332,7 +334,18 @@ impl GPU {
         timers[0].in_xblank = true;
         timers[1].in_xblank = false;
 
-        scheduler.schedule(EventType::HblankEnd, HBLANK_END - cycles_left);
+        scheduler.schedule(EventType::HblankEnd, (HBLANK_END as f32 * (7.0 / 11.0)) as usize  - cycles_left);
+    }
+
+    fn get_dotclock(&self) -> usize {
+        match self.display_width {
+            320 => 8,
+            640 => 4,
+            256 => 10,
+            512 => 5,
+            368 => 7,
+            _ => unreachable!(),
+        }
     }
 
     pub fn handle_hblank(
@@ -363,6 +376,18 @@ impl GPU {
                 _ => unreachable!(),
             }
         }
+
+        let dotclock = self.get_dotclock();
+
+        let elapsed= CYCLES_PER_SCANLINE + (cycles_left as f32 * (11.0/7.0)) as usize;
+
+        self.dotclock_cycles += elapsed;
+
+        if timers[0].clock_source == ClockSource::DotClock {
+            timers[0].tick(self.dotclock_cycles / dotclock, interrupt_stat);
+        }
+
+        self.dotclock_cycles %= dotclock;
 
         if timers[1].clock_source == ClockSource::Hblank {
             timers[1].tick(1, interrupt_stat);
