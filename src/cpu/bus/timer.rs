@@ -1,8 +1,6 @@
 use counter_mode_register::CounterModeRegister;
 
-use super::{
-    registers::interrupt_register::InterruptRegister,
-};
+use super::registers::interrupt_register::InterruptRegister;
 
 pub mod counter_mode_register;
 
@@ -17,7 +15,7 @@ pub struct Timer {
     pub switch_free_run: Option<bool>,
     prescalar_cycles: Option<isize>,
     pub in_xblank: bool, // either vblank or hblank, depending on the timer
-    one_shot_fired: bool
+    one_shot_fired: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -36,11 +34,11 @@ impl Timer {
             counter: 0,
             timer_id,
             clock_source: ClockSource::SystemClock,
-            is_active: false,
+            is_active: true,
             switch_free_run: None,
             prescalar_cycles: None,
             in_xblank: false,
-            one_shot_fired: false
+            one_shot_fired: false,
         }
     }
 
@@ -71,18 +69,17 @@ impl Timer {
         self.clock_source = self.get_clock_source();
 
         if self.timer_id == 2 {
-            if self
-                    .counter_register
-                    .contains(CounterModeRegister::SYNC_ENABLE)
-                && [1, 2].contains(&self.counter_register.sync_mode())
-            {
-                self.is_active = false;
-            } else {
-                self.is_active = true;
-            }
+            self.is_active = !self
+                .counter_register
+                .contains(CounterModeRegister::SYNC_ENABLE)
+                || [1, 2].contains(&self.counter_register.sync_mode())
         }
 
-        if [0,1].contains(&self.timer_id) && self.counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
+        if [0, 1].contains(&self.timer_id)
+            && self
+                .counter_register
+                .contains(CounterModeRegister::SYNC_ENABLE)
+        {
             match self.counter_register.sync_mode() {
                 0 => self.is_active = !self.in_xblank,
                 1 => self.is_active = true,
@@ -115,7 +112,10 @@ impl Timer {
 
     fn trigger_irq(&mut self, interrupt_stat: &mut InterruptRegister) {
         if !self.one_shot_fired {
-            if !self.counter_register.contains(CounterModeRegister::IRQ_REPEAT_MODE) {
+            if !self
+                .counter_register
+                .contains(CounterModeRegister::IRQ_REPEAT_MODE)
+            {
                 self.one_shot_fired = true;
             }
             match self.timer_id {
@@ -127,11 +127,7 @@ impl Timer {
         }
     }
 
-    pub fn tick(
-        &mut self,
-        cycles: usize,
-        interrupt_stat: &mut InterruptRegister,
-    ) {
+    pub fn tick(&mut self, cycles: usize, interrupt_stat: &mut InterruptRegister) {
         if self.is_active {
             if self.prescalar_cycles.is_none() {
                 self.update_prescalar(0);
@@ -160,11 +156,7 @@ impl Timer {
         }
     }
 
-    fn check_if_overflow(
-        &mut self,
-        previous_counter: u32,
-        interrupt_stat: &mut InterruptRegister,
-    ) {
+    fn check_if_overflow(&mut self, previous_counter: u32, interrupt_stat: &mut InterruptRegister) {
         if (self.counter >= 0xffff
             && !self
                 .counter_register
