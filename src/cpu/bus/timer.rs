@@ -195,13 +195,8 @@ impl Timer {
         if current_cycles >= 0xffff {
             self.counter = current_cycles as u32 - 0xffff;
 
-            if !self
-                .counter_register
-                .contains(CounterModeRegister::RESET_COUNTER)
-            {
-                self.counter_register
-                    .insert(CounterModeRegister::REACHED_FFFF);
-            }
+            self.counter_register
+                .insert(CounterModeRegister::REACHED_FFFF);
 
             if self
                 .counter_register
@@ -217,10 +212,10 @@ impl Timer {
                 .contains(CounterModeRegister::RESET_COUNTER)
             {
                 self.counter = current_cycles as u32 - self.counter_target as u32;
-
-                self.counter_register
-                    .insert(CounterModeRegister::REACHED_TARGET);
             }
+
+            self.counter_register
+                .insert(CounterModeRegister::REACHED_TARGET);
 
             if self
                 .counter_register

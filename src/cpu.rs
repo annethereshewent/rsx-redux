@@ -260,6 +260,11 @@ impl CPU {
     }
 
     pub fn tick(&mut self, cycles: usize) {
+        // Note: This emulator generally uses a scheduler based system to schedule events
+        // Except for timers. Most components like GPU, DMA, controllers, etc. are deterministic enough
+        // That using a scheduler works without any problem, but timers have way too many gotchas and edge cases,
+        // like pausing the timer at certain points and updating the counter value. Using a scheduler would just
+        // add a lot of overhead, so timers are the only exception and we tick those manually.
         for i in 0..self.bus.timers.len() {
             let timer = &mut self.bus.timers[i];
 
