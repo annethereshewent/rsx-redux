@@ -93,7 +93,7 @@ impl Frontend {
 
         let metal_layer: Retained<CAMetalLayer> = unsafe {
             Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer)
-                .expect("Couldn cast pointer to CAMetalLayer!")
+                .expect("Couldn't cast pointer to CAMetalLayer!")
         };
 
         let audio_subsystem = sdl_context.audio().unwrap();
@@ -101,7 +101,7 @@ impl Frontend {
         let spec = AudioSpecDesired {
             freq: Some(44100),
             channels: Some(2),
-            samples: Some(4096),
+            samples: Some(16384),
         };
 
         let device = audio_subsystem

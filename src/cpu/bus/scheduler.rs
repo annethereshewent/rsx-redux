@@ -2,7 +2,7 @@ use std::cmp::Reverse;
 
 use priority_queue::PriorityQueue;
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Debug)]
 pub enum EventType {
     Vblank,
     HblankStart,

@@ -76,7 +76,6 @@ impl DataTransfer {
 }
 
 pub struct SPU {
-    pub audio_buffer: Vec<i16>,
     pub previous_value: i16,
     voices: [Voice; 24],
     volume_left: i16,
@@ -140,7 +139,6 @@ impl SPU {
             sound_ram: SoundRam::new(),
             reverb: Reverb::new(),
             endx: 0,
-            audio_buffer: Vec::with_capacity(NUM_SAMPLES),
             previous_value: 0,
             noise_level: 1,
             noise_timer: 0,
