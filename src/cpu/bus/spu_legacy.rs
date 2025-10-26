@@ -317,9 +317,9 @@ impl SPU {
 
     fn push_sample(&mut self, sample: f32) {
         if self.audio_buffer.len() < NUM_SAMPLES {
-          self.audio_buffer.push(sample);
+            self.audio_buffer.push(sample);
         }
-      }
+    }
 
     pub fn clampf32(value: f32) -> f32 {
         if value < -1.0 {

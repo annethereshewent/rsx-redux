@@ -1,10 +1,13 @@
+#[cfg(feature = "new_spu")]
+use crate::cpu::bus::spu::SPU;
+#[cfg(feature = "old_spu")]
+use crate::cpu::bus::spu_legacy::SPU;
 use crate::cpu::bus::{
     cdrom::CDRom,
     gpu::GPU,
     mdec::Mdec,
     registers::interrupt_register::InterruptRegister,
     scheduler::{EventType, Scheduler},
-    spu_legacy::SPU,
 };
 
 use super::{

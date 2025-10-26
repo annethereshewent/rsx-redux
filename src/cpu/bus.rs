@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
 use cdrom::CDRom;
 use dma::dma::Dma;
 use gpu::GPU;
 use mdec::Mdec;
 use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};
-use ringbuf::{SharedRb, storage::Heap, wrap::caching::Caching};
 use scheduler::Scheduler;
 #[cfg(feature = "new_spu")]
 use spu::SPU;

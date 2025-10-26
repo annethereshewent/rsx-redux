@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     fs,
-    ops::{Index, IndexMut}
+    ops::{Index, IndexMut},
 };
 
 use bus::{Bus, scheduler::EventType};
