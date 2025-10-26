@@ -1,6 +1,14 @@
-use std::{collections::VecDeque, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{
+    collections::VecDeque,
+    thread::sleep,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
-use super::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}, timer::{counter_mode_register::CounterModeRegister, ClockSource, Timer}};
+use super::{
+    registers::interrupt_register::InterruptRegister,
+    scheduler::{EventType, Scheduler},
+    timer::{ClockSource, Timer, counter_mode_register::CounterModeRegister},
+};
 
 const HBLANK_START: usize = 2813;
 const CYCLES_PER_SCANLINE: usize = 3413;
@@ -9,12 +17,14 @@ const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
+pub const SCREEN_WIDTH: usize = 640;
+pub const SCREEN_HEIGHT: usize = 480;
 
 #[derive(Clone)]
 pub enum GPUCommand {
     CPUtoVram(VRamTransferParams),
     VRAMtoCPU(CPUTransferParams),
-    FillVRAM(FillVramParams)
+    FillVRAM(FillVramParams),
 }
 
 #[derive(Clone)]
@@ -23,7 +33,7 @@ pub struct VRamTransferParams {
     pub start_x: u32,
     pub start_y: u32,
     pub width: u32,
-    pub height: u32
+    pub height: u32,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -31,7 +41,7 @@ pub struct CPUTransferParams {
     pub start_x: u32,
     pub start_y: u32,
     pub width: u32,
-    pub height: u32
+    pub height: u32,
 }
 
 #[derive(Copy, Clone)]
@@ -40,7 +50,7 @@ pub struct FillVramParams {
     pub start_y: u32,
     pub width: u32,
     pub height: u32,
-    pub pixel: u16
+    pub pixel: u16,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -48,19 +58,19 @@ enum DmaDirection {
     Off,
     Fifo,
     ToGP0,
-    ToCPU
+    ToCPU,
 }
 
 #[derive(Copy, Clone, PartialEq)]
 enum DisplayMode {
     Ntsc = 0,
-    Pal = 1
+    Pal = 1,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum DisplayDepth {
     Bit15 = 0,
-    Bit24 = 1
+    Bit24 = 1,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -68,20 +78,20 @@ enum RectangleSize {
     Variable,
     Single,
     EightxEight,
-    SixteenxSixteen
+    SixteenxSixteen,
 }
 
 #[derive(Copy, Clone, PartialEq)]
 enum TransferType {
     FromVram,
-    ToVram
+    ToVram,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TexturePageColors {
     Bit4 = 0,
     Bit8 = 1,
-    Bit15 = 2
+    Bit15 = 2,
 }
 
 #[derive(Debug)]
@@ -92,7 +102,7 @@ pub struct Polygon {
     pub textured: bool,
     pub texpage: Option<Texpage>,
     pub transparent_mode: u32,
-    pub clut: (u32, u32)
+    pub clut: (u32, u32),
 }
 
 impl Polygon {
@@ -104,7 +114,7 @@ impl Polygon {
             textured: false,
             texpage: None,
             clut: (0, 0),
-            transparent_mode: 0
+            transparent_mode: 0,
         }
     }
 }
@@ -114,7 +124,7 @@ pub struct Color {
     pub r: u8,
     pub g: u8,
     pub b: u8,
-    pub a: u8
+    pub a: u8,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -123,9 +133,8 @@ pub struct Vertex {
     pub y: i32,
     pub u: u32,
     pub v: u32,
-    pub color: Color
+    pub color: Color,
 }
-
 
 #[derive(Debug, Copy, Clone)]
 pub struct Texpage {
@@ -138,7 +147,7 @@ pub struct Texpage {
     pub y_base2: u32,
     pub x_flip: bool,
     pub y_flip: bool,
-    pub value: u32
+    pub value: u32,
 }
 
 impl Texpage {
@@ -153,7 +162,7 @@ impl Texpage {
             y_base2: 0,
             x_flip: false,
             y_flip: false,
-            value: 0
+            value: 0,
         }
     }
 }
@@ -217,12 +226,16 @@ pub struct GPU {
     pub gpuread_fifo: VecDeque<u16>,
     pub vram_transfer_halfwords: Vec<u16>,
     pub transfer_params: Option<CPUTransferParams>,
-    pub resolution_changed: bool
+    pub resolution_changed: bool,
+    dotclock_cycles: usize,
 }
 
 impl GPU {
     pub fn new(scheduler: &mut Scheduler) -> Self {
-        scheduler.schedule(EventType::HblankStart, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize);
+        scheduler.schedule(
+            EventType::HblankStart,
+            (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize,
+        );
 
         Self {
             frame_finished: false,
@@ -283,7 +296,8 @@ impl GPU {
             gpuread_fifo: VecDeque::new(),
             vram_transfer_halfwords: Vec::new(),
             transfer_params: None,
-            resolution_changed: false
+            resolution_changed: false,
+            dotclock_cycles: 0,
         }
     }
 
@@ -308,7 +322,7 @@ impl GPU {
                 self.transfer_type = None;
             }
 
-            return value
+            return value;
         }
 
         panic!("shouldn't reach here");
@@ -318,12 +332,26 @@ impl GPU {
         &mut self,
         scheduler: &mut Scheduler,
         timers: &mut [Timer],
-        cycles_left: usize
+        cycles_left: usize,
     ) {
         timers[0].in_xblank = true;
         timers[1].in_xblank = false;
 
-        scheduler.schedule(EventType::HblankEnd, HBLANK_END - cycles_left);
+        scheduler.schedule(
+            EventType::HblankEnd,
+            (HBLANK_END as f32 * (7.0 / 11.0)) as usize - cycles_left,
+        );
+    }
+
+    fn get_dotclock(&self) -> usize {
+        match self.display_width {
+            320 => 8,
+            640 => 4,
+            256 => 10,
+            512 => 5,
+            368 => 7,
+            _ => unreachable!(),
+        }
     }
 
     pub fn handle_hblank(
@@ -331,44 +359,61 @@ impl GPU {
         scheduler: &mut Scheduler,
         interrupt_stat: &mut InterruptRegister,
         timers: &mut [Timer],
-        cycles_left: usize
+        cycles_left: usize,
     ) {
         timers[0].in_xblank = false;
 
-        if timers[0].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
+        if timers[0]
+            .counter_register
+            .contains(CounterModeRegister::SYNC_ENABLE)
+        {
             match timers[0].counter_register.sync_mode() {
                 0 => timers[0].is_active = false,
-                1 => timers[0].counter = 0,
-                2 => {
-                    timers[0].is_active = true;
-                    if self.current_line == 0 {
-                        timers[0].counter =  0;
+                1 | 2 => timers[0].counter = 0,
+                3 => {
+                    if let Some(_) = &mut timers[0].switch_free_run {
+                        timers[0].is_active = true;
+                        timers[0].switch_free_run = None;
                     } else {
-                        timers[0].tick(1, scheduler, interrupt_stat);
+                        timers[0].is_active = false;
+                        timers[0].switch_free_run = Some(true);
                     }
                 }
-                3 => if let Some(_) = &mut timers[0].switch_free_run {
-                    timers[0].is_active = true;
-                } else {
-                    timers[0].switch_free_run = Some(true);
-                }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
 
+        let dotclock = self.get_dotclock();
+
+        let elapsed = CYCLES_PER_SCANLINE + (cycles_left as f32 * (11.0 / 7.0)) as usize;
+
+        self.dotclock_cycles += elapsed;
+
+        if timers[0].clock_source == ClockSource::DotClock {
+            timers[0].tick(self.dotclock_cycles / dotclock, interrupt_stat);
+        }
+
+        self.dotclock_cycles %= dotclock;
+
         if timers[1].clock_source == ClockSource::Hblank {
-            timers[1].tick(1, scheduler, interrupt_stat);
+            timers[1].tick(1, interrupt_stat);
         }
 
         if self.current_line < VBLANK_LINE_START {
-            scheduler.schedule(EventType::HblankStart, (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left);
+            scheduler.schedule(
+                EventType::HblankStart,
+                (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left,
+            );
         } else {
             timers[1].in_xblank = true;
             self.frame_finished = true;
 
             interrupt_stat.insert(InterruptRegister::VBLANK);
 
-            scheduler.schedule(EventType::Vblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
+            scheduler.schedule(
+                EventType::Vblank,
+                (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left,
+            );
         }
 
         if self.interlaced {
@@ -419,14 +464,14 @@ impl GPU {
             let mut num_words = 2;
             self.is_textured = (word >> 26) & 1 == 1;
             self.is_semitransparent = (word >> 25) & 1 == 1;
-            self.modulate = (word >> 24) &1 == 1;
+            self.modulate = (word >> 24) & 1 == 1;
 
             self.rectangle_size = match (word >> 27) & 0x3 {
                 0 => RectangleSize::Variable,
                 1 => RectangleSize::Single,
                 2 => RectangleSize::EightxEight,
                 3 => RectangleSize::SixteenxSixteen,
-                _ => unreachable!()
+                _ => unreachable!(),
             };
 
             if self.is_textured {
@@ -444,7 +489,7 @@ impl GPU {
             return 4;
         }
 
-        if [5,6].contains(&upper_bits) {
+        if [5, 6].contains(&upper_bits) {
             return 3;
         }
 
@@ -465,7 +510,7 @@ impl GPU {
             0 => TexturePageColors::Bit4,
             1 => TexturePageColors::Bit8,
             2 | 3 => TexturePageColors::Bit15,
-            _ => panic!("reserved value for texpage colors")
+            _ => panic!("reserved value for texpage colors"),
         };
         texpage.dither = (word >> 9) & 0x1 == 1;
         texpage.draw_to_display_area = (word >> 10) & 0x1 == 1;
@@ -484,12 +529,7 @@ impl GPU {
         let g = (word >> 8) as u8;
         let b = (word >> 16) as u8;
 
-        Color {
-            r,
-            g,
-            b,
-            a: 0xff
-        }
+        Color { r, g, b, a: 0xff }
     }
 
     fn push_polygon(&mut self) {
@@ -507,7 +547,7 @@ impl GPU {
                 y: 0,
                 u: 0,
                 v: 0,
-                color: Self::parse_color(color0)
+                color: Self::parse_color(color0),
             };
 
             if i == 0 || self.is_shaded {
@@ -562,9 +602,13 @@ impl GPU {
                 is_line: false,
                 textured: self.is_textured,
                 texpage: texpage.clone(),
-                transparent_mode: if texpage.is_some() { texpage.unwrap().semi_transparency } else { self.texpage.semi_transparency },
+                transparent_mode: if texpage.is_some() {
+                    texpage.unwrap().semi_transparency
+                } else {
+                    self.texpage.semi_transparency
+                },
                 clut: (self.clut_x as u32, self.clut_y as u32),
-                semitransparent: self.is_semitransparent
+                semitransparent: self.is_semitransparent,
             });
 
             polygons.push(Polygon {
@@ -574,7 +618,11 @@ impl GPU {
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 textured: self.is_textured,
-                transparent_mode: if texpage.is_some() { texpage.unwrap().semi_transparency } else { self.texpage.semi_transparency }
+                transparent_mode: if texpage.is_some() {
+                    texpage.unwrap().semi_transparency
+                } else {
+                    self.texpage.semi_transparency
+                },
             });
         } else {
             polygons.push(Polygon {
@@ -584,7 +632,11 @@ impl GPU {
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 textured: self.is_textured,
-                transparent_mode: if texpage.is_some() { texpage.unwrap().semi_transparency } else { self.texpage.semi_transparency }
+                transparent_mode: if texpage.is_some() {
+                    texpage.unwrap().semi_transparency
+                } else {
+                    self.texpage.semi_transparency
+                },
             });
         }
 
@@ -634,33 +686,27 @@ impl GPU {
             }
             RectangleSize::EightxEight => (8, 8),
             RectangleSize::SixteenxSixteen => (16, 16),
-            RectangleSize::Single => (1, 1)
+            RectangleSize::Single => (1, 1),
         };
 
         // calculate the other vertices and push this to polygons!
 
-        let v0 = Vertex {
-            x,
-            y,
-            u,
-            v,
-            color
-        };
+        let v0 = Vertex { x, y, u, v, color };
 
         let v1 = Vertex {
             x: x + width,
             y,
             u: u + width as u32,
             v,
-            color
+            color,
         };
 
         let v2 = Vertex {
             x,
             y: y + height,
             u,
-            v: v + height as u32 ,
-            color
+            v: v + height as u32,
+            color,
         };
 
         let v3 = Vertex {
@@ -668,7 +714,7 @@ impl GPU {
             y: y + height,
             u: u + width as u32,
             v: v + height as u32,
-            color
+            color,
         };
 
         let vertices = vec![v0, v1, v2, v3];
@@ -683,7 +729,7 @@ impl GPU {
             clut: (self.clut_x as u32, self.clut_y as u32),
             semitransparent: self.is_semitransparent,
             transparent_mode: self.texpage.semi_transparency,
-            textured: self.is_textured
+            textured: self.is_textured,
         });
         self.polygons.push(Polygon {
             vertices: vertices2,
@@ -692,16 +738,15 @@ impl GPU {
             clut: (self.clut_x as u32, self.clut_y as u32),
             semitransparent: self.is_semitransparent,
             transparent_mode: self.texpage.semi_transparency,
-            textured: self.is_textured
+            textured: self.is_textured,
         });
 
         self.num_vertices = 0;
-
     }
 
     fn set_drawing_offset(&mut self, word: u32) {
         self.x_offset = (((word & 0x7ff) as i32) << 21) >> 21;
-        self.y_offset = ((((word >> 11) & 0x7ff) as i32) << 21 ) >> 21;
+        self.y_offset = ((((word >> 11) & 0x7ff) as i32) << 21) >> 21;
     }
 
     fn set_drawing_area(&mut self, word: u32, is_bottom_right: bool) {
@@ -740,7 +785,13 @@ impl GPU {
         let width = dimensions & 0x3ff;
         let height = (dimensions >> 16) & 0x1ff;
 
-        self.gpu_commands.push(GPUCommand::VRAMtoCPU(CPUTransferParams { start_x, start_y, width, height  }));
+        self.gpu_commands
+            .push(GPUCommand::VRAMtoCPU(CPUTransferParams {
+                start_x,
+                start_y,
+                width,
+                height,
+            }));
         self.commands_ready = true;
 
         self.read_y = 0;
@@ -804,10 +855,11 @@ impl GPU {
             start_y,
             width: w,
             height: h,
-            pixel
+            pixel,
         };
 
-        self.gpu_commands.push(GPUCommand::FillVRAM(fill_vram_params));
+        self.gpu_commands
+            .push(GPUCommand::FillVRAM(fill_vram_params));
     }
 
     fn execute_command(&mut self, word: u32) {
@@ -829,7 +881,7 @@ impl GPU {
                 match command {
                     0x0 => (), // NOP
                     0x2 => self.fill_vram(),
-                    0x1 => (), // TODO: invalidate cache
+                    0x1 => (),        // TODO: invalidate cache
                     0x3..=0x1e => (), // NOP
                     0xe1 => self.texpage(word),
                     0xe2 => self.texture_window(word),
@@ -838,7 +890,7 @@ impl GPU {
                     0xe5 => self.set_drawing_offset(word),
                     0xe6 => self.mask_bit(word),
                     0xe7..=0xff => (), // NOP
-                    _ => todo!("command: 0x{:x}", command)
+                    _ => todo!("command: 0x{:x}", command),
                 }
             }
         }
@@ -867,13 +919,14 @@ impl GPU {
             if self.read_y == self.transfer_height {
                 self.transfer_type = None;
 
-                self.gpu_commands.push(GPUCommand::CPUtoVram(VRamTransferParams {
-                    halfwords: self.vram_transfer_halfwords.drain(..).collect(),
-                    start_x: self.transfer_x,
-                    start_y: self.transfer_y,
-                    width: self.transfer_width,
-                    height: self.transfer_height
-                }));
+                self.gpu_commands
+                    .push(GPUCommand::CPUtoVram(VRamTransferParams {
+                        halfwords: self.vram_transfer_halfwords.drain(..).collect(),
+                        start_x: self.transfer_x,
+                        start_y: self.transfer_y,
+                        width: self.transfer_width,
+                        height: self.transfer_height,
+                    }));
                 self.commands_ready = true;
 
                 self.read_y = 0;
@@ -892,19 +945,21 @@ impl GPU {
             0x1 => self.current_command_buffer.clear(),
             0x2 => self.irq_enabled = false,
             0x3 => self.display_on = word & 1 == 1,
-            0x4 => self.dma_direction = match word & 0x3 {
-                0 => DmaDirection::Off,
-                1 => DmaDirection::Fifo,
-                2 => DmaDirection::ToGP0,
-                3 => DmaDirection::ToCPU,
-                _ => unreachable!()
-            },
+            0x4 => {
+                self.dma_direction = match word & 0x3 {
+                    0 => DmaDirection::Off,
+                    1 => DmaDirection::Fifo,
+                    2 => DmaDirection::ToGP0,
+                    3 => DmaDirection::ToCPU,
+                    _ => unreachable!(),
+                }
+            }
             0x5 => self.display_area_start(word),
             0x6 => self.display_range_horizontal(word),
             0x7 => self.display_range_vertical(word),
             0x8 => self.display_mode(word),
             0x10..=0x1f => self.read_internal_register(word),
-            _ => todo!("gp1 0x{:x}", command)
+            _ => todo!("gp1 0x{:x}", command),
         }
     }
 
@@ -914,16 +969,16 @@ impl GPU {
 
     fn read_internal_register(&mut self, word: u32) {
         match word & 0x7 {
-            0x2 => self.gpuread =
-                self.texture_window_mask_x |
-                (self.texture_window_mask_y) << 5 |
-                (self.texture_window_offset_x) << 10 |
-                (self.texture_window_offset_y) << 15,
+            0x2 => {
+                self.gpuread = self.texture_window_mask_x
+                    | (self.texture_window_mask_y) << 5
+                    | (self.texture_window_offset_x) << 10
+                    | (self.texture_window_offset_y) << 15
+            }
             0x3 => self.gpuread = self.x1 | self.y1 << 10,
             0x4 => self.gpuread = self.x2 | self.y2 << 10,
             0x5 => self.gpuread = self.x_offset as u32 | (self.y_offset as u32) << 11,
             _ => (),
-
         }
     }
 
@@ -951,26 +1006,25 @@ impl GPU {
         let old_display_height = self.display_height;
         self.display_width = if (word >> 6) & 0x1 == 1 {
             368
-        }  else {
+        } else {
             match word & 0x3 {
                 0 => 256,
                 1 => 320,
                 2 => 512,
                 3 => 640,
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         };
 
         self.horizontal_bits1 = word & 0x3;
         self.horizontal_bit2 = (word >> 6) & 0x1;
 
-
         self.interlaced = (word >> 5) & 0x1 == 1;
 
         self.display_height = match (word >> 2) & 0x1 {
             0 => 240,
             1 => 480,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         if !self.interlaced {
@@ -984,13 +1038,13 @@ impl GPU {
         self.video_mode = match (word >> 3) & 0x1 {
             0 => DisplayMode::Ntsc,
             1 => DisplayMode::Pal,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         self.display_depth = match (word >> 4) & 0x1 {
             0 => DisplayDepth::Bit15,
             1 => DisplayDepth::Bit24,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         self.horizontal_flip = (word >> 7) & 0x1 == 1;
@@ -1010,7 +1064,10 @@ impl GPU {
 
     pub fn process_gp0_commands(&mut self, word: u32) {
         if self.debug_on {
-            println!("received word 0x{:x}, words remaining = {}", word, self.words_left);
+            println!(
+                "received word 0x{:x}, words remaining = {}",
+                word, self.words_left
+            );
         }
         if let Some(transfer_type) = self.transfer_type {
             if transfer_type == TransferType::ToVram {
@@ -1074,7 +1131,7 @@ impl GPU {
         let vertical_bits = match self.display_height {
             240 => 0,
             480 => 1,
-            _ => 0
+            _ => 0,
         };
 
         let bit31 = if self.current_line < VBLANK_LINE_START {
@@ -1135,38 +1192,42 @@ impl GPU {
     pub fn handle_vblank(
         &mut self,
         scheduler: &mut Scheduler,
-        interrupt_stat: &mut InterruptRegister,
         timers: &mut [Timer],
-        cycles_left: usize
+        cycles_left: usize,
     ) {
         timers[1].in_xblank = true;
 
-        if timers[1].counter_register.contains(CounterModeRegister::SYNC_ENABLE) {
+        if timers[1]
+            .counter_register
+            .contains(CounterModeRegister::SYNC_ENABLE)
+        {
             match timers[1].counter_register.sync_mode() {
                 0 => timers[1].is_active = false,
-                1 => timers[1].counter = 0,
-                2 => {
-                    timers[1].is_active = true;
-                    if self.current_line == 0 {
-                        timers[1].counter =  0;
+                1 | 2 => timers[1].counter = 0,
+                3 => {
+                    if let Some(_) = &mut timers[0].switch_free_run {
+                        timers[1].is_active = true;
+                        timers[1].switch_free_run = None;
                     } else {
-                        timers[1].tick(1, scheduler, interrupt_stat);
+                        timers[1].is_active = false;
+                        timers[1].switch_free_run = Some(true);
                     }
                 }
-                3 => if let Some(_) = &mut timers[0].switch_free_run {
-                    timers[1].is_active = true;
-                } else {
-                    timers[1].switch_free_run = Some(true);
-                }
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
 
         if self.current_line == NUM_SCANLINES {
             self.current_line = 0;
-            scheduler.schedule(EventType::HblankStart, (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left);
+            scheduler.schedule(
+                EventType::HblankStart,
+                (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left,
+            );
         } else {
-            scheduler.schedule(EventType::Vblank, (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left);
+            scheduler.schedule(
+                EventType::Vblank,
+                (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left,
+            );
             self.current_line += 1;
         }
     }

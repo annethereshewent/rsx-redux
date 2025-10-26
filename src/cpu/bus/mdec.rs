@@ -10,7 +10,7 @@ pub struct Mdec {
     luminance_quant_table: [u8; 64],
     color_quant_table: [u8; 64],
     scale_table: [i16; 64],
-    with_color: bool
+    with_color: bool,
 }
 
 impl Mdec {
@@ -25,13 +25,13 @@ impl Mdec {
             dma_out_enable: false,
             words_remaining: 0,
             command: None,
-            with_color: false
+            with_color: false,
         }
     }
     pub fn read(&self, address: usize) -> u32 {
         match address {
             0x1f801824 => self.read_status(),
-            _ => todo!("(read)mdec address: 0x{:x}", address)
+            _ => todo!("(read)mdec address: 0x{:x}", address),
         }
     }
 
@@ -39,13 +39,12 @@ impl Mdec {
         match address {
             0x1f801820 => self.write_command(value),
             0x1f801824 => self.write_control(value),
-            _ => todo!("(write)mdec address: 0x{:x}", address)
+            _ => todo!("(write)mdec address: 0x{:x}", address),
         }
     }
 
     pub fn write_command(&mut self, value: u32) {
         if let Some(command) = self.command {
-
             self.in_fifo.push_back(value);
 
             self.words_remaining -= 1;
@@ -55,7 +54,7 @@ impl Mdec {
                 match command {
                     0x2 => self.populate_quant_table(),
                     0x3 => self.populate_scale_table(),
-                    _ => todo!("mdec command 0x{:x}", command)
+                    _ => todo!("mdec command 0x{:x}", command),
                 }
             }
         } else {
@@ -65,7 +64,7 @@ impl Mdec {
                 0x1 => self.decode_macroblocks(),
                 0x2 => self.set_quant_table(value),
                 0x3 => self.set_scale_table(),
-                _ => ()
+                _ => (),
             }
         }
     }
@@ -110,7 +109,6 @@ impl Mdec {
         // (used for Y1..Y4), and if Command.Bit0 was set, by another 64 unsigned parameter bytes
         // for the Color Quant Table (used for Cb and Cr).
         (self.words_remaining, self.with_color) = if value & 1 == 0 {
-
             (16, false)
         } else {
             (32, true)
@@ -126,10 +124,10 @@ impl Mdec {
     }
 
     fn read_status(&self) -> u32 {
-        (self.out_fifo.is_empty() as u32) << 31 |
-            (self.dma_in_enable as u32) << 28 |
-            (self.dma_out_enable as u32) << 27 |
-            self.words_remaining
+        (self.out_fifo.is_empty() as u32) << 31
+            | (self.dma_in_enable as u32) << 28
+            | (self.dma_out_enable as u32) << 27
+            | self.words_remaining
     }
 
     fn write_control(&mut self, value: u32) {

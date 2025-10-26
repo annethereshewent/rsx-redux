@@ -5,7 +5,7 @@ pub enum SoundRamTransferMode {
     Stop = 0,
     ManualWrite = 1,
     DMAWrite = 2,
-    DMARead = 3
+    DMARead = 3,
 }
 
 /*
@@ -41,7 +41,7 @@ impl SpuControlRegister {
             1 => SoundRamTransferMode::ManualWrite,
             2 => SoundRamTransferMode::DMAWrite,
             3 => SoundRamTransferMode::DMARead,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }

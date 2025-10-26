@@ -1,14 +1,19 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
 
-use ringbuf::{storage::Heap, traits::Producer, wrap::caching::Caching, SharedRb};
+use self::{
+    reverb::Reverb,
+    spu_control::{RamTransferMode, SpuControlRegister},
+    voices::Voice,
+};
+use crate::cpu::bus::{
+    registers::interrupt_register::InterruptRegister,
+    scheduler::{EventType, Scheduler},
+};
 
-use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, scheduler::{EventType, Scheduler}};
-use self::{voices::Voice, spu_control::{SpuControlRegister, RamTransferMode}, reverb::Reverb};
-
-pub mod voices;
 pub mod adsr;
-pub mod spu_control;
 pub mod reverb;
+pub mod spu_control;
+pub mod voices;
 
 pub const FIFO_CAPACITY: usize = 32;
 pub const SPU_RAM_SIZE: usize = 0x80000; // 512 kb
@@ -20,7 +25,7 @@ const SPU_CYCLES: usize = 768;
 pub struct SoundRam {
     data: Box<[u8]>,
     pub irq_address: u32,
-    pub irq: bool
+    pub irq: bool,
 }
 
 impl SoundRam {
@@ -28,7 +33,7 @@ impl SoundRam {
         Self {
             data: vec![0; SPU_RAM_SIZE].into_boxed_slice(),
             irq_address: 0,
-            irq: false
+            irq: false,
         }
     }
 
@@ -43,7 +48,6 @@ impl SoundRam {
     pub fn write_16(&mut self, address: u32, val: u16) {
         self.data[address as usize] = val as u8;
         self.data[(address + 1) as usize] = ((val >> 8) & 0xff) as u8;
-
 
         if address == self.irq_address {
             self.irq = true;
@@ -64,13 +68,12 @@ impl DataTransfer {
             control: 0,
             transfer_address: 0,
             current_address: 0,
-            fifo: Vec::with_capacity(FIFO_CAPACITY)
+            fifo: Vec::with_capacity(FIFO_CAPACITY),
         }
     }
 }
 
 pub struct SPU {
-    pub audio_buffer: Vec<i16>,
     pub previous_value: i16,
     voices: [Voice; 24],
     volume_left: i16,
@@ -100,13 +103,13 @@ pub struct SPU {
     pub cd_right_buffer: VecDeque<i16>,
     capture_index: u32,
     writing_to_capture_half: bool,
-    producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>,
+    pub audio_buffer: Vec<f32>,
 }
 
 pub const CPU_TO_APU_CYCLES: i32 = 768;
 
 impl SPU {
-    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>, scheduler: &mut Scheduler) -> Self {
+    pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
         Self {
             voices: [Voice::new(); 24],
@@ -131,7 +134,6 @@ impl SPU {
             sound_ram: SoundRam::new(),
             reverb: Reverb::new(),
             endx: 0,
-            audio_buffer: Vec::with_capacity(NUM_SAMPLES),
             previous_value: 0,
             noise_level: 1,
             noise_timer: 0,
@@ -139,7 +141,7 @@ impl SPU {
             cd_right_buffer: VecDeque::new(),
             capture_index: 0,
             writing_to_capture_half: false,
-            producer
+            audio_buffer: Vec::with_capacity(NUM_SAMPLES),
         }
     }
 
@@ -250,10 +252,12 @@ impl SPU {
             let (sample_left, sample_right) = voice.get_samples(self.noise_level);
 
             if i == 1 {
-                self.sound_ram.write_16(self.capture_index + 0x800, SPU::to_i16(sample_left) as u16);
+                self.sound_ram
+                    .write_16(self.capture_index + 0x800, SPU::to_i16(sample_left) as u16);
             }
             if i == 3 {
-                self.sound_ram.write_16(self.capture_index + 0xc00, SPU::to_i16(sample_left) as u16);
+                self.sound_ram
+                    .write_16(self.capture_index + 0xc00, SPU::to_i16(sample_left) as u16);
             }
 
             output_left += sample_left;
@@ -288,11 +292,14 @@ impl SPU {
             output_left += self.reverb.left_out * SPU::to_f32(self.reverb_volume_left);
             output_right += self.reverb.right_out * SPU::to_f32(self.reverb_volume_right);
 
-            self.reverb.calculate_reverb([left_reverb, right_reverb], &mut self.sound_ram);
+            self.reverb
+                .calculate_reverb([left_reverb, right_reverb], &mut self.sound_ram);
         }
 
-        self.sound_ram.write_16(self.capture_index, SPU::to_i16(cd_left) as u16);
-        self.sound_ram.write_16(self.capture_index + 0x400, SPU::to_i16(cd_right) as u16);
+        self.sound_ram
+            .write_16(self.capture_index, SPU::to_i16(cd_left) as u16);
+        self.sound_ram
+            .write_16(self.capture_index + 0x400, SPU::to_i16(cd_right) as u16);
 
         self.capture_index = (self.capture_index + 2) & 0x3ff;
         self.writing_to_capture_half = self.capture_index >= 0x200;
@@ -302,18 +309,24 @@ impl SPU {
             interrupt_register.insert(InterruptRegister::SPU);
         }
 
-        self.producer.try_push(SPU::clampf32(output_left)).unwrap_or(());
-        self.producer.try_push(SPU::clampf32(output_right)).unwrap_or(());
+        self.push_sample(output_left);
+        self.push_sample(output_right);
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }
 
+    fn push_sample(&mut self, sample: f32) {
+        if self.audio_buffer.len() < NUM_SAMPLES {
+            self.audio_buffer.push(sample);
+        }
+    }
+
     pub fn clampf32(value: f32) -> f32 {
         if value < -1.0 {
-                return -1.0;
+            return -1.0;
         }
         if value > 1.0 {
-                return 1.0;
+            return 1.0;
         }
 
         value
@@ -342,8 +355,10 @@ impl SPU {
     }
 
     pub fn dma_write(&mut self, value: u32) {
-        self.sound_ram.write_16(self.data_transfer.current_address, value as u16);
-        self.sound_ram.write_16(self.data_transfer.current_address + 2, (value >> 16) as u16);
+        self.sound_ram
+            .write_16(self.data_transfer.current_address, value as u16);
+        self.sound_ram
+            .write_16(self.data_transfer.current_address + 2, (value >> 16) as u16);
 
         self.data_transfer.current_address = (self.data_transfer.current_address + 4) & 0x7_ffff;
     }
@@ -388,7 +403,6 @@ impl SPU {
                 value |= control & 0x3f;
                 value |= (self.writing_to_capture_half as u16) << 11;
 
-
                 value
             }
             0x1f80_1db0 => self.cd_volume_left as u16,
@@ -398,7 +412,7 @@ impl SPU {
             0x1f80_1db8 => self.current_volume_left as u16,
             0x1f80_1dba => self.current_volume_right as u16,
             0x1f801e00..=0x1f801fff => 0xffff,
-            _ => panic!("reading from unsupported SPU address: {:X}", address)
+            _ => panic!("reading from unsupported SPU address: {:X}", address),
         }
     }
 
@@ -409,7 +423,7 @@ impl SPU {
                 let offset = address & 0xf;
 
                 self.voices[voice].write16(offset, val);
-            },
+            }
             0x1f80_1d80 => self.volume_left = val as i16,
             0x1f80_1d82 => self.volume_right = val as i16,
             0x1f80_1d84 => self.reverb_volume_left = val as i16,
@@ -486,7 +500,8 @@ impl SPU {
 
                         self.sound_ram.write_16(address, sample);
 
-                        self.data_transfer.current_address = (self.data_transfer.current_address + 2) & 0x7_ffff;
+                        self.data_transfer.current_address =
+                            (self.data_transfer.current_address + 2) & 0x7_ffff;
                     }
                 }
             }
@@ -498,7 +513,7 @@ impl SPU {
             0x1f80_1db8 => self.current_volume_left = val as i16,
             0x1f80_1dba => self.current_volume_right = val as i16,
             0x1f80_1dc0..=0x1f80_1dff => self.reverb.write16(address, val),
-            _ => panic!("writing to unsupported SPU address: {:X}", address)
+            _ => panic!("writing to unsupported SPU address: {:X}", address),
         }
     }
 }

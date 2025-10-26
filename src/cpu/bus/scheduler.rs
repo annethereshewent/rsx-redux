@@ -2,7 +2,7 @@ use std::cmp::Reverse;
 
 use priority_queue::PriorityQueue;
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Debug)]
 pub enum EventType {
     Vblank,
     HblankStart,
@@ -21,8 +21,8 @@ pub enum EventType {
     CDSeek,
     CDStat,
     CDRead,
-    Timer(usize),
-    TickSpu
+    TickSpu,
+    ControllerByteTransfer,
 }
 
 pub struct Scheduler {
@@ -69,7 +69,7 @@ impl Scheduler {
 
         let mut vec: Vec<(EventType, usize)> = Vec::new();
 
-        while let Some((event_type, Reverse(cycles)))= self.queue.pop() {
+        while let Some((event_type, Reverse(cycles))) = self.queue.pop() {
             let new_cycles = cycles - to_subtract;
 
             vec.push((event_type, new_cycles));
@@ -90,4 +90,3 @@ impl Scheduler {
         }
     }
 }
-

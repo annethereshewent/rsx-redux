@@ -95,6 +95,32 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     return float4(r, g, b, a) / 31.0;
 }
 
+float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
+    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+
+    uint offsetU = in.page[0] + u / 2;
+    uint offsetV = in.page[1] + v;
+
+    uint halfWord = vram.read(uint2(offsetU, offsetV)).r;
+
+    uint texelIndex = (u & 1) == 0 ? halfWord & 0xff : halfWord >> 8;
+
+    ushort texel = vram.read(uint2(texelIndex + in.clut[0], in.clut[1])).r;
+
+    uint r = texel & 0x1f;
+    uint g = (texel >> 5) & 0x1f;
+    uint b = (texel >> 10) & 0x1f;
+
+    float a = float((texel >> 15) & 1) * 31.0;
+
+    if (texel == 0) {
+        a = -31.0;
+    }
+
+    return float4(r, g, b, a) / 31.0;
+}
+
 // Fragment
 fragment float4 fragment_main(VertexOut in [[stage_in]],
                               texture2d<ushort, access::read> vram [[texture(0)]],
@@ -107,6 +133,9 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         switch (uniforms.depth) {
             case 0:
                 texColor = getTexColor4bpp(in, vram, uniforms);
+                break;
+            case 1:
+                texColor = getTexColor8bpp(in, vram, uniforms);
                 break;
             case 2:
                 texColor = getTexColor16bpp(in, vram, uniforms);

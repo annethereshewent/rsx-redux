@@ -1,4 +1,4 @@
-use super::{ExceptionType, CPU, RA_REGISTER};
+use super::{CPU, ExceptionType, RA_REGISTER};
 pub struct Instruction(pub u32);
 
 impl Instruction {
@@ -59,12 +59,12 @@ impl CPU {
 
     pub fn bcondz(&mut self, instruction: Instruction) -> usize {
         let bits = instruction.rt();
-        match (bits & 1, (bits & 0x1e) ) {
+        match (bits & 1, (bits & 0x1e)) {
             (0, 0x10) => self.bltzal(instruction),
             (1, 0x10) => self.bgezal(instruction),
             (0, _) => self.bltz(instruction),
             (1, _) => self.bgez(instruction),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -132,7 +132,7 @@ impl CPU {
     }
 
     pub fn beq(&mut self, instruction: Instruction) -> usize {
-       if self.r[instruction.rs()] == self.r[instruction.rt()] {
+        if self.r[instruction.rs()] == self.r[instruction.rt()] {
             self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
             self.branch_taken = true;
         }
@@ -160,15 +160,16 @@ impl CPU {
 
     pub fn bgtz(&mut self, instruction: Instruction) -> usize {
         if (self.r[instruction.rs()] as i32) > 0 {
-           self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
-           self.branch_taken = true;
+            self.next_pc = ((self.pc as i32) + (instruction.signed_immediate16() << 2)) as u32;
+            self.branch_taken = true;
         }
 
         2
     }
 
     pub fn addi(&mut self, instruction: Instruction) -> usize {
-        let (result, overflow) = (self.r[instruction.rs()] as i32).overflowing_add(instruction.signed_immediate16());
+        let (result, overflow) =
+            (self.r[instruction.rs()] as i32).overflowing_add(instruction.signed_immediate16());
 
         if overflow {
             self.enter_exception(ExceptionType::Overflow);
@@ -182,7 +183,8 @@ impl CPU {
     }
 
     pub fn addiu(&mut self, instruction: Instruction) -> usize {
-        self.r[instruction.rt()] = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
+        self.r[instruction.rt()] =
+            (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         self.ignored_load_delay = Some(instruction.rt());
 
@@ -190,7 +192,8 @@ impl CPU {
     }
 
     pub fn slti(&mut self, instruction: Instruction) -> usize {
-        self.r[instruction.rt()] = ((self.r[instruction.rs()] as i32) < instruction.signed_immediate16()) as u32;
+        self.r[instruction.rt()] =
+            ((self.r[instruction.rs()] as i32) < instruction.signed_immediate16()) as u32;
         self.ignored_load_delay = Some(instruction.rt());
 
         2
@@ -245,11 +248,11 @@ impl CPU {
                 }
                 4 => self.cop0.mtc0(instruction.rd(), self.r[instruction.rt()]),
                 0x10 => self.cop0.rfe(),
-                _ => todo!("cop0 instruction: 0x{:x}", instruction.0)
-            }
+                _ => todo!("cop0 instruction: 0x{:x}", instruction.0),
+            },
             0xc => todo!("lwc"),
             0xd => todo!("swc"),
-            _ => todo!("cop0 instruction: 0x{:x}", instruction.0)
+            _ => todo!("cop0 instruction: 0x{:x}", instruction.0),
         }
 
         2
@@ -275,9 +278,17 @@ impl CPU {
 
                 self.update_load(instruction.rt(), value);
             }
-            0x4 => self.gte.write_data(instruction.rd(), self.r[instruction.rt()]),
-            0x6 => self.gte.write_control(instruction.rd(), self.r[instruction.rt()]),
-            _ => if cop_code & 0x10 == 0x10 { cycles = self.gte.execute_command(instruction) }
+            0x4 => self
+                .gte
+                .write_data(instruction.rd(), self.r[instruction.rt()]),
+            0x6 => self
+                .gte
+                .write_control(instruction.rd(), self.r[instruction.rt()]),
+            _ => {
+                if cop_code & 0x10 == 0x10 {
+                    cycles = self.gte.execute_command(instruction)
+                }
+            }
         }
 
         cycles
@@ -301,10 +312,7 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
         if address & 1 == 0 {
             let value = self.bus.mem_read16(address) as i16 as i32 as u32;
-            self.update_load(
-                instruction.rt(),
-                value
-            );
+            self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
             self.enter_exception(ExceptionType::LoadAddressError);
@@ -318,7 +326,6 @@ impl CPU {
 
         if let Some((register, value)) = self.delayed_load {
             if register == instruction.rt() {
-
                 result = value;
             }
         }
@@ -330,7 +337,7 @@ impl CPU {
             1 => (result & 0xffff) | (aligned_word << 16),
             2 => (result & 0xff) | (aligned_word << 8),
             3 => aligned_word,
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         };
 
         self.update_load(instruction.rt(), result);
@@ -393,7 +400,7 @@ impl CPU {
             1 => (result & 0xff000000) | (aligned_word >> 8),
             2 => (result & 0xffff0000) | (aligned_word >> 16),
             3 => (result & 0xffffff00) | (aligned_word >> 24),
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         };
 
         self.update_load(instruction.rt(), result);
@@ -435,7 +442,7 @@ impl CPU {
             1 => (mem_value & 0xffff0000) | (value >> 16),
             2 => (mem_value & 0xff000000) | (value >> 8),
             3 => value,
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         };
 
         self.store32(address & !3, result);
@@ -469,7 +476,7 @@ impl CPU {
             1 => (mem_value & 0xff) | (value << 8),
             2 => (mem_value & 0xffff) | (value << 16),
             3 => (mem_value & 0xffffff) | (value << 24),
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         };
 
         self.store32(address & !3, result);
@@ -554,7 +561,7 @@ impl CPU {
         2
     }
 
-    pub fn srlv(&mut self, instruction: Instruction) -> usize{
+    pub fn srlv(&mut self, instruction: Instruction) -> usize {
         let shift = self.r[instruction.rs()] & 0x1f;
         self.r[instruction.rd()] = self.r[instruction.rt()] >> shift;
         self.ignored_load_delay = Some(instruction.rd());
@@ -617,7 +624,7 @@ impl CPU {
         2
     }
 
-    pub fn mthi(&mut self, instruction: Instruction) -> usize{
+    pub fn mthi(&mut self, instruction: Instruction) -> usize {
         self.hi = self.r[instruction.rs()];
 
         2
@@ -641,7 +648,8 @@ impl CPU {
     pub fn mult(&mut self, instruction: Instruction) -> usize {
         self.tick(1);
 
-        let result = self.r[instruction.rs()] as i32 as i64 * self.r[instruction.rt()] as i32 as i64;
+        let result =
+            self.r[instruction.rs()] as i32 as i64 * self.r[instruction.rt()] as i32 as i64;
 
         self.lo = result as u32;
         self.hi = (result >> 32) as u32;
@@ -673,7 +681,7 @@ impl CPU {
             self.lo = (dividend / divisor) as u32;
             self.hi = (dividend % divisor) as u32;
         } else {
-            self.lo = if dividend >= 0 { -1  as i32 as u32 } else { 1 };
+            self.lo = if dividend >= 0 { -1 as i32 as u32 } else { 1 };
             self.hi = dividend as u32;
         }
 
@@ -697,11 +705,12 @@ impl CPU {
         2
     }
 
-    pub fn add(&mut self, instruction: Instruction) -> usize{
-        if let Some(result) = (self.r[instruction.rs()] as i32).checked_add(self.r[instruction.rt()] as i32) {
+    pub fn add(&mut self, instruction: Instruction) -> usize {
+        if let Some(result) =
+            (self.r[instruction.rs()] as i32).checked_add(self.r[instruction.rt()] as i32)
+        {
             self.r[instruction.rd()] = result as u32;
             self.ignored_load_delay = Some(instruction.rd());
-
         } else {
             self.enter_exception(ExceptionType::Overflow);
         }
@@ -717,8 +726,9 @@ impl CPU {
     }
 
     pub fn sub(&mut self, instruction: Instruction) -> usize {
-        if let Some(result) = (self.r[instruction.rs()] as i32).checked_sub(self.r[instruction.rt()] as i32) {
-
+        if let Some(result) =
+            (self.r[instruction.rs()] as i32).checked_sub(self.r[instruction.rt()] as i32)
+        {
             self.r[instruction.rd()] = result as u32;
 
             self.ignored_load_delay = Some(instruction.rd());
@@ -765,7 +775,8 @@ impl CPU {
     }
 
     pub fn slt(&mut self, instruction: Instruction) -> usize {
-        self.r[instruction.rd()] = ((self.r[instruction.rs()] as i32) < (self.r[instruction.rt()] as i32)) as u32;
+        self.r[instruction.rd()] =
+            ((self.r[instruction.rs()] as i32) < (self.r[instruction.rt()] as i32)) as u32;
         self.ignored_load_delay = Some(instruction.rd());
 
         2

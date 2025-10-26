@@ -1,6 +1,6 @@
 use std::cmp;
 
-use crate::cpu::bus::spu::{SoundRam, SPU};
+use crate::cpu::bus::spu::{SPU, SoundRam};
 
 pub struct Reverb {
     m_base: u32,
@@ -41,7 +41,7 @@ pub struct Reverb {
     buffer_address: u32,
     pub reverb_out_left: f32,
     pub reverb_out_right: f32,
-    pub is_left: bool
+    pub is_left: bool,
 }
 
 impl Reverb {
@@ -85,7 +85,7 @@ impl Reverb {
             buffer_address: 0,
             reverb_out_left: 0.0,
             reverb_out_right: 0.0,
-            is_left: true
+            is_left: true,
         }
     }
     /*
@@ -120,24 +120,18 @@ impl Reverb {
         let d_r_same = sound_ram.readf32(self.calculate_address(self.d_r_same as usize));
         let mr_same2 = sound_ram.readf32(self.calculate_address(self.mr_same as usize - 2));
 
-        let mr_same_val =
-            rin + SPU::apply_volume(d_r_same, self.v_wall) -
-            SPU::apply_volume(mr_same2, self.v_iir) + mr_same2;
+        let mr_same_val = rin + SPU::apply_volume(d_r_same, self.v_wall)
+            - SPU::apply_volume(mr_same2, self.v_iir)
+            + mr_same2;
 
-        sound_ram.writef32(
-            self.calculate_address(self.mr_same as usize),
-            mr_same_val
-        );
+        sound_ram.writef32(self.calculate_address(self.mr_same as usize), mr_same_val);
 
         let dl_diff = sound_ram.readf32(self.calculate_address(self.d_l_diff as usize));
         let mr_diff2 = sound_ram.readf32(self.calculate_address(self.m_r_diff as usize - 2));
 
         let dl_diff_volume = SPU::apply_volume(dl_diff, self.v_wall);
 
-        let mr_diff_val = SPU::apply_volume(
-            rin + dl_diff_volume - mr_diff2,
-            self.v_iir
-        ) + mr_diff2;
+        let mr_diff_val = SPU::apply_volume(rin + dl_diff_volume - mr_diff2, self.v_iir) + mr_diff2;
 
         sound_ram.writef32(self.calculate_address(self.m_r_diff as usize), mr_diff_val);
 
@@ -146,12 +140,13 @@ impl Reverb {
         let mr_comb3 = sound_ram.readf32(self.calculate_address(self.m_r_comb3 as usize));
         let mr_comb4 = sound_ram.readf32(self.calculate_address(self.m_r_comb4 as usize));
 
-        let mut rout = SPU::apply_volume(mr_comb1, self.v_comb1) +
-            SPU::apply_volume(mr_comb2, self.v_comb2) +
-            SPU::apply_volume(mr_comb3, self.v_comb3) +
-            SPU::apply_volume(mr_comb4, self.v_comb4);
+        let mut rout = SPU::apply_volume(mr_comb1, self.v_comb1)
+            + SPU::apply_volume(mr_comb2, self.v_comb2)
+            + SPU::apply_volume(mr_comb3, self.v_comb3)
+            + SPU::apply_volume(mr_comb4, self.v_comb4);
 
-        let rapf1 = sound_ram.readf32(self.calculate_address(self.m_rapf1 as usize - self.d_apf1 as usize));
+        let rapf1 =
+            sound_ram.readf32(self.calculate_address(self.m_rapf1 as usize - self.d_apf1 as usize));
 
         rout = rout - SPU::apply_volume(rapf1, self.v_apf1);
 
@@ -159,7 +154,8 @@ impl Reverb {
 
         rout = SPU::apply_volume(rout, self.v_apf1) + rapf1;
 
-        let rapf2 = sound_ram.readf32(self.calculate_address(self.m_rapf2 as usize - self.d_apf2 as usize));
+        let rapf2 =
+            sound_ram.readf32(self.calculate_address(self.m_rapf2 as usize - self.d_apf2 as usize));
 
         rout = rout - SPU::apply_volume(rapf2, self.v_apf2);
 
@@ -172,36 +168,26 @@ impl Reverb {
         self.reverb_out_right = right_output;
 
         self.buffer_address = cmp::max(self.m_base, (self.buffer_address + 2) & 0x7_fffe);
-
     }
 
     pub fn calculate_left(&mut self, reverb_left: f32, sound_ram: &mut SoundRam) {
-        let lin = SPU::apply_volume(
-                reverb_left,
-            self.v_lin
-        );
+        let lin = SPU::apply_volume(reverb_left, self.v_lin);
 
         let d_l_same = sound_ram.readf32(self.calculate_address(self.d_l_same as usize));
         let ml_same2 = sound_ram.readf32(self.calculate_address(self.ml_same as usize - 2));
 
-        let ml_same_val =
-            lin + SPU::apply_volume(d_l_same, self.v_wall) -
-            SPU::apply_volume(ml_same2, self.v_iir) + ml_same2;
+        let ml_same_val = lin + SPU::apply_volume(d_l_same, self.v_wall)
+            - SPU::apply_volume(ml_same2, self.v_iir)
+            + ml_same2;
 
-        sound_ram.writef32(
-            self.calculate_address(self.ml_same as usize),
-            ml_same_val
-        );
+        sound_ram.writef32(self.calculate_address(self.ml_same as usize), ml_same_val);
 
         let dr_diff = sound_ram.readf32(self.calculate_address(self.d_r_diff as usize));
         let ml_diff2 = sound_ram.readf32(self.calculate_address(self.m_l_diff as usize - 2));
 
         let dr_diff_volume = SPU::apply_volume(dr_diff, self.v_wall);
 
-        let ml_diff_val = SPU::apply_volume(
-            lin + dr_diff_volume - ml_diff2,
-            self.v_iir
-        ) + ml_diff2;
+        let ml_diff_val = SPU::apply_volume(lin + dr_diff_volume - ml_diff2, self.v_iir) + ml_diff2;
 
         sound_ram.writef32(self.calculate_address(self.m_l_diff as usize), ml_diff_val);
 
@@ -210,12 +196,13 @@ impl Reverb {
         let ml_comb3 = sound_ram.readf32(self.calculate_address(self.m_l_comb3 as usize));
         let ml_comb4 = sound_ram.readf32(self.calculate_address(self.m_l_comb4 as usize));
 
-        let mut lout = SPU::apply_volume(ml_comb1, self.v_comb1) +
-            SPU::apply_volume(ml_comb2, self.v_comb2) +
-            SPU::apply_volume(ml_comb3, self.v_comb3) +
-            SPU::apply_volume(ml_comb4, self.v_comb4);
+        let mut lout = SPU::apply_volume(ml_comb1, self.v_comb1)
+            + SPU::apply_volume(ml_comb2, self.v_comb2)
+            + SPU::apply_volume(ml_comb3, self.v_comb3)
+            + SPU::apply_volume(ml_comb4, self.v_comb4);
 
-        let lapf1 = sound_ram.readf32(self.calculate_address(self.m_lapf1 as usize - self.d_apf1 as usize));
+        let lapf1 =
+            sound_ram.readf32(self.calculate_address(self.m_lapf1 as usize - self.d_apf1 as usize));
 
         lout = lout - SPU::apply_volume(lapf1, self.v_apf1);
 
@@ -223,7 +210,8 @@ impl Reverb {
 
         lout = SPU::apply_volume(lout, self.v_apf1) + lapf1;
 
-        let lapf2 = sound_ram.readf32(self.calculate_address(self.m_lapf2 as usize - self.d_apf2 as usize));
+        let lapf2 =
+            sound_ram.readf32(self.calculate_address(self.m_lapf2 as usize - self.d_apf2 as usize));
 
         lout = lout - SPU::apply_volume(lapf2, self.v_apf2);
 
@@ -311,7 +299,7 @@ impl Reverb {
             0x1f801dfa => self.m_rapf2 = value as u32 * 8,
             0x1f801dfc => self.v_lin = value as i16,
             0x1f801dfe => self.v_rin = value as i16,
-            _ => panic!("invalid address given to reverb: 0x{:x}", address)
+            _ => panic!("invalid address given to reverb: 0x{:x}", address),
         }
     }
 

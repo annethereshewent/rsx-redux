@@ -4,7 +4,7 @@ use bitflags::bitflags;
 pub enum SyncMode {
     Burst = 0,
     Slice = 1,
-    LinkedList = 2
+    LinkedList = 2,
 }
 
 bitflags! {
@@ -26,7 +26,7 @@ impl DmaChannelControlRegister {
             0 => SyncMode::Burst,
             1 => SyncMode::Slice,
             2 => SyncMode::LinkedList,
-            _ => panic!("reserved mode: {}", (self.bits() >> 9) & 0x3)
+            _ => panic!("reserved mode: {}", (self.bits() >> 9) & 0x3),
         }
     }
 

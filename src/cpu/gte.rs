@@ -2,7 +2,6 @@ use std::{cmp, collections::HashMap};
 
 use super::Instruction;
 
-
 // see https://psx-spx.consoledev.net/geometrytransformationenginegte/#gte-division-inaccuracy
 const UNR_TABLE: [u8; 0x101] = [
     0xFF, 0xFD, 0xFB, 0xF9, 0xF7, 0xF5, 0xF3, 0xF1, 0xEF, 0xEE, 0xEC, 0xEA, 0xE8, 0xE6, 0xE4, 0xE3,
@@ -21,7 +20,7 @@ const UNR_TABLE: [u8; 0x101] = [
     0x19, 0x19, 0x18, 0x18, 0x17, 0x16, 0x16, 0x15, 0x15, 0x14, 0x14, 0x13, 0x12, 0x12, 0x11, 0x11,
     0x10, 0x0F, 0x0F, 0x0E, 0x0E, 0x0D, 0x0D, 0x0C, 0x0C, 0x0B, 0x0A, 0x0A, 0x09, 0x09, 0x08, 0x08,
     0x07, 0x07, 0x06, 0x06, 0x05, 0x05, 0x04, 0x04, 0x03, 0x03, 0x02, 0x02, 0x01, 0x01, 0x00, 0x00,
-    0x00
+    0x00,
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -29,7 +28,7 @@ struct Rgb {
     r: u8,
     g: u8,
     b: u8,
-    c: u8
+    c: u8,
 }
 
 pub struct Gte {
@@ -64,7 +63,7 @@ pub struct Gte {
     res1: u32,
     mac: [i32; 4],
     lzcs: i32,
-    lzcr: i32
+    lzcr: i32,
 }
 
 impl Gte {
@@ -83,12 +82,12 @@ impl Gte {
             light: [[0; 3]; 3],
             rotation: [[0; 3]; 3],
             tr: (0, 0, 0),
-            v: [(0,0,0); 3],
+            v: [(0, 0, 0); 3],
             rgbc: Rgb {
                 r: 0,
                 g: 0,
                 b: 0,
-                c: 0
+                c: 0,
             },
             otz: 0,
             ir: [0; 4],
@@ -100,13 +99,18 @@ impl Gte {
             lm: false,
             sxy_fifo: [(0, 0); 3],
             sz_fifo: [0; 4],
-            rgb_fifo: [Rgb { r: 0, g: 0, b: 0, c: 0 }; 3],
+            rgb_fifo: [Rgb {
+                r: 0,
+                g: 0,
+                b: 0,
+                c: 0,
+            }; 3],
             res1: 0,
             mac: [0; 4],
             lzcs: 0,
             lzcr: 0,
             debug_on: false,
-            executed_commands: HashMap::new()
+            executed_commands: HashMap::new(),
         }
     }
 
@@ -115,11 +119,7 @@ impl Gte {
 
         let op_code = command & 0x3f;
 
-        self.sf = if (command >> 19) & 0b1 == 1 {
-            12
-        } else {
-            0
-        };
+        self.sf = if (command >> 19) & 0b1 == 1 { 12 } else { 0 };
 
         self.mx = ((command >> 17) & 0x3) as usize;
         self.sv = ((command >> 15) & 0x3) as usize;
@@ -134,7 +134,6 @@ impl Gte {
                 println!("executed {:X}", op_code);
                 self.executed_commands.insert(op_code, true);
             }
-
         }
 
         let cycles = match op_code {
@@ -160,7 +159,7 @@ impl Gte {
             0x3d => self.gpf(),
             0x3e => self.gpl(),
             0x3f => self.ncct(),
-            _ => panic!("unimplemented op code for gte: {:x}", op_code)
+            _ => panic!("unimplemented op code for gte: {:x}", op_code),
         };
 
         if (self.flags & 0x7f87e000) != 0 {
@@ -352,7 +351,6 @@ impl Gte {
         }
 
         8
-
     }
 
     fn ncs(&mut self) -> usize {
@@ -452,7 +450,6 @@ impl Gte {
         let c = self.rgbc.c;
 
         self.push_rgb(r, g, b, c);
-
     }
 
     fn op(&mut self) -> usize {
@@ -698,7 +695,6 @@ impl Gte {
         self.mac[2] = (self.set_mac_flags(mac2 + ir2 * ir0, 2) >> self.sf) as i32;
         self.mac[3] = (self.set_mac_flags(mac3 + ir3 * ir0, 3) >> self.sf) as i32;
 
-
         let r = self.set_color_fifo_flags(self.mac[1] >> 4, 1);
         let g = self.set_color_fifo_flags(self.mac[2] >> 4, 2);
         let b = self.set_color_fifo_flags(self.mac[3] >> 4, 3);
@@ -711,7 +707,6 @@ impl Gte {
         }
 
         8
-
     }
 
     fn gpl(&mut self) -> usize {
@@ -752,7 +747,8 @@ impl Gte {
     }
 
     fn avsz3(&mut self) -> usize {
-        let value = self.zsf3 as i64 * (self.sz_fifo[1] as i64 + self.sz_fifo[2] as i64 + self.sz_fifo[3] as i64);
+        let value = self.zsf3 as i64
+            * (self.sz_fifo[1] as i64 + self.sz_fifo[2] as i64 + self.sz_fifo[3] as i64);
 
         self.set_mac0_flags(value);
 
@@ -765,8 +761,12 @@ impl Gte {
         5
     }
 
-    fn avsz4(&mut self)  -> usize {
-        let value = self.zsf4 as i64 * (self.sz_fifo[0] as i64 + self.sz_fifo[1] as i64 + self.sz_fifo[2] as i64 + self.sz_fifo[3] as i64);
+    fn avsz4(&mut self) -> usize {
+        let value = self.zsf4 as i64
+            * (self.sz_fifo[0] as i64
+                + self.sz_fifo[1] as i64
+                + self.sz_fifo[2] as i64
+                + self.sz_fifo[3] as i64);
 
         self.set_mac0_flags(value);
 
@@ -814,11 +814,23 @@ impl Gte {
             1 => self.light,
             2 => self.color,
             3 => [
-                [-((self.rgbc.r as i16)    << 4), (self.rgbc.r as i16) << 4, self.ir[0] as i16],
-                [self.rotation[0][2], self.rotation[0][2], self.rotation[0][2]],
-                [self.rotation[1][1], self.rotation[1][1], self.rotation[1][1]]
+                [
+                    -((self.rgbc.r as i16) << 4),
+                    (self.rgbc.r as i16) << 4,
+                    self.ir[0] as i16,
+                ],
+                [
+                    self.rotation[0][2],
+                    self.rotation[0][2],
+                    self.rotation[0][2],
+                ],
+                [
+                    self.rotation[1][1],
+                    self.rotation[1][1],
+                    self.rotation[1][1],
+                ],
             ],
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         };
 
         let vx = match self.sv {
@@ -826,7 +838,7 @@ impl Gte {
             1 => self.v[1],
             2 => self.v[2],
             3 => (self.ir[1], self.ir[2], self.ir[3]),
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         };
 
         let tx = match self.cv {
@@ -834,7 +846,7 @@ impl Gte {
             1 => self.bk,
             2 => self.fc,
             3 => (0, 0, 0),
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         };
 
         let mx_m11 = mx[0][0] as i64;
@@ -856,7 +868,6 @@ impl Gte {
         let tx_x = (tx.0 as i64) << 12;
         let tx_y = (tx.1 as i64) << 12;
         let tx_z = (tx.2 as i64) << 12;
-
 
         let mut mac1 = self.set_mac_flags(tx_x + mx_m11 * vx_x, 1);
         let mut mac2 = self.set_mac_flags(tx_y + mx_m21 * vx_x, 2);
@@ -1006,7 +1017,7 @@ impl Gte {
         let b = self.set_color_fifo_flags(self.mac[3] >> 4, 3);
         let c = self.rgbc.c;
 
-        self.push_rgb(r,g,b,c);
+        self.push_rgb(r, g, b, c);
     }
 
     fn push_rgb(&mut self, r: u8, g: u8, b: u8, c: u8) {
@@ -1280,15 +1291,24 @@ impl Gte {
             4 => (self.v[2].0 as u16 as u32) | (self.v[2].1 as u16 as u32) << 16,
             5 => self.v[2].2 as u32,
             6 => {
-                (self.rgbc.r as u32) | (self.rgbc.g as u32) << 8 | (self.rgbc.b as u32) << 16 | (self.rgbc.c as u32) << 24
+                (self.rgbc.r as u32)
+                    | (self.rgbc.g as u32) << 8
+                    | (self.rgbc.b as u32) << 16
+                    | (self.rgbc.c as u32) << 24
             }
             7 => self.otz as u32,
             8..=11 => self.ir[destination - 8] as u32,
-            12..=14 => (self.sxy_fifo[destination - 12].0 as u16 as u32) | (self.sxy_fifo[destination - 12].1 as u16 as u32) << 16,
+            12..=14 => {
+                (self.sxy_fifo[destination - 12].0 as u16 as u32)
+                    | (self.sxy_fifo[destination - 12].1 as u16 as u32) << 16
+            }
             15 => (self.sxy_fifo[2].0 as u16 as u32) | (self.sxy_fifo[2].1 as u16 as u32) << 16,
             16..=19 => self.sz_fifo[destination - 16] as u32,
             20..=22 => {
-                (self.rgb_fifo[destination - 20].r as u32) | (self.rgb_fifo[destination - 20].g as u32) << 8 | (self.rgb_fifo[destination - 20].b as u32) << 16 | (self.rgb_fifo[destination - 20].c as u32) << 24
+                (self.rgb_fifo[destination - 20].r as u32)
+                    | (self.rgb_fifo[destination - 20].g as u32) << 8
+                    | (self.rgb_fifo[destination - 20].b as u32) << 16
+                    | (self.rgb_fifo[destination - 20].c as u32) << 24
             }
             23 => self.res1,
             24..=27 => self.mac[destination - 24] as u32,
@@ -1301,7 +1321,7 @@ impl Gte {
             }
             30 => self.lzcs as u32,
             31 => self.lzcr as u32,
-            _ => panic!("unsupported destination: {destination}")
+            _ => panic!("unsupported destination: {destination}"),
         }
     }
 
@@ -1358,12 +1378,11 @@ impl Gte {
                 self.lzcr = Self::get_num_leading_bits(self.lzcs);
             }
             31 => (),
-            _ => panic!("unhandled destination received: {destination}")
+            _ => panic!("unhandled destination received: {destination}"),
         }
     }
 
     pub fn write_control(&mut self, destination: usize, value: u32) {
-
         match destination {
             0 => {
                 self.rotation[0][0] = value as i16;
@@ -1439,7 +1458,7 @@ impl Gte {
                     self.flags |= 1 << 31;
                 }
             }
-            _ => panic!("unhandled destination received: {destination}")
+            _ => panic!("unhandled destination received: {destination}"),
         }
     }
 
@@ -1463,50 +1482,26 @@ impl Gte {
 
     pub fn read_control(&self, destination: usize) -> u32 {
         match destination {
-            0 => {
-                (self.rotation[0][0] as u16 as u32) | (self.rotation[0][1] as u16 as u32) << 16
-            }
-            1 => {
-                (self.rotation[0][2] as u16 as u32) | (self.rotation[1][0] as u16 as u32) << 16
-            }
-            2 => {
-                (self.rotation[1][1] as u16 as u32) | (self.rotation[1][2] as u16 as u32) << 16
-            }
-            3 => {
-                (self.rotation[2][0] as u16 as u32) | (self.rotation[2][1] as u16 as u32) << 16
-            }
+            0 => (self.rotation[0][0] as u16 as u32) | (self.rotation[0][1] as u16 as u32) << 16,
+            1 => (self.rotation[0][2] as u16 as u32) | (self.rotation[1][0] as u16 as u32) << 16,
+            2 => (self.rotation[1][1] as u16 as u32) | (self.rotation[1][2] as u16 as u32) << 16,
+            3 => (self.rotation[2][0] as u16 as u32) | (self.rotation[2][1] as u16 as u32) << 16,
             4 => self.rotation[2][2] as u32,
             5 => self.tr.0 as u32,
             6 => self.tr.1 as u32,
             7 => self.tr.2 as u32,
-            8 => {
-                (self.light[0][0] as u16 as u32) | (self.light[0][1] as u16 as u32) << 16
-            }
-            9 => {
-                (self.light[0][2] as u16 as u32) | (self.light[1][0] as u16 as u32) << 16
-            }
-            10 => {
-                (self.light[1][1] as u16 as u32) | (self.light[1][2] as u16 as u32) << 16
-            }
-            11 => {
-                (self.light[2][0] as u16 as u32) | (self.light[2][1] as u16 as u32) << 16
-            }
+            8 => (self.light[0][0] as u16 as u32) | (self.light[0][1] as u16 as u32) << 16,
+            9 => (self.light[0][2] as u16 as u32) | (self.light[1][0] as u16 as u32) << 16,
+            10 => (self.light[1][1] as u16 as u32) | (self.light[1][2] as u16 as u32) << 16,
+            11 => (self.light[2][0] as u16 as u32) | (self.light[2][1] as u16 as u32) << 16,
             12 => self.light[2][2] as u32,
             13 => self.bk.0 as u32,
             14 => self.bk.1 as u32,
             15 => self.bk.2 as u32,
-            16 => {
-                (self.color[0][0] as u16 as u32) | (self.color[0][1] as u16 as u32) << 16
-            }
-            17 => {
-                (self.color[0][2] as u16 as u32) | (self.color[1][0] as u16 as u32) << 16
-            }
-            18 => {
-                (self.color[1][1] as u16 as u32) | (self.color[1][2] as u16 as u32) << 16
-            }
-            19 => {
-                (self.color[2][0] as u16 as u32) | (self.color[2][1] as u16 as u32) << 16
-            }
+            16 => (self.color[0][0] as u16 as u32) | (self.color[0][1] as u16 as u32) << 16,
+            17 => (self.color[0][2] as u16 as u32) | (self.color[1][0] as u16 as u32) << 16,
+            18 => (self.color[1][1] as u16 as u32) | (self.color[1][2] as u16 as u32) << 16,
+            19 => (self.color[2][0] as u16 as u32) | (self.color[2][1] as u16 as u32) << 16,
             20 => self.color[2][2] as u32,
             21 => self.fc.0 as u32,
             22 => self.fc.1 as u32,
@@ -1519,7 +1514,7 @@ impl Gte {
             29 => self.zsf3 as u32,
             30 => self.zsf4 as u32,
             31 => self.flags,
-            _ => unreachable!("can't happen")
+            _ => unreachable!("can't happen"),
         }
     }
 }

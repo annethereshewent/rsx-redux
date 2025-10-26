@@ -4,48 +4,17 @@ use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
 use objc2_foundation::NSString;
 use objc2_metal::{
-    MTLCommandEncoder,
-    MTLCommandBuffer,
-    MTLCommandQueue,
-    MTLDevice,
-    MTLOrigin,
-    MTLPrimitiveType,
-    MTLRegion,
-    MTLRenderCommandEncoder,
-    MTLRenderPipelineState,
-    MTLResourceOptions,
-    MTLSize,
-    MTLTexture,
-    MTLTextureDescriptor,
-    MTLPixelFormat,
-    MTLTextureUsage,
-    MTLStorageMode,
-    MTLScissorRect,
-    MTLRenderPassDescriptor,
-    MTLClearColor,
-    MTLStoreAction,
-    MTLLoadAction,
-    MTLCullMode,
-    MTLWinding,
-    MTLViewport,
-    MTLBuffer,
-    MTLVertexDescriptor,
-    MTLCreateSystemDefaultDevice,
-    MTLLibrary,
-    MTLRenderPipelineDescriptor,
-    MTLVertexFormat,
-    MTLBlendOperation,
-    MTLBlendFactor,
-    MTLCompareFunction,
-    MTLStencilOperation,
-    MTLDepthStencilState,
-    MTLDepthStencilDescriptor,
-    MTLStencilDescriptor
+    MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLClearColor, MTLCommandBuffer,
+    MTLCommandEncoder, MTLCommandQueue, MTLCompareFunction, MTLCreateSystemDefaultDevice,
+    MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState, MTLDevice, MTLLibrary,
+    MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion, MTLRenderCommandEncoder,
+    MTLRenderPassDescriptor, MTLRenderPipelineDescriptor, MTLRenderPipelineState,
+    MTLResourceOptions, MTLScissorRect, MTLSize, MTLStencilDescriptor, MTLStencilOperation,
+    MTLStorageMode, MTLStoreAction, MTLTexture, MTLTextureDescriptor, MTLTextureUsage,
+    MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
 };
-use objc2_quartz_core::{CAMetalLayer, CAMetalDrawable};
-use rsx_redux::cpu::bus::gpu::{
-    CPUTransferParams, GPUCommand, Polygon, TexturePageColors, GPU
-};
+use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
+use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors};
 use std::cmp;
 
 use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
@@ -63,7 +32,7 @@ struct FragmentUniform {
     texture_offset_y: u32,
     depth: i32,
     transparent_mode: u32,
-    pass: u32
+    pass: u32,
 }
 
 #[repr(C)]
@@ -73,7 +42,7 @@ pub struct MetalVertex {
     uv: [f32; 2],
     color: [f32; 4],
     page: [u32; 2],
-    clut: [u32; 2]
+    clut: [u32; 2],
 }
 
 impl MetalVertex {
@@ -83,7 +52,7 @@ impl MetalVertex {
             uv: [0.0; 2],
             color: [0.0; 4],
             page: [0; 2],
-            clut: [0; 2]
+            clut: [0; 2],
         }
     }
 }
@@ -92,7 +61,7 @@ impl MetalVertex {
 #[derive(Copy, Clone)]
 pub struct FbVertex {
     pub position: [f32; 2],
-    pub uv: [f32; 2]
+    pub uv: [f32; 2],
 }
 
 pub struct Renderer {
@@ -116,7 +85,7 @@ pub struct Renderer {
     no_mask: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    both: Retained<ProtocolObject<dyn MTLDepthStencilState>>
+    both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
 }
 
 impl Renderer {
@@ -126,8 +95,12 @@ impl Renderer {
         let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
         let fb_source = NSString::from_str(&fs::read_to_string("shaders/ShadersFb.metal").unwrap());
 
-        let library = device.newLibraryWithSource_options_error(source.deref(), None).unwrap();
-        let fb_library = device.newLibraryWithSource_options_error(fb_source.deref(), None).unwrap();
+        let library = device
+            .newLibraryWithSource_options_error(source.deref(), None)
+            .unwrap();
+        let fb_library = device
+            .newLibraryWithSource_options_error(fb_source.deref(), None)
+            .unwrap();
 
         let vertex_str = NSString::from_str("vertex_main");
         let fragment_str = NSString::from_str("fragment_main");
@@ -168,13 +141,37 @@ impl Renderer {
         fb_pipeline_descriptor.setVertexFunction(vertex_fb_function.as_deref());
         fb_pipeline_descriptor.setFragmentFunction(fragment_fb_function.as_deref());
 
-        let color_attachment = unsafe { pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
-        let fb_color_attachment = unsafe { fb_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let color_attachment = unsafe {
+            pipeline_descriptor
+                .colorAttachments()
+                .objectAtIndexedSubscript(0)
+        };
+        let fb_color_attachment = unsafe {
+            fb_pipeline_descriptor
+                .colorAttachments()
+                .objectAtIndexedSubscript(0)
+        };
 
-        let semisub_color_attachment = unsafe { semisub_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
-        let semiadd_color_attachment = unsafe { semiadd_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
-        let semiquart_color_attachment = unsafe { semiquart_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
-        let noblend_color_attachment = unsafe { noblend_pipeline_descriptor.colorAttachments().objectAtIndexedSubscript(0) };
+        let semisub_color_attachment = unsafe {
+            semisub_pipeline_descriptor
+                .colorAttachments()
+                .objectAtIndexedSubscript(0)
+        };
+        let semiadd_color_attachment = unsafe {
+            semiadd_pipeline_descriptor
+                .colorAttachments()
+                .objectAtIndexedSubscript(0)
+        };
+        let semiquart_color_attachment = unsafe {
+            semiquart_pipeline_descriptor
+                .colorAttachments()
+                .objectAtIndexedSubscript(0)
+        };
+        let noblend_color_attachment = unsafe {
+            noblend_pipeline_descriptor
+                .colorAttachments()
+                .objectAtIndexedSubscript(0)
+        };
 
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
@@ -184,9 +181,11 @@ impl Renderer {
             color_attachment.setAlphaBlendOperation(objc2_metal::MTLBlendOperation::Add);
             // straight (non‑premultiplied) alpha
             color_attachment.setSourceRGBBlendFactor(objc2_metal::MTLBlendFactor::SourceAlpha);
-            color_attachment.setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+            color_attachment
+                .setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
             color_attachment.setSourceAlphaBlendFactor(objc2_metal::MTLBlendFactor::One);
-            color_attachment.setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+            color_attachment
+                .setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
 
             fb_color_attachment.setPixelFormat(metal_layer.pixelFormat());
             fb_color_attachment.setBlendingEnabled(false);
@@ -262,7 +261,6 @@ impl Renderer {
 
         unsafe { layout.setStride((std::mem::size_of::<MetalVertex>()) as usize) };
 
-
         let fb_vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
 
         let fb_attributes = fb_vertex_descriptor.attributes();
@@ -293,12 +291,24 @@ impl Renderer {
         semiquart_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
         noblend_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 
-        let pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor).unwrap();
-        let fb_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor).unwrap();
-        let semisub_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semisub_pipeline_descriptor).unwrap();
-        let semiadd_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semiadd_pipeline_descriptor).unwrap();
-        let semiquart_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&semiquart_pipeline_descriptor).unwrap();
-        let noblend_pipeline_state = device.newRenderPipelineStateWithDescriptor_error(&noblend_pipeline_descriptor).unwrap();
+        let pipeline_state = device
+            .newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor)
+            .unwrap();
+        let fb_pipeline_state = device
+            .newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor)
+            .unwrap();
+        let semisub_pipeline_state = device
+            .newRenderPipelineStateWithDescriptor_error(&semisub_pipeline_descriptor)
+            .unwrap();
+        let semiadd_pipeline_state = device
+            .newRenderPipelineStateWithDescriptor_error(&semiadd_pipeline_descriptor)
+            .unwrap();
+        let semiquart_pipeline_state = device
+            .newRenderPipelineStateWithDescriptor_error(&semiquart_pipeline_descriptor)
+            .unwrap();
+        let noblend_pipeline_state = device
+            .newRenderPipelineStateWithDescriptor_error(&noblend_pipeline_descriptor)
+            .unwrap();
 
         unsafe { metal_layer.setDevice(Some(&device)) };
 
@@ -310,12 +320,12 @@ impl Renderer {
 
         let buffer = unsafe {
             device.newBufferWithBytes_length_options(
-                NonNull::new(
-                    vertices.as_ptr() as *mut c_void).unwrap(),
-                    byte_len,
-                    MTLResourceOptions::empty())
-
-        }.unwrap();
+                NonNull::new(vertices.as_ptr() as *mut c_void).unwrap(),
+                byte_len,
+                MTLResourceOptions::empty(),
+            )
+        }
+        .unwrap();
 
         let vram_read = Self::create_texture(&device, true);
         let vram_write = Self::create_texture(&device, false);
@@ -328,7 +338,12 @@ impl Renderer {
         color_attachment.setLoadAction(MTLLoadAction::Clear);
         color_attachment.setStoreAction(MTLStoreAction::Store);
 
-        color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+        color_attachment.setClearColor(MTLClearColor {
+            red: 0.0,
+            green: 0.0,
+            blue: 0.0,
+            alpha: 1.0,
+        });
         color_attachment.setTexture(vram_write.as_deref());
 
         if let Some(command_buffer) = &command_buffer {
@@ -338,10 +353,26 @@ impl Renderer {
             }
         }
 
-        let no_mask    = Self::make_stencil_state(&device, MTLCompareFunction::Always, MTLStencilOperation::Keep);
-        let check_only = Self::make_stencil_state(&device, MTLCompareFunction::Equal, MTLStencilOperation::Keep);
-        let set_only   = Self::make_stencil_state(&device, MTLCompareFunction::Always, MTLStencilOperation::Replace);
-        let both       = Self::make_stencil_state(&device, MTLCompareFunction::Equal,  MTLStencilOperation::Replace);
+        let no_mask = Self::make_stencil_state(
+            &device,
+            MTLCompareFunction::Always,
+            MTLStencilOperation::Keep,
+        );
+        let check_only = Self::make_stencil_state(
+            &device,
+            MTLCompareFunction::Equal,
+            MTLStencilOperation::Keep,
+        );
+        let set_only = Self::make_stencil_state(
+            &device,
+            MTLCompareFunction::Always,
+            MTLStencilOperation::Replace,
+        );
+        let both = Self::make_stencil_state(
+            &device,
+            MTLCompareFunction::Equal,
+            MTLStencilOperation::Replace,
+        );
 
         Self {
             metal_layer,
@@ -364,14 +395,14 @@ impl Renderer {
             no_mask,
             check_only,
             set_only,
-            both
+            both,
         }
     }
 
     fn make_stencil_state(
         device: &Retained<ProtocolObject<dyn MTLDevice>>,
         cmp: MTLCompareFunction,
-        pass_op: MTLStencilOperation
+        pass_op: MTLStencilOperation,
     ) -> Retained<ProtocolObject<dyn MTLDepthStencilState>> {
         let ds = unsafe { MTLDepthStencilDescriptor::new() };
         ds.setDepthCompareFunction(MTLCompareFunction::Always);
@@ -390,15 +421,14 @@ impl Renderer {
         device.newDepthStencilStateWithDescriptor(&ds).unwrap()
     }
 
-
     pub fn render_polygon(&mut self, gpu: &mut GPU, polygon: Polygon, is_second_pass: bool) {
         let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
 
         let depth = if let Some(texpage) = polygon.texpage {
             match texpage.texture_page_colors {
                 TexturePageColors::Bit4 => 0,
+                TexturePageColors::Bit8 => 1,
                 TexturePageColors::Bit15 => 2,
-                _ => todo!("{:?}", texpage.texture_page_colors)
             }
         } else {
             -1
@@ -413,9 +443,8 @@ impl Renderer {
             semitransparent: polygon.semitransparent,
             depth,
             transparent_mode: polygon.transparent_mode,
-            pass: (is_second_pass as u32) + 1
+            pass: (is_second_pass as u32) + 1,
         };
-
 
         let cross_product = GPU::cross_product(&polygon.vertices);
         let v = &polygon.vertices;
@@ -441,7 +470,6 @@ impl Renderer {
         if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
             return;
         }
-
 
         for i in 0..polygon.vertices.len() {
             let vertex = &polygon.vertices[i];
@@ -474,19 +502,19 @@ impl Renderer {
 
         let buffer = unsafe {
             self.device.newBufferWithBytes_length_options(
-                NonNull::new(
-                    vertices.as_ptr() as *mut c_void).unwrap(),
-                    byte_len,
-                    MTLResourceOptions::empty())
-
-        }.unwrap();
+                NonNull::new(vertices.as_ptr() as *mut c_void).unwrap(),
+                byte_len,
+                MTLResourceOptions::empty(),
+            )
+        }
+        .unwrap();
 
         if let Some(encoder) = &self.encoder {
             unsafe {
                 encoder.setFragmentBytes_length_atIndex(
-                    NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap() ,
+                    NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap(),
                     size_of::<FragmentUniform>(),
-                    1
+                    1,
                 )
             };
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
@@ -494,29 +522,30 @@ impl Renderer {
             let primitive_type = MTLPrimitiveType::Triangle;
 
             if polygon.semitransparent {
-                if polygon.transparent_mode != 2 {
-                    println!("[WARN]Semitransparent mode {} used", polygon.transparent_mode);
-                }
                 match polygon.transparent_mode {
                     0 => encoder.setRenderPipelineState(&self.pipeline_state),
                     1 => encoder.setRenderPipelineState(&self.semiadd_pipeline_state),
-                    2 => if !polygon.textured {
-                        encoder.setRenderPipelineState(&self.semisub_pipeline_state)
-                    } else if !is_second_pass {
-                        self.pass2_poly = Some(polygon);
-                        encoder.setRenderPipelineState(&self.noblend_pipeline_state);
-                    } else {
-                        encoder.setRenderPipelineState(&self.semisub_pipeline_state);
+                    2 => {
+                        if !polygon.textured {
+                            encoder.setRenderPipelineState(&self.semisub_pipeline_state)
+                        } else if !is_second_pass {
+                            self.pass2_poly = Some(polygon);
+                            encoder.setRenderPipelineState(&self.noblend_pipeline_state);
+                        } else {
+                            encoder.setRenderPipelineState(&self.semisub_pipeline_state);
+                        }
                     }
-                    3 => if !polygon.textured {
-                        encoder.setRenderPipelineState(&self.semiquart_pipeline_state)
-                    } else if !is_second_pass {
-                        self.pass2_poly = Some(polygon);
-                        encoder.setRenderPipelineState(&self.noblend_pipeline_state);
-                    } else {
-                        encoder.setRenderPipelineState(&self.semiquart_pipeline_state);
+                    3 => {
+                        if !polygon.textured {
+                            encoder.setRenderPipelineState(&self.semiquart_pipeline_state)
+                        } else if !is_second_pass {
+                            self.pass2_poly = Some(polygon);
+                            encoder.setRenderPipelineState(&self.noblend_pipeline_state);
+                        } else {
+                            encoder.setRenderPipelineState(&self.semiquart_pipeline_state);
+                        }
                     }
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
             } else {
                 encoder.setRenderPipelineState(&self.pipeline_state);
@@ -526,7 +555,7 @@ impl Renderer {
                 (false, false) => &self.no_mask,
                 (true, false) => &self.set_only,
                 (false, true) => &self.check_only,
-                (true, true) => &self.both
+                (true, true) => &self.both,
             };
 
             unsafe {
@@ -538,10 +567,7 @@ impl Renderer {
         }
     }
 
-    pub fn render_polygons(
-        &mut self,
-        gpu: &mut GPU
-    ) {
+    pub fn render_polygons(&mut self, gpu: &mut GPU) {
         let polygons: Vec<Polygon> = gpu.polygons.drain(..).collect();
         for polygon in polygons {
             self.render_polygon(gpu, polygon, false);
@@ -559,7 +585,7 @@ impl Renderer {
 
                     let mut i = 0;
                     for _ in 0..params.height {
-                        for _ in  0..params.width {
+                        for _ in 0..params.width {
                             let halfword = params.halfwords[i];
 
                             let mut r = halfword & 0x1f;
@@ -582,30 +608,46 @@ impl Renderer {
 
                     if let Some(texture) = &self.vram_write {
                         let region = MTLRegion {
-                            origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as  usize, z: 0 },
-                            size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                            origin: MTLOrigin {
+                                x: params.start_x as usize,
+                                y: params.start_y as usize,
+                                z: 0,
+                            },
+                            size: MTLSize {
+                                width: params.width as usize,
+                                height: params.height as usize,
+                                depth: 1,
+                            },
                         };
                         unsafe {
                             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                                 region,
                                 0,
                                 NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
-                                4 * params.width as usize
+                                4 * params.width as usize,
                             )
                         }
                     }
 
                     if let Some(texture) = &self.vram_read {
                         let region = MTLRegion {
-                            origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
-                            size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                            origin: MTLOrigin {
+                                x: params.start_x as usize,
+                                y: params.start_y as usize,
+                                z: 0,
+                            },
+                            size: MTLSize {
+                                width: params.width as usize,
+                                height: params.height as usize,
+                                depth: 1,
+                            },
                         };
                         unsafe {
                             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                                 region,
                                 0,
                                 NonNull::new(params.halfwords.as_ptr() as *mut c_void).unwrap(),
-                                2 * params.width as usize
+                                2 * params.width as usize,
                             )
                         }
                     }
@@ -639,8 +681,16 @@ impl Renderer {
                     }
 
                     let region = MTLRegion {
-                        origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
-                        size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                        origin: MTLOrigin {
+                            x: params.start_x as usize,
+                            y: params.start_y as usize,
+                            z: 0,
+                        },
+                        size: MTLSize {
+                            width: params.width as usize,
+                            height: params.height as usize,
+                            depth: 1,
+                        },
                     };
 
                     if let Some(texture) = &self.vram_read {
@@ -649,7 +699,7 @@ impl Renderer {
                                 region,
                                 0,
                                 NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
-                                2 * params.width as usize
+                                2 * params.width as usize,
                             );
                         }
                     }
@@ -660,7 +710,7 @@ impl Renderer {
                                 region,
                                 0,
                                 NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
-                                4 * params.width as usize
+                                4 * params.width as usize,
                             );
                         }
                     }
@@ -681,10 +731,18 @@ impl Renderer {
                     NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
                     row_bytes as usize,
                     MTLRegion {
-                        origin: MTLOrigin { x: params.start_x as usize, y: params.start_y as usize, z: 0 },
-                        size: MTLSize { width: params.width as usize, height: params.height as usize, depth: 1 }
+                        origin: MTLOrigin {
+                            x: params.start_x as usize,
+                            y: params.start_y as usize,
+                            z: 0,
+                        },
+                        size: MTLSize {
+                            width: params.width as usize,
+                            height: params.height as usize,
+                            depth: 1,
+                        },
                     },
-                    0
+                    0,
                 );
             }
 
@@ -702,7 +760,12 @@ impl Renderer {
         let width = (gpu.x2 - gpu.x1 + 1) as usize;
         let height = (gpu.y2 - gpu.y1 + 1) as usize;
 
-        MTLScissorRect { x: gpu.x1 as usize, y: gpu.y1 as usize, width, height }
+        MTLScissorRect {
+            x: gpu.x1 as usize,
+            y: gpu.y1 as usize,
+            width,
+            height,
+        }
     }
 
     pub fn process(&mut self, gpu: &mut GPU) {
@@ -717,15 +780,25 @@ impl Renderer {
                     let rpd = unsafe { MTLRenderPassDescriptor::new() };
                     self.command_buffer = self.command_queue.commandBuffer();
 
-                    let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+                    let color_attachment =
+                        unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
 
                     color_attachment.setLoadAction(MTLLoadAction::Load);
                     color_attachment.setStoreAction(MTLStoreAction::Store);
 
-                    color_attachment.setClearColor(MTLClearColor { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+                    color_attachment.setClearColor(MTLClearColor {
+                        red: 0.0,
+                        green: 0.0,
+                        blue: 0.0,
+                        alpha: 1.0,
+                    });
                     color_attachment.setTexture(self.vram_write.as_deref());
 
-                    self.encoder = self.command_buffer.as_ref().unwrap().renderCommandEncoderWithDescriptor(&rpd);
+                    self.encoder = self
+                        .command_buffer
+                        .as_ref()
+                        .unwrap()
+                        .renderCommandEncoderWithDescriptor(&rpd);
                 }
 
                 if let Some(encoder_ref) = &mut self.encoder {
@@ -733,9 +806,12 @@ impl Renderer {
                     encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
 
                     let vp = MTLViewport {
-                        originX: 0.0, originY: 0.0,
-                        width: 1024.0, height: 512.0,
-                        znear: 0.0, zfar: 1.0,
+                        originX: 0.0,
+                        originY: 0.0,
+                        width: 1024.0,
+                        height: 512.0,
+                        znear: 0.0,
+                        zfar: 1.0,
                     };
 
                     encoder_ref.setViewport(vp);
@@ -745,12 +821,13 @@ impl Renderer {
 
                     self.render_polygons(gpu);
                 }
-
             }
             if let Some(params) = &gpu.transfer_params.take() {
                 self.already_encoded = true;
 
-                if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+                if let (Some(encoder), Some(command_buffer)) =
+                    (&mut self.encoder.take(), &mut self.command_buffer.take())
+                {
                     encoder.endEncoding();
                     command_buffer.commit();
                     // maybe add this back in? but it doesn't seem to be doing anything
@@ -769,17 +846,26 @@ impl Renderer {
     }
 
     fn vram_writeback(&mut self, gpu: &mut GPU) {
-        let origin = MTLOrigin { x: gpu.display_start_x as usize, y: gpu.display_start_y as usize, z: 0 };
-        let size   = MTLSize   { width: gpu.display_width as usize, height: gpu.display_height as usize, depth: 1 };
+        let origin = MTLOrigin {
+            x: gpu.display_start_x as usize,
+            y: gpu.display_start_y as usize,
+            z: 0,
+        };
+        let size = MTLSize {
+            width: gpu.display_width as usize,
+            height: gpu.display_height as usize,
+            depth: 1,
+        };
 
         if let Some(texture) = &self.vram_write {
-            let mut bytes: Vec<u8> = vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
+            let mut bytes: Vec<u8> =
+                vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
             unsafe {
                 texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
                     NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
                     gpu.display_width as usize * 4,
                     MTLRegion { origin, size },
-                    0
+                    0,
                 );
             }
 
@@ -790,22 +876,20 @@ impl Renderer {
                 let b = bytes[i + 2] >> 3;
                 let a = bytes[i + 3];
 
-                let halfword = r as u16  | (g as u16) << 5 | (b as u16) << 10 | ((a > 0) as u16) << 15;
+                let halfword =
+                    r as u16 | (g as u16) << 5 | (b as u16) << 10 | ((a > 0) as u16) << 15;
 
                 halfwords.push(halfword);
             }
 
             if let Some(texture) = &self.vram_read {
-                let region = MTLRegion {
-                    origin,
-                    size
-                };
+                let region = MTLRegion { origin, size };
                 unsafe {
                     texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                         region,
                         0,
                         NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
-                        2 * gpu.display_width as usize
+                        2 * gpu.display_width as usize,
                     )
                 }
             }
@@ -816,7 +900,9 @@ impl Renderer {
         let drawable = unsafe { self.metal_layer.nextDrawable() };
 
         if !self.already_encoded {
-            if let (Some(encoder), Some(command_buffer)) = (&mut self.encoder.take(), &mut self.command_buffer.take()) {
+            if let (Some(encoder), Some(command_buffer)) =
+                (&mut self.encoder.take(), &mut self.command_buffer.take())
+            {
                 encoder.endEncoding();
                 command_buffer.commit();
             }
@@ -834,13 +920,19 @@ impl Renderer {
             color_attachment.setLoadAction(MTLLoadAction::Load);
             color_attachment.setStoreAction(MTLStoreAction::Store);
 
-            color_attachment.setClearColor(MTLClearColor { red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0 });
+            color_attachment.setClearColor(MTLClearColor {
+                red: 1.0,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 1.0,
+            });
             unsafe {
                 color_attachment.setTexture(Some(&drawable.texture()));
             }
 
             if let Some(command_buffer) = &self.command_buffer {
-                if let Some(draw_encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd) {
+                if let Some(draw_encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd)
+                {
                     draw_encoder.setCullMode(MTLCullMode::None);
                     draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
 
@@ -850,30 +942,44 @@ impl Renderer {
 
                         gpu.resolution_changed = false;
 
-                        unsafe { self.metal_layer.setDrawableSize(CGSize::new(gpu.display_width as f64, gpu.display_height as f64)); }
+                        unsafe {
+                            self.metal_layer.setDrawableSize(CGSize::new(
+                                gpu.display_width as f64,
+                                gpu.display_height as f64,
+                            ));
+                        }
                         self.vertices = Self::get_vertices(gpu.display_width, gpu.display_height);
 
                         self.buffer = unsafe {
                             self.device.newBufferWithBytes_length_options(
-                                NonNull::new(
-                                    self.vertices.as_ptr() as *mut c_void).unwrap(),
-                                    BYTE_LEN,
-                                    MTLResourceOptions::empty()
-                                )
+                                NonNull::new(self.vertices.as_ptr() as *mut c_void).unwrap(),
+                                BYTE_LEN,
+                                MTLResourceOptions::empty(),
+                            )
+                        }
+                        .unwrap();
 
-                        }.unwrap();
-
-                        let origin_x = if gpu.display_start_x >= gpu.display_width { 0 } else { gpu.display_start_x };
-                        let origin_y = if gpu.display_start_y >= gpu.display_height { 0 } else { gpu.display_start_y };
+                        let origin_x = if gpu.display_start_x >= gpu.display_width {
+                            0
+                        } else {
+                            gpu.display_start_x
+                        };
+                        let origin_y = if gpu.display_start_y >= gpu.display_height {
+                            0
+                        } else {
+                            gpu.display_start_y
+                        };
 
                         let vp = MTLViewport {
-                            originX: origin_x as f64, originY: origin_y as f64,
-                            width, height,
-                            znear: 0.0, zfar: 1.0,
+                            originX: origin_x as f64,
+                            originY: origin_y as f64,
+                            width,
+                            height,
+                            znear: 0.0,
+                            zfar: 1.0,
                         };
 
                         draw_encoder.setViewport(vp);
-
                     }
 
                     draw_encoder.setRenderPipelineState(&self.fb_pipeline_state);
@@ -881,7 +987,11 @@ impl Renderer {
                     unsafe {
                         draw_encoder.setVertexBuffer_offset_atIndex(Some(&self.buffer), 0, 0);
                         draw_encoder.setFragmentTexture_atIndex(self.vram_write.as_deref(), 0);
-                        draw_encoder.drawPrimitives_vertexStart_vertexCount(MTLPrimitiveType::TriangleStrip, 0, 4);
+                        draw_encoder.drawPrimitives_vertexStart_vertexCount(
+                            MTLPrimitiveType::TriangleStrip,
+                            0,
+                            4,
+                        );
                     }
 
                     draw_encoder.endEncoding();
@@ -896,31 +1006,41 @@ impl Renderer {
         [
             FbVertex {
                 position: [-1.0, 1.0],
-                uv: [0.0, 0.0]
+                uv: [0.0, 0.0],
             },
             FbVertex {
                 position: [1.0, 1.0],
-                uv: [display_width as f32 / VRAM_WIDTH as f32, 0.0]
+                uv: [display_width as f32 / VRAM_WIDTH as f32, 0.0],
             },
             FbVertex {
                 position: [-1.0, -1.0],
-                uv: [0.0, display_height as f32 / VRAM_HEIGHT as f32]
+                uv: [0.0, display_height as f32 / VRAM_HEIGHT as f32],
             },
             FbVertex {
                 position: [1.0, -1.0],
-                uv: [display_width as f32 / VRAM_WIDTH as f32, display_height as f32 / VRAM_HEIGHT as f32]
-            }
+                uv: [
+                    display_width as f32 / VRAM_WIDTH as f32,
+                    display_height as f32 / VRAM_HEIGHT as f32,
+                ],
+            },
         ]
     }
 
-    fn create_texture(device: &Retained<ProtocolObject<dyn MTLDevice>>, is_read: bool) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
-        let pixel_format = if is_read { MTLPixelFormat::R16Uint } else { MTLPixelFormat::RGBA8Unorm };
+    fn create_texture(
+        device: &Retained<ProtocolObject<dyn MTLDevice>>,
+        is_read: bool,
+    ) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
+        let pixel_format = if is_read {
+            MTLPixelFormat::R16Uint
+        } else {
+            MTLPixelFormat::RGBA8Unorm
+        };
         let descriptor = unsafe {
             MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 pixel_format,
                 VRAM_WIDTH,
                 VRAM_HEIGHT,
-                false
+                false,
             )
         };
 
@@ -936,5 +1056,4 @@ impl Renderer {
 
         mtl_texture
     }
-
 }

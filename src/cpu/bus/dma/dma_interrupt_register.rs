@@ -17,7 +17,9 @@ impl DmaInterruptRegister {
     }
 
     pub fn master_interrupt_flag(&self) -> bool {
-        self.contains(DmaInterruptRegister::BUS_ERROR) || (self.contains(Self::MASTER_CHANNEL_INTERRUPT) && (self.interrupt_flags() & self.interrupt_mask()) != 0)
+        self.contains(DmaInterruptRegister::BUS_ERROR)
+            || (self.contains(Self::MASTER_CHANNEL_INTERRUPT)
+                && (self.interrupt_flags() & self.interrupt_mask()) != 0)
     }
 
     pub fn read(&self) -> u32 {

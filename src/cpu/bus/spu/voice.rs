@@ -1,6 +1,9 @@
 use std::{cmp, i16};
 
-use crate::cpu::bus::{registers::interrupt_register::InterruptRegister, spu::{SoundRam, SPU}};
+use crate::cpu::bus::{
+    registers::interrupt_register::InterruptRegister,
+    spu::{SPU, SoundRam},
+};
 
 pub const VOLUME_MIN: i32 = -0x8000;
 pub const VOLUME_MAX: i32 = 0x7fff;
@@ -74,20 +77,19 @@ const GAUSSIAN_TABLE: [i32; 0x200] = [
     0x57C3, 0x57E2, 0x57FF, 0x581C, 0x5838, 0x5853, 0x586D, 0x5886, //
     0x589E, 0x58B5, 0x58CB, 0x58E0, 0x58F4, 0x5907, 0x5919, 0x592A, //
     0x593A, 0x5949, 0x5958, 0x5965, 0x5971, 0x597C, 0x5986, 0x598F, //
-    0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3  //
+    0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3, //
 ];
-
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum EnvelopeMode {
     Linear = 0,
-    Exponential = 1
+    Exponential = 1,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum EnvelopeDirection {
     Increase = 0,
-    Decrease = 1
+    Decrease = 1,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -96,7 +98,7 @@ pub enum AdsrPhase {
     Sustain,
     Decay,
     Release,
-    Idle
+    Idle,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -108,7 +110,7 @@ struct Envelope {
     direction: EnvelopeDirection,
     mode: EnvelopeMode,
     invert_phase: bool,
-    pub volume: i16
+    pub volume: i16,
 }
 
 impl Envelope {
@@ -121,11 +123,20 @@ impl Envelope {
             direction: EnvelopeDirection::Decrease,
             mode: EnvelopeMode::Linear,
             invert_phase: false,
-            volume: 0
+            volume: 0,
         }
     }
     // per duckstation
-    fn reset(&mut self, rate: u8, shift: i8, step: i8, rate_mask: u8, mode: EnvelopeMode, direction: EnvelopeDirection, invert: bool) {
+    fn reset(
+        &mut self,
+        rate: u8,
+        shift: i8,
+        step: i8,
+        rate_mask: u8,
+        mode: EnvelopeMode,
+        direction: EnvelopeDirection,
+        invert: bool,
+    ) {
         self.counter = 0;
         self.increment = 0x8000;
         self.rate = rate;
@@ -158,7 +169,10 @@ impl Envelope {
     fn tick(&mut self) -> bool {
         let (actual_step, actual_increment) = if self.mode == EnvelopeMode::Exponential {
             if self.direction == EnvelopeDirection::Decrease {
-                (((self.step as i32 * self.volume as i32) >> 15) as i16, self.increment)
+                (
+                    ((self.step as i32 * self.volume as i32) >> 15) as i16,
+                    self.increment,
+                )
             } else {
                 if self.volume >= 0x6000 {
                     if self.rate < 40 {
@@ -224,7 +238,7 @@ pub struct Adsr {
     release_shift: u8,
     value: u32,
     current_target: i16,
-    envelope: Envelope
+    envelope: Envelope,
 }
 
 impl Adsr {
@@ -248,7 +262,7 @@ impl Adsr {
             current_target: 0,
             attack_shift: 0,
             sustain_shift: 0,
-            envelope: Envelope::new()
+            envelope: Envelope::new(),
         }
     }
     /*
@@ -286,10 +300,8 @@ impl Adsr {
         self.attack_mode = match value >> 15 {
             0 => EnvelopeMode::Linear,
             1 => EnvelopeMode::Exponential,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
-
-
     }
 
     pub fn write_upper(&mut self, value: u16) {
@@ -298,13 +310,13 @@ impl Adsr {
         self.release_mode = match (value >> 5) & 1 {
             0 => EnvelopeMode::Linear,
             1 => EnvelopeMode::Exponential,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         self.sustain_direction = match (value >> 14) & 1 {
             0 => EnvelopeDirection::Increase,
             1 => EnvelopeDirection::Decrease,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         self.sustain_step = if self.sustain_direction == EnvelopeDirection::Increase {
@@ -313,15 +325,14 @@ impl Adsr {
             -8 + ((value >> 6) & 0x3) as i8
         };
 
-        self.sustain_rate = (((value >> 6)) & 0x7f) as u8;
-        self.sustain_shift = (((value >> 8) & 0x1f)) as u8;
+        self.sustain_rate = ((value >> 6) & 0x7f) as u8;
+        self.sustain_shift = ((value >> 8) & 0x1f) as u8;
 
         self.sustain_mode = match value >> 15 {
             0 => EnvelopeMode::Linear,
             1 => EnvelopeMode::Exponential,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
-
     }
 
     pub fn tick(&mut self) {
@@ -336,11 +347,13 @@ impl Adsr {
         let reached_target = match self.phase {
             AdsrPhase::Attack | AdsrPhase::Idle => self.envelope.volume >= self.current_target,
             AdsrPhase::Decay | AdsrPhase::Release => self.envelope.volume <= self.current_target,
-            AdsrPhase::Sustain => if self.sustain_direction == EnvelopeDirection::Decrease {
-                self.envelope.volume <= self.current_target
-            } else {
-                self.envelope.volume >= self.current_target
-            },
+            AdsrPhase::Sustain => {
+                if self.sustain_direction == EnvelopeDirection::Decrease {
+                    self.envelope.volume <= self.current_target
+                } else {
+                    self.envelope.volume >= self.current_target
+                }
+            }
         };
 
         if reached_target {
@@ -367,7 +380,7 @@ impl Adsr {
                     0x7f,
                     self.attack_mode,
                     EnvelopeDirection::Increase,
-                    false
+                    false,
                 );
             }
             AdsrPhase::Decay => {
@@ -379,7 +392,7 @@ impl Adsr {
                     0x1f << 2,
                     EnvelopeMode::Exponential,
                     EnvelopeDirection::Decrease,
-                    false
+                    false,
                 );
             }
             AdsrPhase::Sustain => {
@@ -387,11 +400,15 @@ impl Adsr {
                 self.envelope.reset(
                     self.sustain_rate,
                     self.sustain_shift as i8,
-                    if self.sustain_direction == EnvelopeDirection::Decrease { !self.sustain_step as i8 } else { self.sustain_step as i8 },
+                    if self.sustain_direction == EnvelopeDirection::Decrease {
+                        !self.sustain_step as i8
+                    } else {
+                        self.sustain_step as i8
+                    },
                     0x7f,
                     self.sustain_mode,
                     self.sustain_direction,
-                    false
+                    false,
                 );
             }
             AdsrPhase::Release => {
@@ -403,12 +420,20 @@ impl Adsr {
                     0x1f << 2,
                     self.release_mode,
                     EnvelopeDirection::Decrease,
-                    false
+                    false,
                 );
             }
             AdsrPhase::Idle => {
                 self.current_target = 0;
-                self.envelope.reset(0, 0, 0 ,0, EnvelopeMode::Linear, EnvelopeDirection::Increase, false);
+                self.envelope.reset(
+                    0,
+                    0,
+                    0,
+                    0,
+                    EnvelopeMode::Linear,
+                    EnvelopeDirection::Increase,
+                    false,
+                );
             }
         }
     }
@@ -421,7 +446,7 @@ struct ADPCMBlock {
     pub loop_end: bool,
     pub loop_repeat: bool,
     pub loop_start: bool,
-    pub sample_blocks: [u8; 14]
+    pub sample_blocks: [u8; 14],
 }
 
 impl ADPCMBlock {
@@ -432,7 +457,7 @@ impl ADPCMBlock {
             loop_end: false,
             loop_repeat: false,
             loop_start: false,
-            sample_blocks: [0; 14]
+            sample_blocks: [0; 14],
         }
     }
 }
@@ -457,7 +482,7 @@ pub struct Voice {
     using_left_envelope: bool,
     using_right_envelope: bool,
     ignore_loop_address: bool,
-    repeat_address_io_write: bool
+    repeat_address_io_write: bool,
 }
 
 impl Voice {
@@ -481,13 +506,11 @@ impl Voice {
             using_right_envelope: false,
             last_gaussian_samples: [0; 4],
             ignore_loop_address: false,
-            repeat_address_io_write: false
+            repeat_address_io_write: false,
         }
     }
 
     fn get_sweep_params(value: u16) -> (u8, i8, i8, EnvelopeMode, EnvelopeDirection, bool) {
-
-
         let sweep_shift = (value >> 2) & 0x1f;
         let sweep_rate = value & 0x7f;
 
@@ -496,7 +519,7 @@ impl Voice {
         let direction = match (value >> 13) & 1 {
             0 => EnvelopeDirection::Increase,
             1 => EnvelopeDirection::Decrease,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         let sweep_step = if direction == EnvelopeDirection::Increase {
@@ -508,33 +531,57 @@ impl Voice {
         let mode = match (value >> 14) & 1 {
             0 => EnvelopeMode::Linear,
             1 => EnvelopeMode::Exponential,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
-        (sweep_rate as u8, sweep_shift as i8, sweep_step, mode, direction, invert_phase)
+        (
+            sweep_rate as u8,
+            sweep_shift as i8,
+            sweep_step,
+            mode,
+            direction,
+            invert_phase,
+        )
     }
 
     pub fn write(&mut self, channel: usize, value: u16) {
         match channel {
             0x0 => {
                 if (value >> 15) & 1 == 1 {
-                    let (sweep_rate, sweep_shift, sweep_step, mode, direction, invert_phase) = Self::get_sweep_params(value);
+                    let (sweep_rate, sweep_shift, sweep_step, mode, direction, invert_phase) =
+                        Self::get_sweep_params(value);
 
-                    self.left_envelope.reset(sweep_rate as u8, sweep_shift as i8, sweep_step, 0x7f, mode, direction, invert_phase);
+                    self.left_envelope.reset(
+                        sweep_rate as u8,
+                        sweep_shift as i8,
+                        sweep_step,
+                        0x7f,
+                        mode,
+                        direction,
+                        invert_phase,
+                    );
                     self.using_right_envelope = self.right_envelope.increment > 0;
 
                     self.using_left_envelope = self.left_envelope.increment > 0;
                 } else {
                     self.using_left_envelope = false;
                     self.left_envelope.volume = (value * 2) as i16;
-
                 }
             }
             0x2 => {
                 if (value >> 15) & 1 == 1 {
-                    let (sweep_rate, sweep_shift, sweep_step, mode, direction, invert_phase) = Self::get_sweep_params(value);
+                    let (sweep_rate, sweep_shift, sweep_step, mode, direction, invert_phase) =
+                        Self::get_sweep_params(value);
 
-                    self.right_envelope.reset(sweep_rate as u8, sweep_shift as i8, sweep_step, 0x7f, mode, direction, invert_phase);
+                    self.right_envelope.reset(
+                        sweep_rate as u8,
+                        sweep_shift as i8,
+                        sweep_step,
+                        0x7f,
+                        mode,
+                        direction,
+                        invert_phase,
+                    );
                     self.using_right_envelope = self.right_envelope.increment > 0;
                 } else {
                     self.using_right_envelope = false;
@@ -559,12 +606,13 @@ impl Voice {
             }
             0xc => self.adsr.envelope.volume = value as i16,
             0xe => {
-                self.ignore_loop_address = !self.is_first_block && self.adsr.phase == AdsrPhase::Idle;
+                self.ignore_loop_address =
+                    !self.is_first_block && self.adsr.phase == AdsrPhase::Idle;
                 self.repeat_address = value as u32 * 8;
 
                 self.repeat_address_io_write = true;
             }
-            _ => panic!("invalid channel given: 0x{:x}", channel)
+            _ => panic!("invalid channel given: 0x{:x}", channel),
         }
     }
 
@@ -590,7 +638,7 @@ impl Voice {
         interrupt_register: &mut InterruptRegister,
         pitch_modulate: bool,
         previous_volume: i32,
-        noise_enable: bool
+        noise_enable: bool,
     ) -> (f32, f32, bool) {
         if self.adsr.phase == AdsrPhase::Idle && !irq9_enable {
             return (0.0, 0.0, false);
@@ -599,7 +647,10 @@ impl Voice {
         let mut endx = false;
 
         if !self.has_samples {
-            if irq9_enable && (self.current_address == irq_address || ((self.current_address + 8) & 0x7_ffff) == irq_address) {
+            if irq9_enable
+                && (self.current_address == irq_address
+                    || ((self.current_address + 8) & 0x7_ffff) == irq_address)
+            {
                 interrupt_register.insert(InterruptRegister::SPU);
             }
             let block = self.read_adpcm_block(sound_ram);
@@ -703,16 +754,14 @@ impl Voice {
         for i in 0..NUM_BLOCK_SAMPLES {
             let byte = block.sample_blocks[i / 2];
 
-            let nibble = if i & 1 == 0 {
-                byte & 0xf
-            } else {
-                byte >> 4
-            };
+            let nibble = if i & 1 == 0 { byte & 0xf } else { byte >> 4 };
 
             let mut sample = (((nibble as i16) << 12) as i32) >> block.shift as i32;
 
-            let filter =
-                (32 + self.last_decoded_samples[0] as i32 * positive_filter as i32 + self.last_decoded_samples[1] as i32 * negative_filter as i32) / 64;
+            let filter = (32
+                + self.last_decoded_samples[0] as i32 * positive_filter as i32
+                + self.last_decoded_samples[1] as i32 * negative_filter as i32)
+                / 64;
 
             sample += filter;
 
@@ -721,7 +770,6 @@ impl Voice {
 
             self.current_samples[i] = self.last_decoded_samples[0];
         }
-
 
         self.current_block = *block;
     }
@@ -792,7 +840,7 @@ impl Voice {
             0xa => (self.adsr.value >> 16) as u16,
             0xc => self.adsr.envelope.volume as u16,
             0xe => (self.repeat_address / 8) as u16,
-            _ => panic!("invalid channel given: 0x{:x}", channel)
+            _ => panic!("invalid channel given: 0x{:x}", channel),
         }
     }
 }
