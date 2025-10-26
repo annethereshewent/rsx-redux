@@ -58,7 +58,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>) -> Self {
+    pub fn new() -> Self {
         let mut scheduler = Scheduler::new();
         Self {
             bios: Vec::new(),
@@ -75,7 +75,7 @@ impl Bus {
             exp2_delay: DelayRegister::new(),
             cache_config: 0,
             main_ram: vec![0; 0x200000].into_boxed_slice(),
-            spu: SPU::new(producer, &mut scheduler),
+            spu: SPU::new(&mut scheduler),
             exp1_post: 0,
             interrupt_mask: InterruptRegister::from_bits_truncate(0),
             interrupt_stat: InterruptRegister::from_bits_truncate(0),

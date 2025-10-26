@@ -17,6 +17,9 @@ const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
+pub const SCREEN_WIDTH: usize = 640;
+pub const SCREEN_HEIGHT: usize = 480;
+
 #[derive(Clone)]
 pub enum GPUCommand {
     CPUtoVram(VRamTransferParams),

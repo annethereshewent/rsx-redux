@@ -1,6 +1,4 @@
-use std::{collections::VecDeque, sync::Arc};
-
-use ringbuf::{SharedRb, storage::Heap, traits::Producer, wrap::caching::Caching};
+use std::collections::VecDeque;
 
 use self::{
     reverb::Reverb,
@@ -105,16 +103,13 @@ pub struct SPU {
     pub cd_right_buffer: VecDeque<i16>,
     capture_index: u32,
     writing_to_capture_half: bool,
-    producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>,
+    pub audio_buffer: Vec<f32>,
 }
 
 pub const CPU_TO_APU_CYCLES: i32 = 768;
 
 impl SPU {
-    pub fn new(
-        producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>,
-        scheduler: &mut Scheduler,
-    ) -> Self {
+    pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
         Self {
             voices: [Voice::new(); 24],
@@ -146,7 +141,7 @@ impl SPU {
             cd_right_buffer: VecDeque::new(),
             capture_index: 0,
             writing_to_capture_half: false,
-            producer,
+            audio_buffer: Vec::with_capacity(NUM_SAMPLES),
         }
     }
 
@@ -314,15 +309,17 @@ impl SPU {
             interrupt_register.insert(InterruptRegister::SPU);
         }
 
-        self.producer
-            .try_push(SPU::clampf32(output_left))
-            .unwrap_or(());
-        self.producer
-            .try_push(SPU::clampf32(output_right))
-            .unwrap_or(());
+        self.push_sample(output_left);
+        self.push_sample(output_right);
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }
+
+    fn push_sample(&mut self, sample: f32) {
+        if self.audio_buffer.len() < NUM_SAMPLES {
+          self.audio_buffer.push(sample);
+        }
+      }
 
     pub fn clampf32(value: f32) -> f32 {
         if value < -1.0 {

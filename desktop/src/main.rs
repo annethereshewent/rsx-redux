@@ -6,7 +6,6 @@ use std::{
 use frontend::Frontend;
 use memmap2::Mmap;
 use objc2_core_foundation::CGSize;
-use ringbuf::{HeapRb, traits::Split};
 use rsx_redux::cpu::CPU;
 
 #[cfg(feature = "new_spu")]
@@ -36,15 +35,11 @@ fn main() {
 
     let bios = fs::read("SCPH1001.bin").unwrap();
 
-    let ringbuffer = HeapRb::<f32>::new(NUM_SAMPLES);
-
-    let (producer, consumer) = ringbuffer.split();
-
-    let mut cpu = CPU::new(producer, exe_file);
+    let mut cpu = CPU::new(exe_file);
     cpu.bus.load_bios(bios);
     cpu.bus.cdrom.load_game_desktop(game_data);
 
-    let mut frontend = Frontend::new(&cpu.bus.gpu, consumer);
+    let mut frontend = Frontend::new(&cpu.bus.gpu);
 
     unsafe {
         frontend.renderer.metal_layer.setDrawableSize(CGSize::new(
@@ -65,5 +60,6 @@ fn main() {
         cpu.bus.gpu.cap_fps();
 
         frontend.handle_events(&mut cpu);
+        frontend.push_samples(cpu.bus.spu.audio_buffer.drain(..).collect());
     }
 }

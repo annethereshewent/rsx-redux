@@ -1,15 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::ops::DerefMut;
 use std::process::exit;
-use std::sync::Arc;
-
 use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
-use ringbuf::SharedRb;
-use ringbuf::storage::Heap;
-use ringbuf::traits::{Consumer, Observer};
-use ringbuf::wrap::caching::Caching;
 use rsx_redux::cpu::CPU;
-use rsx_redux::cpu::bus::gpu::GPU;
+use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
@@ -22,7 +17,7 @@ pub const VRAM_HEIGHT: usize = 512;
 use crate::renderer::Renderer;
 
 pub struct PsxAudioCallback {
-    pub consumer: Caching<Arc<SharedRb<Heap<f32>>>, false, true>,
+    pub audio_buffer: VecDeque<f32>,
 }
 
 impl AudioCallback for PsxAudioCallback {
@@ -32,15 +27,17 @@ impl AudioCallback for PsxAudioCallback {
         let mut left_sample: f32 = 0.0;
         let mut right_sample: f32 = 0.0;
 
-        if self.consumer.vacant_len() > 2 {
-            left_sample = *self.consumer.try_peek().unwrap_or(&0.0);
-            right_sample = *self.consumer.try_peek().unwrap_or(&0.0);
+        let len = self.audio_buffer.len();
+
+        if self.audio_buffer.len() > 2 {
+            left_sample = self.audio_buffer[len - 2];
+            right_sample = self.audio_buffer[len - 1];
         }
 
         let mut is_left_sample = true;
 
         for b in buf.iter_mut() {
-            *b = if let Some(sample) = self.consumer.try_pop() {
+            *b = if let Some(sample) = self.audio_buffer.pop_front() {
                 sample
             } else {
                 if is_left_sample {
@@ -55,18 +52,30 @@ impl AudioCallback for PsxAudioCallback {
     }
 }
 
+impl PsxAudioCallback {
+    pub fn push_samples(&mut self, samples: Vec<f32>) {
+        for sample in samples.iter() {
+            self.audio_buffer.push_back(*sample);
+        }
+    }
+}
+
 pub struct Frontend {
     _window: Window,
     event_pump: EventPump,
     _controller: Option<GameController>,
     pub renderer: Renderer,
-    _device: AudioDevice<PsxAudioCallback>,
+    device: AudioDevice<PsxAudioCallback>,
     button_map: HashMap<Button, usize>,
     button_map2: HashMap<Axis, usize>,
 }
 
 impl Frontend {
-    pub fn new(gpu: &GPU, consumer: Caching<Arc<SharedRb<Heap<f32>>>, false, true>) -> Self {
+    pub fn push_samples(&mut self, samples: Vec<f32>) {
+        self.device.lock().deref_mut().push_samples(samples);
+    }
+
+    pub fn new(gpu: &GPU) -> Self {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
 
@@ -83,7 +92,7 @@ impl Frontend {
         });
 
         let window = video_subsystem
-            .window("RSX-redux", 640 as u32, 480 as u32)
+            .window("RSX-redux", SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
             .position_centered()
             .build()
             .unwrap();
@@ -101,11 +110,11 @@ impl Frontend {
         let spec = AudioSpecDesired {
             freq: Some(44100),
             channels: Some(2),
-            samples: Some(16384),
+            samples: Some(512),
         };
 
         let device = audio_subsystem
-            .open_playback(None, &spec, |_| PsxAudioCallback { consumer })
+            .open_playback(None, &spec, |_| PsxAudioCallback { audio_buffer: VecDeque::new() })
             .unwrap();
 
         device.resume();
@@ -134,7 +143,7 @@ impl Frontend {
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
             renderer: Renderer::new(metal_layer, gpu),
-            _device: device,
+            device,
             button_map,
             button_map2,
         }

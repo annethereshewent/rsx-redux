@@ -1,15 +1,13 @@
 use std::{
     collections::HashSet,
     fs,
-    ops::{Index, IndexMut},
-    sync::Arc,
+    ops::{Index, IndexMut}
 };
 
 use bus::{Bus, scheduler::EventType};
 use cop0::{COP0, CauseRegister, StatusRegister};
 use gte::Gte;
 use instructions::Instruction;
-use ringbuf::{SharedRb, storage::Heap, wrap::caching::Caching};
 
 use crate::cpu::bus::timer::ClockSource;
 
@@ -77,10 +75,7 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new(
-        producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>,
-        exe_file: Option<String>,
-    ) -> Self {
+    pub fn new(exe_file: Option<String>) -> Self {
         /*
         00h=SPECIAL 08h=ADDI  10h=COP0 18h=N/A   20h=LB   28h=SB   30h=LWC0 38h=SWC0
         01h=BcondZ  09h=ADDIU 11h=COP1 19h=N/A   21h=LH   29h=SH   31h=LWC1 39h=SWC1
@@ -242,7 +237,7 @@ impl CPU {
             next_pc: 0xbfc00004,
             hi: 0,
             lo: 0,
-            bus: Bus::new(producer),
+            bus: Bus::new(),
             instructions,
             special_instructions,
             delayed_load: None,
