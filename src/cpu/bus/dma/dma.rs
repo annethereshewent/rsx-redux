@@ -132,25 +132,33 @@ impl Dma {
         if !dma_channel
             .control
             .contains(DmaChannelControlRegister::TRANSFER_DIR)
-            && dma_channel.control.sync_mode() == SyncMode::Slice
         {
-            let mut current_address = dma_channel.base_address;
+            if dma_channel.control.sync_mode() == SyncMode::Slice {
+                let mut current_address = dma_channel.base_address & 0x1ffffc;
 
-            for _ in 0..dma_channel.num_blocks {
-                for _ in 0..dma_channel.block_size {
-                    let word = gpu.read_gpu();
+                for _ in 0..dma_channel.num_blocks {
+                    for _ in 0..dma_channel.block_size {
+                        let word = gpu.read_gpu();
 
-                    unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = word };
+                        unsafe {
+                            *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = word
+                        };
 
-                    if dma_channel
-                        .control
-                        .contains(DmaChannelControlRegister::DECREMENT)
-                    {
-                        current_address -= 4;
-                    } else {
-                        current_address += 4;
+                        if dma_channel
+                            .control
+                            .contains(DmaChannelControlRegister::DECREMENT)
+                        {
+                            current_address -= 4;
+                        } else {
+                            current_address += 4;
+                        }
                     }
                 }
+            } else {
+                panic!(
+                    "unsupported gpu transfer to cpu given: {:?}",
+                    dma_channel.control.sync_mode()
+                );
             }
         } else {
             // from ram
