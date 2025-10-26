@@ -472,7 +472,7 @@ impl CPU {
     }
 
     fn handle_events(&mut self) {
-        if let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
+        while let Some((event, cycles_left)) = self.bus.scheduler.get_next_event() {
             match event {
                 EventType::Vblank => self.bus.gpu.handle_vblank(
                     &mut self.bus.scheduler,
