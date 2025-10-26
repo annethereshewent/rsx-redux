@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::process::exit;
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use ringbuf::wrap::caching::Caching;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::GPU;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
+use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
@@ -59,6 +61,8 @@ pub struct Frontend {
     _controller: Option<GameController>,
     pub renderer: Renderer,
     _device: AudioDevice<PsxAudioCallback>,
+    button_map: HashMap<Button, usize>,
+    button_map2: HashMap<Axis, usize>,
 }
 
 impl Frontend {
@@ -106,12 +110,33 @@ impl Frontend {
 
         device.resume();
 
+        let button_map = HashMap::from([
+            (Button::Back, 0),
+            (Button::LeftStick, 1),
+            (Button::RightStick, 2),
+            (Button::Start, 3),
+            (Button::DPadUp, 4),
+            (Button::DPadRight, 5),
+            (Button::DPadDown, 6),
+            (Button::DPadLeft, 7),
+            (Button::LeftShoulder, 10),
+            (Button::RightShoulder, 11),
+            (Button::Y, 12),
+            (Button::B, 13),
+            (Button::A, 14),
+            (Button::X, 15),
+        ]);
+
+        let button_map2 = HashMap::from([(Axis::TriggerLeft, 8), (Axis::TriggerRight, 9)]);
+
         Self {
             _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
             _controller: controller,
             renderer: Renderer::new(metal_layer, gpu),
             _device: device,
+            button_map,
+            button_map2,
         }
     }
 
@@ -128,6 +153,24 @@ impl Frontend {
                         } else if keycode == Keycode::F {
                             cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
                         }
+                    }
+                }
+                Event::ControllerButtonDown { button, .. } => {
+                    if let Some(index) = self.button_map.get(&button) {
+                        cpu.bus.peripherals.controller.update_input(*index, true);
+                    }
+                }
+                Event::ControllerButtonUp { button, .. } => {
+                    if let Some(index) = self.button_map.get(&button) {
+                        cpu.bus.peripherals.controller.update_input(*index, false);
+                    }
+                }
+                Event::ControllerAxisMotion { axis, value, .. } => {
+                    if let Some(index) = self.button_map2.get(&axis) {
+                        cpu.bus
+                            .peripherals
+                            .controller
+                            .update_input(*index, value >= 0x3fff);
                     }
                 }
                 _ => (),

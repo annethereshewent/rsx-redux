@@ -1,8 +1,7 @@
 pub struct Controller {
     state: usize,
     digital_mode: bool,
-    buttons_lo: u8,
-    buttons_hi: u8,
+    buttons: u16,
     left_joy_x: u8,
     left_joy_y: u8,
     right_joy_x: u8,
@@ -14,8 +13,7 @@ impl Controller {
         Self {
             state: 0,
             digital_mode: true,
-            buttons_hi: 0xff,
-            buttons_lo: 0xff,
+            buttons: 0xffff,
             left_joy_x: 0x80,
             right_joy_x: 0x80,
             left_joy_y: 0x80,
@@ -25,6 +23,14 @@ impl Controller {
 
     pub fn in_ack(&self) -> bool {
         self.state != 0
+    }
+
+    pub fn update_input(&mut self, index: usize, is_pressed: bool) {
+        if is_pressed {
+            self.buttons &= !(1 << index)
+        } else {
+            self.buttons |= 1 << index;
+        }
     }
 
     pub fn reset(&mut self) {
@@ -50,13 +56,13 @@ impl Controller {
                 }
             }
             2 => 0x5a,
-            3 => self.buttons_lo,
+            3 => self.buttons as u8,
             4 => {
                 if self.digital_mode {
                     reset_state = true;
                 }
 
-                self.buttons_hi
+                (self.buttons >> 8) as u8
             }
             5 => self.right_joy_x,
             6 => self.right_joy_y,

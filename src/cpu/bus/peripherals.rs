@@ -36,7 +36,7 @@ pub struct Peripherals {
     tx_ready: bool,
     state: PeripheralState,
     selected_peripheral: SelectedPeripheral,
-    controller: Controller,
+    pub controller: Controller,
 }
 
 impl Peripherals {
