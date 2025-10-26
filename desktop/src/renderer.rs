@@ -425,9 +425,6 @@ impl Renderer {
         let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
 
         let depth = if let Some(texpage) = polygon.texpage {
-            if texpage.texture_page_colors == TexturePageColors::Bit15 {
-                println!("[WARN]15 bpp textures used");
-            }
             match texpage.texture_page_colors {
                 TexturePageColors::Bit4 => 0,
                 TexturePageColors::Bit8 => 1,

@@ -11,6 +11,8 @@ use gte::Gte;
 use instructions::Instruction;
 use ringbuf::{SharedRb, storage::Heap, wrap::caching::Caching};
 
+use crate::cpu::bus::timer::ClockSource;
+
 pub mod bus;
 pub mod cop0;
 pub mod disassembler;
@@ -258,19 +260,12 @@ impl CPU {
     }
 
     pub fn tick(&mut self, cycles: usize) {
-        if self.bus.timers[0].is_active {
-            self.bus.timers[0].tick(
-                cycles,
-                &mut self.bus.scheduler,
-                &mut self.bus.interrupt_stat,
-            );
-        }
-        if self.bus.timers[1].is_active {
-            self.bus.timers[1].tick(
-                cycles,
-                &mut self.bus.scheduler,
-                &mut self.bus.interrupt_stat,
-            );
+        for i in 0..self.bus.timers.len() {
+            let timer = &mut self.bus.timers[i];
+
+            if timer.is_active && timer.clock_source != ClockSource::Hblank {
+                timer.tick(cycles, &mut self.bus.interrupt_stat);
+            }
         }
 
         self.bus.scheduler.tick(cycles);
@@ -473,7 +468,6 @@ impl CPU {
             match event {
                 EventType::Vblank => self.bus.gpu.handle_vblank(
                     &mut self.bus.scheduler,
-                    &mut self.bus.interrupt_stat,
                     &mut self.bus.timers,
                     cycles_left,
                 ),
@@ -513,8 +507,6 @@ impl CPU {
                 EventType::CDResponseClear => {
                     self.bus.cdrom.clear_response(&mut self.bus.scheduler)
                 }
-                EventType::Timer(timer_id) => self.bus.timers[timer_id]
-                    .on_overflow_or_target(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDCheckIrqs => self
                     .bus
                     .cdrom

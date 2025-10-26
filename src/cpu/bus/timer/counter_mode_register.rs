@@ -27,7 +27,7 @@ use bitflags::bitflags;
   12    Reached FFFFh Value     (0=No, 1=Yes) (Reset after Reading)        (R)
 */
 bitflags! {
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Debug)]
     pub struct CounterModeRegister: u16 {
         const SYNC_ENABLE = 1;
         const RESET_COUNTER = 1 << 3;

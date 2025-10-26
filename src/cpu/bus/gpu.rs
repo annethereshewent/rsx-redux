@@ -350,19 +350,13 @@ impl GPU {
         {
             match timers[0].counter_register.sync_mode() {
                 0 => timers[0].is_active = false,
-                1 => timers[0].counter = 0,
-                2 => {
-                    timers[0].is_active = true;
-                    if self.current_line == 0 {
-                        timers[0].counter = 0;
-                    } else {
-                        timers[0].tick(1, scheduler, interrupt_stat);
-                    }
-                }
+                1 | 2 => timers[0].counter = 0,
                 3 => {
                     if let Some(_) = &mut timers[0].switch_free_run {
                         timers[0].is_active = true;
+                        timers[0].switch_free_run = None;
                     } else {
+                        timers[0].is_active = false;
                         timers[0].switch_free_run = Some(true);
                     }
                 }
@@ -371,7 +365,7 @@ impl GPU {
         }
 
         if timers[1].clock_source == ClockSource::Hblank {
-            timers[1].tick(1, scheduler, interrupt_stat);
+            timers[1].tick(1, interrupt_stat);
         }
 
         if self.current_line < VBLANK_LINE_START {
@@ -1167,7 +1161,6 @@ impl GPU {
     pub fn handle_vblank(
         &mut self,
         scheduler: &mut Scheduler,
-        interrupt_stat: &mut InterruptRegister,
         timers: &mut [Timer],
         cycles_left: usize,
     ) {
@@ -1179,19 +1172,13 @@ impl GPU {
         {
             match timers[1].counter_register.sync_mode() {
                 0 => timers[1].is_active = false,
-                1 => timers[1].counter = 0,
-                2 => {
-                    timers[1].is_active = true;
-                    if self.current_line == 0 {
-                        timers[1].counter = 0;
-                    } else {
-                        timers[1].tick(1, scheduler, interrupt_stat);
-                    }
-                }
+                1 | 2 => timers[1].counter = 0,
                 3 => {
                     if let Some(_) = &mut timers[0].switch_free_run {
                         timers[1].is_active = true;
+                        timers[1].switch_free_run = None;
                     } else {
+                        timers[1].is_active = false;
                         timers[1].switch_free_run = Some(true);
                     }
                 }
