@@ -137,7 +137,7 @@ impl Timer {
                 let previous_counter = self.counter;
                 self.counter += cycles as u32;
 
-                self.check_if_overflow(previous_counter, interrupt_stat);
+                self.check_overflow_or_target(previous_counter, interrupt_stat);
             } else {
                 if let Some(prescalar_cycles) = &mut self.prescalar_cycles {
                     *prescalar_cycles -= cycles as isize;
@@ -149,25 +149,10 @@ impl Timer {
 
                         self.update_prescalar(cycles_left);
 
-                        self.check_if_overflow(previous_counter, interrupt_stat);
+                        self.check_overflow_or_target(previous_counter, interrupt_stat);
                     }
                 }
             }
-        }
-    }
-
-    fn check_if_overflow(&mut self, previous_counter: u32, interrupt_stat: &mut InterruptRegister) {
-        if (self.counter >= 0xffff
-            && !self
-                .counter_register
-                .contains(CounterModeRegister::RESET_COUNTER))
-            || (previous_counter < self.counter_target as u32
-                && self.counter >= self.counter_target as u32
-                && self
-                    .counter_register
-                    .contains(CounterModeRegister::RESET_COUNTER))
-        {
-            self.on_overflow_or_target(previous_counter, interrupt_stat);
         }
     }
 
@@ -181,7 +166,7 @@ impl Timer {
         }
     }
 
-    pub fn on_overflow_or_target(
+    pub fn check_overflow_or_target(
         &mut self,
         previous_counter: u32,
         interrupt_stat: &mut InterruptRegister,
