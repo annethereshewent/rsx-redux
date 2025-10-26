@@ -174,11 +174,11 @@ impl Timer {
     fn update_prescalar(&mut self, cycles_left: isize) {
         // we add cycles_left because it's either 0 or a negative number,
         // and we want to subtract the cycles left from the prescalar
-        self.prescalar_cycles = match self.clock_source {
-            ClockSource::Hblank => None,
-            ClockSource::SystemClockDiv8 | ClockSource::DotClock => Some(8 + cycles_left),
-            ClockSource::SystemClock => None,
-        };
+        if self.clock_source == ClockSource::SystemClockDiv8 {
+            self.prescalar_cycles = Some(8 + cycles_left);
+        } else {
+            self.prescalar_cycles = None;
+        }
     }
 
     pub fn on_overflow_or_target(
