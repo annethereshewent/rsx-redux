@@ -294,7 +294,7 @@ impl GPU {
             vram_transfer_halfwords: Vec::new(),
             transfer_params: None,
             resolution_changed: false,
-            dotclock_cycles: 0
+            dotclock_cycles: 0,
         }
     }
 
@@ -334,7 +334,10 @@ impl GPU {
         timers[0].in_xblank = true;
         timers[1].in_xblank = false;
 
-        scheduler.schedule(EventType::HblankEnd, (HBLANK_END as f32 * (7.0 / 11.0)) as usize  - cycles_left);
+        scheduler.schedule(
+            EventType::HblankEnd,
+            (HBLANK_END as f32 * (7.0 / 11.0)) as usize - cycles_left,
+        );
     }
 
     fn get_dotclock(&self) -> usize {
@@ -379,7 +382,7 @@ impl GPU {
 
         let dotclock = self.get_dotclock();
 
-        let elapsed= CYCLES_PER_SCANLINE + (cycles_left as f32 * (11.0/7.0)) as usize;
+        let elapsed = CYCLES_PER_SCANLINE + (cycles_left as f32 * (11.0 / 7.0)) as usize;
 
         self.dotclock_cycles += elapsed;
 

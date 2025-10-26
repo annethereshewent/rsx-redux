@@ -103,13 +103,12 @@ impl Peripherals {
     }
 
     fn handle_transfer(&mut self, scheduler: &mut Scheduler) {
+        let command = self.tx_fifo.pop_front().unwrap();
         // port 1 aka controller 2 is unsupported. returning back a dummy byte
         if self.ctrl.contains(SIOControl::SIO_PORT_SELECT) {
             self.rx_fifo.push_back(0xff);
             return;
         }
-
-        let command = self.tx_fifo.pop_front().unwrap();
 
         if self.selected_peripheral == SelectedPeripheral::None {
             if command == 0x1 {
@@ -133,6 +132,8 @@ impl Peripherals {
         }
 
         self.rx_fifo.push_back(reply);
+
+        self.tx_idle = true;
     }
 
     fn handle_ack(&mut self, interrupt: &mut InterruptRegister) {
