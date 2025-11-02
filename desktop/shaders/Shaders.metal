@@ -39,6 +39,7 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
 
     return out;
 }
+
 // TODO: actually implement CLUT
 float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
@@ -156,33 +157,32 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     bool isST = uniforms.hasTexture ? finalColor[3] > 0.5 : uniforms.semitransparent;
 
     if (uniforms.semitransparent) {
+        float2 screen = float2(
+            (in.position.x * 0.5 + 0.5) * 1024.0,
+            (1.0 - (in.position.y * 0.5 + 0.5)) * 512.0
+        );
+        ushort2 coord = ushort2(clamp(screen, float2(0.0), float2(1023.0, 511.0)));
+        ushort pixel = vram.read(coord).r;
+
+        uint r = pixel & 0x1f;
+        uint g = (pixel >> 5) & 0x1f;
+        uint b = (pixel >> 10) & 0x1f;
+
+        float4 old = float4(r, g, b, 31.0) / 31.0;
+
+
         switch (uniforms.transparentMode) {
-            case 0: alpha = isST ? 0.5 : 1.0; break;
-            case 1: alpha = isST ? 1.0 : 0.0; break;
+            case 0:
+                finalColor = max((old + finalColor) / 2, 1.0);
+                break;
+            case 1:
+                finalColor = max(old + finalColor, 1.0);
+                break;
             case 2:
-                if (!uniforms.hasTexture) {
-                    alpha = 1.0;
-                } else if (uniforms.pass == 1) {
-                    if (isST) {
-                        discard_fragment();
-                    }
-                } else if (!isST) {
-                    discard_fragment();
-                }
+                finalColor = min(old - finalColor, 0.0);
                 break;
             case 3:
-                if (!uniforms.hasTexture) {
-                    alpha = 0.25;
-                } else if (uniforms.pass == 1) {
-                    if (isST) {
-                        discard_fragment();
-                    }
-                } else {
-                    if (!isST) {
-                        discard_fragment();
-                    }
-                    alpha = 0.25;
-                }
+                finalColor = max(old + (finalColor / 4), 1.0);
                 break;
         }
     }
@@ -190,4 +190,17 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     finalColor[3] = alpha;
 
     return finalColor;
+}
+
+kernel void rgba8_to_rgb5551(texture2d<float, access::sample> src [[texture(0)]],
+                             texture2d<ushort, access::write> dst [[texture(1)]],
+                             constant uint2 &dstOrigin [[buffer(0)]],
+                             uint2 gid [[thread_position_in_grid]]) {
+    float3 c = src.read(gid).rgb;
+    ushort r = ushort(c.r * 31.0);
+    ushort g = ushort(c.g * 31.0);
+    ushort b = ushort(c.b * 31.0);
+    ushort a = (r | g | b) ? 1 : 0;
+    ushort packed = r | (g << 5) | (b << 10) | (a << 15);
+    dst.write(packed, dstOrigin + gid);
 }

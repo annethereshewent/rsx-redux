@@ -1,6 +1,3 @@
-use std::collections::{HashMap, VecDeque};
-use std::ops::DerefMut;
-use std::process::exit;
 use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::CPU;
@@ -10,6 +7,9 @@ use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
+use std::collections::{HashMap, VecDeque};
+use std::ops::DerefMut;
+use std::process::exit;
 
 pub const VRAM_WIDTH: usize = 1024;
 pub const VRAM_HEIGHT: usize = 512;
@@ -114,7 +114,9 @@ impl Frontend {
         };
 
         let device = audio_subsystem
-            .open_playback(None, &spec, |_| PsxAudioCallback { audio_buffer: VecDeque::new() })
+            .open_playback(None, &spec, |_| PsxAudioCallback {
+                audio_buffer: VecDeque::new(),
+            })
             .unwrap();
 
         device.resume();

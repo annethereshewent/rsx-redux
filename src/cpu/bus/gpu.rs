@@ -94,7 +94,7 @@ pub enum TexturePageColors {
     Bit15 = 2,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,

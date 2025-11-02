@@ -4,14 +4,14 @@ use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
 use objc2_foundation::NSString;
 use objc2_metal::{
-    MTLBlendFactor, MTLBlendOperation, MTLBuffer, MTLClearColor, MTLCommandBuffer,
-    MTLCommandEncoder, MTLCommandQueue, MTLCompareFunction, MTLCreateSystemDefaultDevice,
-    MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState, MTLDevice, MTLLibrary,
-    MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion, MTLRenderCommandEncoder,
-    MTLRenderPassDescriptor, MTLRenderPipelineDescriptor, MTLRenderPipelineState,
-    MTLResourceOptions, MTLScissorRect, MTLSize, MTLStencilDescriptor, MTLStencilOperation,
-    MTLStorageMode, MTLStoreAction, MTLTexture, MTLTextureDescriptor, MTLTextureUsage,
-    MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
+    MTLBuffer, MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
+    MTLCompareFunction, MTLComputeCommandEncoder, MTLComputePipelineState,
+    MTLCreateSystemDefaultDevice, MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState,
+    MTLDevice, MTLLibrary, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion,
+    MTLRenderCommandEncoder, MTLRenderPassDescriptor, MTLRenderPipelineDescriptor,
+    MTLRenderPipelineState, MTLResourceOptions, MTLScissorRect, MTLSize, MTLStencilDescriptor,
+    MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTexture, MTLTextureDescriptor,
+    MTLTextureUsage, MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors};
@@ -70,22 +70,19 @@ pub struct Renderer {
     device: Retained<ProtocolObject<dyn MTLDevice>>,
     pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    semisub_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    semiadd_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    semiquart_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
-    noblend_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+    compute_pipeline_state: Retained<ProtocolObject<dyn MTLComputePipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
     command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
     vertices: [FbVertex; 4],
     buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    already_encoded: bool,
-    pass2_poly: Option<Polygon>,
     no_mask: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
+    has_semitransparent_polys: bool,
+    leftover_polygons: Vec<Polygon>,
 }
 
 impl Renderer {
@@ -113,6 +110,10 @@ impl Renderer {
 
         let vertex_fb_function = fb_library.newFunctionWithName(&vertex_fb_str);
         let fragment_fb_function = fb_library.newFunctionWithName(&fragment_fb_str);
+
+        let compute_function = library
+            .newFunctionWithName(&NSString::from_str("rgba8_to_rgb5551"))
+            .expect("Missing compute shader");
 
         let pipeline_descriptor = MTLRenderPipelineDescriptor::new();
 
@@ -152,31 +153,10 @@ impl Renderer {
                 .objectAtIndexedSubscript(0)
         };
 
-        let semisub_color_attachment = unsafe {
-            semisub_pipeline_descriptor
-                .colorAttachments()
-                .objectAtIndexedSubscript(0)
-        };
-        let semiadd_color_attachment = unsafe {
-            semiadd_pipeline_descriptor
-                .colorAttachments()
-                .objectAtIndexedSubscript(0)
-        };
-        let semiquart_color_attachment = unsafe {
-            semiquart_pipeline_descriptor
-                .colorAttachments()
-                .objectAtIndexedSubscript(0)
-        };
-        let noblend_color_attachment = unsafe {
-            noblend_pipeline_descriptor
-                .colorAttachments()
-                .objectAtIndexedSubscript(0)
-        };
-
         // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
         unsafe {
             color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
-            color_attachment.setBlendingEnabled(true);
+            color_attachment.setBlendingEnabled(false);
             color_attachment.setRgbBlendOperation(objc2_metal::MTLBlendOperation::Add);
             color_attachment.setAlphaBlendOperation(objc2_metal::MTLBlendOperation::Add);
             // straight (non‑premultiplied) alpha
@@ -189,35 +169,6 @@ impl Renderer {
 
             fb_color_attachment.setPixelFormat(metal_layer.pixelFormat());
             fb_color_attachment.setBlendingEnabled(false);
-
-            semisub_color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
-            semisub_color_attachment.setBlendingEnabled(true);
-            semisub_color_attachment.setRgbBlendOperation(MTLBlendOperation::ReverseSubtract);
-            semisub_color_attachment.setAlphaBlendOperation(MTLBlendOperation::Add);
-            semisub_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::One);
-            semisub_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::One);
-            semisub_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
-            semisub_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
-
-            semiadd_color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
-            semiadd_color_attachment.setBlendingEnabled(true);
-            semiadd_color_attachment.setRgbBlendOperation(MTLBlendOperation::Add);
-            semiadd_color_attachment.setAlphaBlendOperation(MTLBlendOperation::Add);
-            semiadd_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::One);
-            semiadd_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::SourceAlpha);
-            semiadd_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
-            semiadd_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
-
-            semiquart_color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
-            semiquart_color_attachment.setBlendingEnabled(true);
-            semiquart_color_attachment.setRgbBlendOperation(MTLBlendOperation::Add);
-            semiquart_color_attachment.setAlphaBlendOperation(MTLBlendOperation::Add);
-            semiquart_color_attachment.setSourceRGBBlendFactor(MTLBlendFactor::SourceAlpha);
-            semiquart_color_attachment.setDestinationRGBBlendFactor(MTLBlendFactor::One);
-            semiquart_color_attachment.setSourceAlphaBlendFactor(MTLBlendFactor::One);
-            semiquart_color_attachment.setDestinationAlphaBlendFactor(MTLBlendFactor::Zero);
-
-            noblend_color_attachment.setBlendingEnabled(false);
         }
 
         let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
@@ -286,10 +237,6 @@ impl Renderer {
         fb_pipeline_descriptor.setVertexDescriptor(Some(&fb_vertex_descriptor));
 
         pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
-        semisub_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
-        semiadd_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
-        semiquart_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
-        noblend_pipeline_descriptor.setVertexDescriptor(Some(&vertex_descriptor));
 
         let pipeline_state = device
             .newRenderPipelineStateWithDescriptor_error(&pipeline_descriptor)
@@ -297,17 +244,9 @@ impl Renderer {
         let fb_pipeline_state = device
             .newRenderPipelineStateWithDescriptor_error(&fb_pipeline_descriptor)
             .unwrap();
-        let semisub_pipeline_state = device
-            .newRenderPipelineStateWithDescriptor_error(&semisub_pipeline_descriptor)
-            .unwrap();
-        let semiadd_pipeline_state = device
-            .newRenderPipelineStateWithDescriptor_error(&semiadd_pipeline_descriptor)
-            .unwrap();
-        let semiquart_pipeline_state = device
-            .newRenderPipelineStateWithDescriptor_error(&semiquart_pipeline_descriptor)
-            .unwrap();
-        let noblend_pipeline_state = device
-            .newRenderPipelineStateWithDescriptor_error(&noblend_pipeline_descriptor)
+
+        let compute_pipeline_state = device
+            .newComputePipelineStateWithFunction_error(&compute_function)
             .unwrap();
 
         unsafe { metal_layer.setDevice(Some(&device)) };
@@ -382,20 +321,17 @@ impl Renderer {
             device,
             pipeline_state,
             fb_pipeline_state,
-            semisub_pipeline_state,
-            semiadd_pipeline_state,
-            semiquart_pipeline_state,
-            noblend_pipeline_state,
             encoder: None,
             command_buffer: None,
             vertices,
             buffer,
-            already_encoded: false,
-            pass2_poly: None,
             no_mask,
             check_only,
             set_only,
             both,
+            compute_pipeline_state,
+            has_semitransparent_polys: false,
+            leftover_polygons: Vec::new(),
         }
     }
 
@@ -421,7 +357,7 @@ impl Renderer {
         device.newDepthStencilStateWithDescriptor(&ds).unwrap()
     }
 
-    pub fn render_polygon(&mut self, gpu: &mut GPU, polygon: Polygon, is_second_pass: bool) {
+    pub fn render_polygon(&mut self, gpu: &mut GPU, polygon: &Polygon) {
         let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
 
         let depth = if let Some(texpage) = polygon.texpage {
@@ -443,7 +379,7 @@ impl Renderer {
             semitransparent: polygon.semitransparent,
             depth,
             transparent_mode: polygon.transparent_mode,
-            pass: (is_second_pass as u32) + 1,
+            pass: 1,
         };
 
         let cross_product = GPU::cross_product(&polygon.vertices);
@@ -521,35 +457,12 @@ impl Renderer {
 
             let primitive_type = MTLPrimitiveType::Triangle;
 
-            if polygon.semitransparent {
-                match polygon.transparent_mode {
-                    0 => encoder.setRenderPipelineState(&self.pipeline_state),
-                    1 => encoder.setRenderPipelineState(&self.semiadd_pipeline_state),
-                    2 => {
-                        if !polygon.textured {
-                            encoder.setRenderPipelineState(&self.semisub_pipeline_state)
-                        } else if !is_second_pass {
-                            self.pass2_poly = Some(polygon);
-                            encoder.setRenderPipelineState(&self.noblend_pipeline_state);
-                        } else {
-                            encoder.setRenderPipelineState(&self.semisub_pipeline_state);
-                        }
-                    }
-                    3 => {
-                        if !polygon.textured {
-                            encoder.setRenderPipelineState(&self.semiquart_pipeline_state)
-                        } else if !is_second_pass {
-                            self.pass2_poly = Some(polygon);
-                            encoder.setRenderPipelineState(&self.noblend_pipeline_state);
-                        } else {
-                            encoder.setRenderPipelineState(&self.semiquart_pipeline_state);
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            } else {
-                encoder.setRenderPipelineState(&self.pipeline_state);
+            if polygon.semitransparent && !self.has_semitransparent_polys {
+                self.has_semitransparent_polys = true;
+                return;
             }
+
+            encoder.setRenderPipelineState(&self.pipeline_state);
 
             let stencil_state = match (gpu.force_mask_bit, gpu.preserve_masked_pixels) {
                 (false, false) => &self.no_mask,
@@ -565,16 +478,53 @@ impl Renderer {
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
             }
         }
+        self.has_semitransparent_polys = false;
     }
 
     pub fn render_polygons(&mut self, gpu: &mut GPU) {
-        let polygons: Vec<Polygon> = gpu.polygons.drain(..).collect();
-        for polygon in polygons {
-            self.render_polygon(gpu, polygon, false);
-            if let Some(polygon) = self.pass2_poly.take() {
-                self.render_polygon(gpu, polygon, true);
+        let polygons: Vec<Polygon> = if !self.has_semitransparent_polys {
+            gpu.polygons.drain(..).collect()
+        } else {
+            self.leftover_polygons.drain(..).collect()
+        };
+        for (index, polygon) in polygons.iter().enumerate() {
+            self.render_polygon(gpu, polygon);
+            if self.has_semitransparent_polys {
+                self.vram_writeback(gpu);
+
+                self.leftover_polygons = polygons[index..].to_vec();
+
+                self.create_encoder();
+
+                self.render_polygons(gpu);
+
+                break;
             }
         }
+    }
+
+    fn create_encoder(&mut self) {
+        let rpd = unsafe { MTLRenderPassDescriptor::new() };
+        self.command_buffer = self.command_queue.commandBuffer();
+
+        let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
+
+        color_attachment.setLoadAction(MTLLoadAction::Load);
+        color_attachment.setStoreAction(MTLStoreAction::Store);
+
+        color_attachment.setClearColor(MTLClearColor {
+            red: 0.0,
+            green: 0.0,
+            blue: 0.0,
+            alpha: 1.0,
+        });
+        color_attachment.setTexture(self.vram_write.as_deref());
+
+        self.encoder = self
+            .command_buffer
+            .as_ref()
+            .unwrap()
+            .renderCommandEncoderWithDescriptor(&rpd);
     }
 
     pub fn process_commands(&mut self, gpu: &mut GPU) {
@@ -756,16 +706,22 @@ impl Renderer {
         halfwords
     }
 
-    pub fn clip_drawing_area(gpu: &mut GPU) -> MTLScissorRect {
-        let width = (gpu.x2 - gpu.x1 + 1) as usize;
-        let height = (gpu.y2 - gpu.y1 + 1) as usize;
+    fn clip_drawing_area(gpu: &GPU) -> MTLScissorRect {
+        let (x, y, width, height) = Self::get_drawing_area(gpu);
 
         MTLScissorRect {
-            x: gpu.x1 as usize,
-            y: gpu.y1 as usize,
+            x,
+            y,
             width,
             height,
         }
+    }
+
+    fn get_drawing_area(gpu: &GPU) -> (usize, usize, usize, usize) {
+        let width = (gpu.x2 - gpu.x1 + 1) as usize;
+        let height = (gpu.y2 - gpu.y1 + 1) as usize;
+
+        (gpu.x1 as usize, gpu.y1 as usize, width, height)
     }
 
     pub fn process(&mut self, gpu: &mut GPU) {
@@ -777,28 +733,7 @@ impl Renderer {
 
             if gpu.polygons.len() > 0 {
                 if self.encoder.is_none() {
-                    let rpd = unsafe { MTLRenderPassDescriptor::new() };
-                    self.command_buffer = self.command_queue.commandBuffer();
-
-                    let color_attachment =
-                        unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
-
-                    color_attachment.setLoadAction(MTLLoadAction::Load);
-                    color_attachment.setStoreAction(MTLStoreAction::Store);
-
-                    color_attachment.setClearColor(MTLClearColor {
-                        red: 0.0,
-                        green: 0.0,
-                        blue: 0.0,
-                        alpha: 1.0,
-                    });
-                    color_attachment.setTexture(self.vram_write.as_deref());
-
-                    self.encoder = self
-                        .command_buffer
-                        .as_ref()
-                        .unwrap()
-                        .renderCommandEncoderWithDescriptor(&rpd);
+                    self.create_encoder();
                 }
 
                 if let Some(encoder_ref) = &mut self.encoder {
@@ -823,17 +758,6 @@ impl Renderer {
                 }
             }
             if let Some(params) = &gpu.transfer_params.take() {
-                self.already_encoded = true;
-
-                if let (Some(encoder), Some(command_buffer)) =
-                    (&mut self.encoder.take(), &mut self.command_buffer.take())
-                {
-                    encoder.endEncoding();
-                    command_buffer.commit();
-                    // maybe add this back in? but it doesn't seem to be doing anything
-                    // unsafe { command_buffer.waitUntilCompleted() };
-                }
-
                 self.vram_writeback(gpu);
 
                 let halfwords = self.handle_cpu_transfer(params);
@@ -845,53 +769,100 @@ impl Renderer {
         }
     }
 
-    fn vram_writeback(&mut self, gpu: &mut GPU) {
-        let origin = MTLOrigin {
-            x: gpu.display_start_x as usize,
-            y: gpu.display_start_y as usize,
-            z: 0,
-        };
-        let size = MTLSize {
-            width: gpu.display_width as usize,
-            height: gpu.display_height as usize,
-            depth: 1,
-        };
+    // fn vram_writeback(&mut self, gpu: &mut GPU) {
+    //     let origin = MTLOrigin {
+    //         x: gpu.display_start_x as usize,
+    //         y: gpu.display_start_y as usize,
+    //         z: 0,
+    //     };
+    //     let size = MTLSize {
+    //         width: gpu.display_width as usize,
+    //         height: gpu.display_height as usize,
+    //         depth: 1,
+    //     };
 
-        if let Some(texture) = &self.vram_write {
-            let mut bytes: Vec<u8> =
-                vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
+    //     if let Some(texture) = &self.vram_write {
+    //         let mut bytes: Vec<u8> =
+    //             vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
+    //         unsafe {
+    //             texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+    //                 NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
+    //                 gpu.display_width as usize * 4,
+    //                 MTLRegion { origin, size },
+    //                 0,
+    //             );
+    //         }
+
+    //         let mut halfwords = Vec::new();
+    //         for i in (0..bytes.len()).step_by(4) {
+    //             let r = bytes[i] >> 3;
+    //             let g = bytes[i + 1] >> 3;
+    //             let b = bytes[i + 2] >> 3;
+    //             let a = bytes[i + 3];
+
+    //             let halfword =
+    //                 r as u16 | (g as u16) << 5 | (b as u16) << 10 | ((a > 0) as u16) << 15;
+
+    //             halfwords.push(halfword);
+    //         }
+
+    //         if let Some(texture) = &self.vram_read {
+    //             let region = MTLRegion { origin, size };
+    //             unsafe {
+    //                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+    //                     region,
+    //                     0,
+    //                     NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
+    //                     2 * gpu.display_width as usize,
+    //                 )
+    //             }
+    //         }
+    //     }
+    // }
+
+    fn vram_writeback(&mut self, gpu: &mut GPU) {
+        if let (Some(encoder), Some(command_buffer)) =
+            (&mut self.encoder.take(), &mut self.command_buffer.take())
+        {
+            encoder.endEncoding();
+
+            let compute_encoder = command_buffer.computeCommandEncoder().unwrap();
+            compute_encoder.setComputePipelineState(&self.compute_pipeline_state);
+
             unsafe {
-                texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
-                    NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
-                    gpu.display_width as usize * 4,
-                    MTLRegion { origin, size },
+                compute_encoder.setTexture_atIndex(self.vram_write.as_deref(), 0);
+                compute_encoder.setTexture_atIndex(self.vram_read.as_deref(), 1);
+
+                let (x, y, width, height) = Self::get_drawing_area(gpu);
+
+                let mut origin: [u32; 2] = [x as u32, y as u32];
+
+                compute_encoder.setBytes_length_atIndex(
+                    NonNull::new(&mut origin as *mut _ as *mut c_void).unwrap(),
+                    std::mem::size_of::<[u32; 2]>(),
                     0,
                 );
+
+                let threadgroup_size = MTLSize {
+                    width: 8,
+                    height: 8,
+                    depth: 1,
+                };
+
+                let threadgroups = MTLSize {
+                    width: (width + 7) / 8,
+                    height: (height + 7) / 8,
+                    depth: 1,
+                };
+
+                compute_encoder
+                    .dispatchThreadgroups_threadsPerThreadgroup(threadgroups, threadgroup_size);
+                compute_encoder.endEncoding();
             }
 
-            let mut halfwords = Vec::new();
-            for i in (0..bytes.len()).step_by(4) {
-                let r = bytes[i] >> 3;
-                let g = bytes[i + 1] >> 3;
-                let b = bytes[i + 2] >> 3;
-                let a = bytes[i + 3];
-
-                let halfword =
-                    r as u16 | (g as u16) << 5 | (b as u16) << 10 | ((a > 0) as u16) << 15;
-
-                halfwords.push(halfword);
-            }
-
-            if let Some(texture) = &self.vram_read {
-                let region = MTLRegion { origin, size };
-                unsafe {
-                    texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                        region,
-                        0,
-                        NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
-                        2 * gpu.display_width as usize,
-                    )
-                }
+            command_buffer.commit();
+            unsafe {
+                command_buffer.waitUntilCompleted();
             }
         }
     }
@@ -899,16 +870,12 @@ impl Renderer {
     pub fn present(&mut self, gpu: &mut GPU) {
         let drawable = unsafe { self.metal_layer.nextDrawable() };
 
-        if !self.already_encoded {
-            if let (Some(encoder), Some(command_buffer)) =
-                (&mut self.encoder.take(), &mut self.command_buffer.take())
-            {
-                encoder.endEncoding();
-                command_buffer.commit();
-            }
+        if let (Some(encoder), Some(command_buffer)) =
+            (&mut self.encoder.take(), &mut self.command_buffer.take())
+        {
+            encoder.endEncoding();
+            command_buffer.commit();
         }
-
-        self.already_encoded = false;
 
         if let Some(drawable) = &drawable {
             let rpd = unsafe { MTLRenderPassDescriptor::new() };
