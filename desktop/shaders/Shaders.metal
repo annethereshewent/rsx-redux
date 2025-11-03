@@ -57,13 +57,15 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    float a = 31.0;
+    float a = float((texel >> 15) & 1);
 
     if (texel == 0) {
-        a = -31.0;
+        a = -1.0;
     }
 
-    return float4(r, g, b, a) / 31.0;
+    float3 color = float3(r, g, b) / 31.0;
+
+    return float4(color, a);
 }
 
 float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
@@ -89,14 +91,15 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    // normally would be 255, but it's easier just to divide everything by 31
-    float a = float((texel >> 15) & 1) * 31.0;
+    float a = float((texel >> 15) & 1);
 
     if (texel == 0) {
-        a = -31.0;
+        a = -1.0;
     }
 
-    return float4(r, g, b, a) / 31.0;
+    float3 color = float3(r, g, b) / 31.0;
+
+    return float4(color, a);
 }
 
 float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
@@ -162,7 +165,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         finalColor = float4(in.color);
     }
 
-    if (uniforms.semitransparent) {
+    if (uniforms.semitransparent && (!uniforms.hasTexture || texAlpha == 1)) {
         ushort pixel = vram.read(uint2(in.orig)).r;
 
         uint r = pixel & 0x1f;
@@ -179,9 +182,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 finalColor = min(old + finalColor, 1.0);
                 break;
             case 2:
-                if (!uniforms.hasTexture || texAlpha != 0) {
-                    finalColor = max(old - finalColor, 0.0);
-                }
+                finalColor = max(old - finalColor, 0.0);
                 break;
             case 3:
                 finalColor = min(old + (finalColor / 4), 1.0);
