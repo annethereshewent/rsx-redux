@@ -11,22 +11,21 @@ struct FragmentUniforms {
     int depth;
     uint transparentMode;
     uint pass;
+    uint2 page;
 };
 
 struct VertexIn {
     float2 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
     float4 color    [[attribute(2)]];
-    uint2 page [[attribute(3)]];
-    uint2 clut [[attribute(4)]];
-    float2 orig [[attribute(5)]];
+    uint2 clut [[attribute(3)]];
+    float2 orig [[attribute(4)]];
 };
 
 struct VertexOut {
     float4 position [[position]];
     float2 uv [[center_no_perspective]];
     float4 color;
-    uint2 page;
     uint2 clut;
     float2 orig;
 };
@@ -36,7 +35,6 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
     out.position = float4(in.position, 0.0, 1.0);
     out.uv = in.uv;
     out.color = in.color;
-    out.page = in.page;
     out.clut = in.clut;
     out.orig = in.orig;
 
@@ -48,8 +46,8 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-    uint offsetU = in.page[0] + u;
-    uint offsetV = in.page[1] + v;
+    uint offsetU = uniforms.page[0] + u;
+    uint offsetV = uniforms.page[1] + v;
 
     ushort texel = vram.read(uint2(offsetU, offsetV)).r;
 
@@ -72,8 +70,8 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-    uint offsetU = in.page[0] + u / 4;
-    uint offsetV = in.page[1] + v;
+    uint offsetU = uniforms.page[0] + u / 4;
+    uint offsetV = uniforms.page[1] + v;
 
     uint halfWord = vram.read(uint2(offsetU, offsetV)).r;
 
@@ -106,8 +104,8 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-    uint offsetU = in.page[0] + u / 2;
-    uint offsetV = in.page[1] + v;
+    uint offsetU = uniforms.page[0] + u / 2;
+    uint offsetV = uniforms.page[1] + v;
 
     uint halfWord = vram.read(uint2(offsetU, offsetV)).r;
 

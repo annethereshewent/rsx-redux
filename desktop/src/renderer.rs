@@ -14,7 +14,7 @@ use objc2_metal::{
     MTLTextureUsage, MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
-use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors};
+use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPUCommand, Polygon, TexturePageColors, GPU};
 use std::cmp;
 
 use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
@@ -33,6 +33,7 @@ struct FragmentUniform {
     depth: i32,
     transparent_mode: u32,
     pass: u32,
+    page: [u32; 2],
 }
 
 #[repr(C)]
@@ -41,7 +42,6 @@ pub struct MetalVertex {
     position: [f32; 2],
     uv: [f32; 2],
     color: [f32; 4],
-    page: [u32; 2],
     clut: [u32; 2],
     orig: [f32; 2],
 }
@@ -52,7 +52,6 @@ impl MetalVertex {
             position: [0.0; 2],
             uv: [0.0; 2],
             color: [0.0; 4],
-            page: [0; 2],
             clut: [0; 2],
             orig: [0.0; 2],
         }
@@ -178,25 +177,17 @@ impl Renderer {
         unsafe { color.setOffset(16) };
         unsafe { color.setBufferIndex(0) };
 
-        let page = unsafe { attributes.objectAtIndexedSubscript(3) };
-
-        page.setFormat(MTLVertexFormat::UInt2);
-        unsafe {
-            page.setOffset(32);
-            page.setBufferIndex(0);
-        }
-
-        let clut = unsafe { attributes.objectAtIndexedSubscript(4) };
+        let clut = unsafe { attributes.objectAtIndexedSubscript(3) };
         clut.setFormat(MTLVertexFormat::UInt2);
         unsafe {
-            clut.setOffset(40);
+            clut.setOffset(32);
             clut.setBufferIndex(0);
         }
 
-        let orig = unsafe { attributes.objectAtIndexedSubscript(5) };
+        let orig = unsafe { attributes.objectAtIndexedSubscript(4) };
 
         unsafe {
-            orig.setOffset(48);
+            orig.setOffset(40);
             orig.setBufferIndex(0);
         }
 
@@ -222,7 +213,7 @@ impl Renderer {
         unsafe { fb_uv.setOffset(8) };
         unsafe { fb_uv.setBufferIndex(0) };
 
-        assert_eq!(size_of::<MetalVertex>(), 56);
+        assert_eq!(size_of::<MetalVertex>(), 48);
 
         let fb_layout = unsafe { fb_vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
 
@@ -374,6 +365,7 @@ impl Renderer {
             depth,
             transparent_mode: polygon.transparent_mode,
             pass: 1,
+            page: [0; 2]
         };
 
         let cross_product = GPU::cross_product(&polygon.vertices);
@@ -427,7 +419,7 @@ impl Renderer {
             metal_vert.uv[1] = v_f32;
             if let Some(texpage) = polygon.texpage {
                 metal_vert.clut = [polygon.clut.0, polygon.clut.1];
-                metal_vert.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 256];
+                fragment_uniform.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16]
             }
         }
 
@@ -551,19 +543,20 @@ impl Renderer {
                         }
                     }
 
+                    let region = MTLRegion {
+                        origin: MTLOrigin {
+                            x: params.start_x as usize,
+                            y: params.start_y as usize,
+                            z: 0,
+                        },
+                        size: MTLSize {
+                            width: params.width as usize,
+                            height: params.height as usize,
+                            depth: 1,
+                        },
+                    };
+
                     if let Some(texture) = &self.vram_write {
-                        let region = MTLRegion {
-                            origin: MTLOrigin {
-                                x: params.start_x as usize,
-                                y: params.start_y as usize,
-                                z: 0,
-                            },
-                            size: MTLSize {
-                                width: params.width as usize,
-                                height: params.height as usize,
-                                depth: 1,
-                            },
-                        };
                         unsafe {
                             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                                 region,
@@ -575,18 +568,6 @@ impl Renderer {
                     }
 
                     if let Some(texture) = &self.vram_read {
-                        let region = MTLRegion {
-                            origin: MTLOrigin {
-                                x: params.start_x as usize,
-                                y: params.start_y as usize,
-                                z: 0,
-                            },
-                            size: MTLSize {
-                                width: params.width as usize,
-                                height: params.height as usize,
-                                depth: 1,
-                            },
-                        };
                         unsafe {
                             texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                                 region,
