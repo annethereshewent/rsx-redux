@@ -28,7 +28,7 @@ struct VertexOut {
     float4 color;
     uint2 page;
     uint2 clut;
-    float2 orig [[user(locn0)]];
+    float2 orig;
 };
 
 vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
@@ -116,13 +116,15 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    float a = float((texel >> 15) & 1) * 31.0;
+    float a = float((texel >> 15) & 1);
 
     if (texel == 0) {
-        a = -31.0;
+        a = -1.0;
     }
 
-    return float4(r, g, b, a) / 31.0;
+    float3 color = float3(r, g, b) / 31.0;
+
+    return float4(color, a);
 }
 
 // Fragment
@@ -132,6 +134,8 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 )
 {
     float4 finalColor;
+    ushort texAlpha = 0;
+
     if (uniforms.hasTexture) {
         float4 texColor;
         switch (uniforms.depth) {
@@ -146,9 +150,12 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 break;
         }
 
-        if (texColor[3] < 0.0) {
+        texAlpha = ushort(texColor[3]);
+
+        if (texColor[3] == -1) {
             discard_fragment();
         }
+
 
         finalColor = texColor;
     } else {
@@ -158,6 +165,9 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     float alpha = 1.0;
 
     if (uniforms.semitransparent) {
+        if (uniforms.hasTexture && texAlpha == 0) {
+            discard_fragment();
+        }
         ushort pixel = vram.read(uint2(in.orig)).r;
 
         uint r = pixel & 0x1f;
