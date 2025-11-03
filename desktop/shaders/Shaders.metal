@@ -162,12 +162,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         finalColor = float4(in.color);
     }
 
-    float alpha = 1.0;
-
     if (uniforms.semitransparent) {
-        if (uniforms.hasTexture && texAlpha == 0) {
-            discard_fragment();
-        }
         ushort pixel = vram.read(uint2(in.orig)).r;
 
         uint r = pixel & 0x1f;
@@ -184,7 +179,9 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 finalColor = min(old + finalColor, 1.0);
                 break;
             case 2:
-                finalColor = max(old - finalColor, 0.0);
+                if (!uniforms.hasTexture || texAlpha != 0) {
+                    finalColor = max(old - finalColor, 0.0);
+                }
                 break;
             case 3:
                 finalColor = min(old + (finalColor / 4), 1.0);
@@ -192,7 +189,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         }
     }
 
-    finalColor[3] = alpha;
+    finalColor[3] = 1.0;
 
     return finalColor;
 }
