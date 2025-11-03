@@ -137,7 +137,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 )
 {
     float4 finalColor;
-    ushort texAlpha = 0;
+    float texAlpha = 0;
 
     if (uniforms.hasTexture) {
         float4 texColor;
@@ -153,12 +153,11 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 break;
         }
 
-        texAlpha = ushort(texColor[3]);
+        texAlpha = texColor[3];
 
-        if (texColor[3] == -1) {
+        if (texAlpha == -1) {
             discard_fragment();
         }
-
 
         finalColor = texColor;
     } else {
@@ -199,7 +198,7 @@ kernel void rgba8_to_rgb5551(texture2d<float, access::sample> src [[texture(0)]]
                              texture2d<ushort, access::write> dst [[texture(1)]],
                              constant uint2 &dstOrigin [[buffer(0)]],
                              uint2 gid [[thread_position_in_grid]]) {
-    float3 c = src.read(gid).rgb;
+    float3 c = src.read(gid + dstOrigin).rgb;
     ushort r = ushort(c.r * 31.0);
     ushort g = ushort(c.g * 31.0);
     ushort b = ushort(c.b * 31.0);

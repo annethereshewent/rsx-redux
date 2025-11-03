@@ -482,13 +482,11 @@ impl Renderer {
         let polygons: Vec<Polygon> = if !self.has_semitransparent_polys {
             gpu.polygons.drain(..).collect()
         } else {
-            println!("rendering semitransparent polygons.");
             self.leftover_polygons.drain(..).collect()
         };
         for (index, polygon) in polygons.iter().enumerate() {
             self.render_polygon(gpu, polygon);
             if self.has_semitransparent_polys {
-                println!("current poly is semitransparent, doing a writeback");
                 self.vram_writeback(gpu);
 
                 self.leftover_polygons = polygons[index..].to_vec();
@@ -770,7 +768,6 @@ impl Renderer {
         if let (Some(encoder), Some(command_buffer)) =
             (&mut self.encoder.take(), &mut self.command_buffer.take())
         {
-            println!("doing the writeback!");
             encoder.endEncoding();
 
             let compute_encoder = command_buffer.computeCommandEncoder().unwrap();
@@ -812,9 +809,9 @@ impl Renderer {
                 command_buffer.waitUntilScheduled();
                 command_buffer.waitUntilCompleted();
             }
-        }
 
-        self.create_encoder();
+            self.create_encoder();
+        }
     }
 
     pub fn present(&mut self, gpu: &mut GPU) {
