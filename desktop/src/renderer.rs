@@ -43,7 +43,7 @@ pub struct MetalVertex {
     color: [f32; 4],
     page: [u32; 2],
     clut: [u32; 2],
-    orig: [u32; 2],
+    orig: [f32; 2],
 }
 
 impl MetalVertex {
@@ -54,7 +54,7 @@ impl MetalVertex {
             color: [0.0; 4],
             page: [0; 2],
             clut: [0; 2],
-            orig: [0; 2],
+            orig: [0.0; 2],
         }
     }
 }
@@ -195,7 +195,12 @@ impl Renderer {
 
         let orig = unsafe { attributes.objectAtIndexedSubscript(5) };
 
-        orig.setFormat(MTLVertexFormat::UInt2);
+        unsafe {
+            orig.setOffset(48);
+            orig.setBufferIndex(0);
+        }
+
+        orig.setFormat(MTLVertexFormat::Float2);
 
         let layout = unsafe { vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
 
@@ -404,8 +409,8 @@ impl Renderer {
 
             let metal_vert = &mut vertices[i];
 
-            metal_vert.orig[0] = vertex.x as u32;
-            metal_vert.orig[1] = vertex.y as u32;
+            metal_vert.orig[0] = vertex.x as f32;
+            metal_vert.orig[1] = vertex.y as f32;
 
             metal_vert.position[0] = (vertex.x as f32 / VRAM_WIDTH as f32) * 2.0 - 1.0;
             metal_vert.position[1] = 1.0 - (vertex.y as f32 / VRAM_HEIGHT as f32) * 2.0;
@@ -773,57 +778,6 @@ impl Renderer {
         }
     }
 
-    // fn vram_writeback(&mut self, gpu: &mut GPU) {
-    //     let origin = MTLOrigin {
-    //         x: gpu.display_start_x as usize,
-    //         y: gpu.display_start_y as usize,
-    //         z: 0,
-    //     };
-    //     let size = MTLSize {
-    //         width: gpu.display_width as usize,
-    //         height: gpu.display_height as usize,
-    //         depth: 1,
-    //     };
-
-    //     if let Some(texture) = &self.vram_write {
-    //         let mut bytes: Vec<u8> =
-    //             vec![0xff; gpu.display_width as usize * gpu.display_height as usize * 4];
-    //         unsafe {
-    //             texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
-    //                 NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
-    //                 gpu.display_width as usize * 4,
-    //                 MTLRegion { origin, size },
-    //                 0,
-    //             );
-    //         }
-
-    //         let mut halfwords = Vec::new();
-    //         for i in (0..bytes.len()).step_by(4) {
-    //             let r = bytes[i] >> 3;
-    //             let g = bytes[i + 1] >> 3;
-    //             let b = bytes[i + 2] >> 3;
-    //             let a = bytes[i + 3];
-
-    //             let halfword =
-    //                 r as u16 | (g as u16) << 5 | (b as u16) << 10 | ((a > 0) as u16) << 15;
-
-    //             halfwords.push(halfword);
-    //         }
-
-    //         if let Some(texture) = &self.vram_read {
-    //             let region = MTLRegion { origin, size };
-    //             unsafe {
-    //                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-    //                     region,
-    //                     0,
-    //                     NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
-    //                     2 * gpu.display_width as usize,
-    //                 )
-    //             }
-    //         }
-    //     }
-    // }
-
     fn vram_writeback(&mut self, gpu: &mut GPU) {
         if let (Some(encoder), Some(command_buffer)) =
             (&mut self.encoder.take(), &mut self.command_buffer.take())
@@ -866,79 +820,9 @@ impl Renderer {
 
             command_buffer.commit();
             unsafe {
+                command_buffer.waitUntilScheduled();
                 command_buffer.waitUntilCompleted();
             }
-
-            // comparison test
-            // if let (Some(vram_read), Some(vram_write)) = (&self.vram_read, &self.vram_write) {
-            //     println!("comparing vram read and vram write.....");
-            //     let origin = MTLOrigin {
-            //         x,
-            //         y,
-            //         z: 0,
-            //     };
-            //     let size = MTLSize {
-            //         width,
-            //         height,
-            //         depth: 1,
-            //     };
-            //     let mut write_bytes: Vec<u8> =
-            //         vec![0xff; width * height * 4];
-            //     unsafe {
-            //         vram_write.getBytes_bytesPerRow_fromRegion_mipmapLevel(
-            //             NonNull::new(write_bytes.as_mut_ptr() as *mut c_void).unwrap(),
-            //             width * 4,
-            //             MTLRegion { origin, size },
-            //             0,
-            //         );
-            //     }
-
-            //     let mut read_bytes: Vec<u8> = vec![0xff; width * height * 2];
-
-
-            //     unsafe {
-            //         vram_read.getBytes_bytesPerRow_fromRegion_mipmapLevel(
-            //             NonNull::new(read_bytes.as_mut_ptr() as *mut c_void).unwrap(),
-            //             width * 2,
-            //             MTLRegion { origin, size },
-            //             0,
-            //         );
-            //     }
-
-            //     for i in 0..(width * height) {
-            //         let read_index = i * 2;
-            //         let write_index = i * 4;
-
-            //         let read_pixel = read_bytes[read_index] as u16 | (read_bytes[read_index + 1] as u16) << 8;
-
-            //         let mut read_r = (read_pixel & 0x1f) as u8;
-            //         let mut read_g = ((read_pixel >> 5) & 0x1f)  as u8;
-            //         let mut read_b = ((read_pixel >> 10) & 0x1f)  as u8;
-
-            //         read_r = read_r << 3 | read_r >> 2;
-            //         read_g = read_g << 3 | read_g >> 2;
-            //         read_b = read_b << 3 | read_b >> 2;
-
-            //         let write_r = write_bytes[write_index];
-            //         let write_g = write_bytes[write_index + 1];
-            //         let write_b = write_bytes[write_index + 2];
-
-            //         // write side (from vram_write RGBA8Unorm), QUANTIZE then expand:
-            //         let r5_from_src = ((write_r as u16 * 31 + 127) / 255) as u8; // integer round
-            //         let g5_from_src = ((write_g as u16 * 31 + 127) / 255) as u8;
-            //         let b5_from_src = ((write_b as u16 * 31 + 127) / 255) as u8;
-
-            //         let r8_from_src = (r5_from_src << 3) | (r5_from_src >> 2);
-            //         let g8_from_src = (g5_from_src << 3) | (g5_from_src >> 2);
-            //         let b8_from_src = (b5_from_src << 3) | (b5_from_src >> 2);
-
-            //         let read_pixel = read_r as u32 | (read_g as u32) << 8 | (read_b as u32) << 16;
-            //         let write_pixel = r8_from_src as u32 | (g8_from_src as u32) << 8 | (b8_from_src as u32) << 16;
-
-            //         assert!(read_r == r8_from_src && read_g == g8_from_src && read_b == b8_from_src, "colors don't match: 0x{:x} vs 0x{:x}", read_pixel, write_pixel);
-
-            //     }
-            // }
         }
     }
 

@@ -19,7 +19,7 @@ struct VertexIn {
     float4 color    [[attribute(2)]];
     uint2 page [[attribute(3)]];
     uint2 clut [[attribute(4)]];
-    uint2 orig [[attribute(5)]];
+    float2 orig [[attribute(5)]];
 };
 
 struct VertexOut {
@@ -28,7 +28,7 @@ struct VertexOut {
     float4 color;
     uint2 page;
     uint2 clut;
-    uint2 orig;
+    float2 orig [[user(locn0)]];
 };
 
 vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
@@ -158,13 +158,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     float alpha = 1.0;
 
     if (uniforms.semitransparent) {
-        float2 screen = float2(
-            (in.position.x * 0.5 + 0.5) * 1024.0,
-            (1.0 - (in.position.y * 0.5 + 0.5)) * 512.0
-        );
-        ushort2 coord = ushort2(clamp(screen, float2(0.0), float2(1023.0, 511.0)));
-        ushort pixel = vram.read(coord).r;
-        // ushort pixel = vram.read(in.orig).r;
+        ushort pixel = vram.read(uint2(in.orig)).r;
 
         uint r = pixel & 0x1f;
         uint g = (pixel >> 5) & 0x1f;
