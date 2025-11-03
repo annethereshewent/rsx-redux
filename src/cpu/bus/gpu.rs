@@ -839,7 +839,7 @@ impl GPU {
         let g = ((color >> 8) & 0xff) >> 3;
         let b = ((color >> 16) & 0xff) >> 3;
 
-        let pixel = r as u16 | (g as u16) << 5 | (b as u16) << 5;
+        let pixel = r as u16 | (g as u16) << 5 | (b as u16) << 10;
 
         let destination = self.current_command_buffer.pop_front().unwrap();
         let dimensions = self.current_command_buffer.pop_front().unwrap();
