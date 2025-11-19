@@ -342,6 +342,25 @@ impl Renderer {
         device.newDepthStencilStateWithDescriptor(&ds).unwrap()
     }
 
+    fn setup_encoder(gpu: &GPU, encoder_ref: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>) {
+        encoder_ref.setCullMode(MTLCullMode::None);
+        encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
+
+        let vp = MTLViewport {
+            originX: 0.0,
+            originY: 0.0,
+            width: 1024.0,
+            height: 512.0,
+            znear: 0.0,
+            zfar: 1.0,
+        };
+
+        encoder_ref.setViewport(vp);
+
+        let drawing_area = Self::clip_drawing_area(gpu);
+        encoder_ref.setScissorRect(drawing_area);
+    }
+
     pub fn render_polygon(&mut self, gpu: &mut GPU, polygon: &Polygon) {
         let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
 
@@ -713,22 +732,7 @@ impl Renderer {
                 }
 
                 if let Some(encoder_ref) = &mut self.encoder {
-                    encoder_ref.setCullMode(MTLCullMode::None);
-                    encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
-
-                    let vp = MTLViewport {
-                        originX: 0.0,
-                        originY: 0.0,
-                        width: 1024.0,
-                        height: 512.0,
-                        znear: 0.0,
-                        zfar: 1.0,
-                    };
-
-                    encoder_ref.setViewport(vp);
-
-                    let drawing_area = Self::clip_drawing_area(gpu);
-                    encoder_ref.setScissorRect(drawing_area);
+                    Self::setup_encoder(gpu, encoder_ref);
 
                     self.render_polygons(gpu);
                 }
@@ -792,6 +796,10 @@ impl Renderer {
             }
 
             self.create_encoder();
+
+            if let Some(encoder_ref) = &mut self.encoder {
+                Self::setup_encoder(gpu, encoder_ref);
+            }
         }
     }
 
