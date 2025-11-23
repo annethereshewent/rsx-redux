@@ -438,7 +438,7 @@ impl Renderer {
             metal_vert.uv[1] = v_f32;
             if let Some(texpage) = polygon.texpage {
                 metal_vert.clut = [polygon.clut.0, polygon.clut.1];
-                fragment_uniform.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16]
+                fragment_uniform.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16];
             }
         }
 

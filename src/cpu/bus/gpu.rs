@@ -673,6 +673,8 @@ impl GPU {
 
             u = word & 0xff;
             v = (word >> 8) & 0xff;
+
+            (self.clut_x, self.clut_y) = Self::parse_clut(word >> 16);
         }
 
         let (width, height) = match self.rectangle_size {
