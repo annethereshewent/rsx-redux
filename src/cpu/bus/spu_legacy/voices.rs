@@ -177,11 +177,7 @@ impl Voice {
             self.counter &= 0xfff;
             self.counter |= new_index << 12;
 
-            let mut j = 0;
-            for i in 24..28 {
-                self.last_samples[j] = self.samples[i];
-                j += 1;
-            }
+            self.last_samples[0..4].copy_from_slice(&self.samples[24..28]);
 
             self.decode_samples(sound_ram);
         }

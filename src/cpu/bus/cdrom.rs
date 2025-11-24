@@ -178,6 +178,7 @@ impl CDRom {
     pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
         scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES);
+
         Self {
             hntmask: HntmaskRegister::from_bits_retain(0),
             bank: 0,
