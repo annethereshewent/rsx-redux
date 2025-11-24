@@ -3,6 +3,8 @@ use std::collections::VecDeque;
 use memmap2::Mmap;
 use registers::HntmaskRegister;
 
+use crate::cpu::bus::spu_legacy::{SPU, voices::{NEG_ADPCM_TABLE, POS_ADPCM_TABLE}};
+
 use super::{
     registers::interrupt_register::InterruptRegister,
     scheduler::{EventType, Scheduler},
@@ -45,11 +47,53 @@ enum Mode2Form {
     Form2,
 }
 
+#[derive(Copy, Clone, PartialEq, Debug)]
+enum SpeakerOutput {
+    Mono,
+    Stereo,
+}
+
+enum BitsPerSample {
+    FourBits,
+    EightBits
+}
+
+struct CodingInfo {
+    speaker_output: SpeakerOutput,
+    sample_rate: usize,
+    bits_per_sample: BitsPerSample,
+    _emphasis: bool
+}
+
+impl CodingInfo {
+    pub fn new(byte: u8) -> Self {
+        Self {
+            speaker_output: match byte & 0x3 {
+                0 => SpeakerOutput::Mono,
+                1 => SpeakerOutput::Stereo,
+                _ => panic!("speaker output is invalid"),
+            },
+            sample_rate: match (byte >> 2) & 0x3 {
+                0 => 37800,
+                1 => 18900,
+                _ => panic!("coding_info sample rate is invalid"),
+            },
+            bits_per_sample: match (byte >> 4) & 0x3 {
+                0 => BitsPerSample::FourBits,
+                1 => BitsPerSample::EightBits,
+                _ => panic!("bits per sample is invalid"),
+            },
+            _emphasis: (byte >> 6) & 1 == 1,
+        }
+    }
+}
+
 struct CDSubheader {
     _file_num: u8,
-    _channel_num: u8,
+    channel_num: u8,
     read_mode: CDReadMode,
     _form: Mode2Form,
+    coding_info: CodingInfo,
 }
 
 impl CDSubheader {
@@ -75,18 +119,20 @@ impl CDSubheader {
 
         Self {
             _file_num: file_num,
-            _channel_num: channel_num,
+            channel_num: channel_num,
             read_mode,
             _form: form,
+            coding_info: CodingInfo::new(bytes[3]),
         }
     }
 
     pub fn new() -> Self {
         Self {
             _file_num: 0,
-            _channel_num: 0,
+            channel_num: 0,
             read_mode: CDReadMode::Data,
             _form: Mode2Form::Form1,
+            coding_info: CodingInfo::new(0),
         }
     }
 }
@@ -173,6 +219,9 @@ pub struct CDRom {
     reading_buffer: bool,
     pre_seek: bool,
     pending_stat: Option<u8>,
+    sample_buffer: [VecDeque<i16>; 2],
+    old_samples: [i16; 2],
+    older_samples: [i16; 2]
 }
 
 impl CDRom {
@@ -211,6 +260,12 @@ impl CDRom {
             reading_buffer: false,
             pre_seek: false,
             pending_stat: None,
+            sample_buffer: [
+                VecDeque::with_capacity(28),
+                VecDeque::with_capacity(28),
+            ],
+            old_samples: [0; 2],
+            older_samples: [0; 2],
         }
     }
 
@@ -453,7 +508,7 @@ impl CDRom {
         self.controller_param_fifo.clear();
     }
 
-    pub fn cd_read_sector(&mut self, scheduler: &mut Scheduler) {
+    pub fn cd_read_sector(&mut self, scheduler: &mut Scheduler, spu: &mut SPU) {
         if !self.is_reading {
             return;
         }
@@ -480,7 +535,8 @@ impl CDRom {
 
             match self.subheader.read_mode {
                 CDReadMode::Data => self.read_data(),
-                CDReadMode::Audio | CDReadMode::Video => todo!("read audio/video cds"),
+                CDReadMode::Audio => self.read_audio(spu),
+                CDReadMode::Video => todo!("read video cds"),
             }
 
             self.current_msf.asect += 1;
@@ -503,6 +559,62 @@ impl CDRom {
                     CD_READ_CYCLES
                 },
             );
+        }
+    }
+
+    fn read_audio(&mut self, spu: &mut SPU) {
+        if let Some(game_data) = &self.game_data {
+            let pointer = self.get_pointer();
+
+            let mut audio_sector = [0; 0x914];
+
+            audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914]);
+
+            for i in 0..0x12 {
+                let section_index = i * 128;
+                let section = &audio_sector[section_index..section_index + 128];
+
+                self.decode_section(section);
+            }
+        }
+    }
+
+    fn decode_section(&mut self, section: &[u8]) {
+        let headers = &section[4..12];
+
+        let block_start = 16;
+        for i in 0..28 {
+            let index = block_start + i * 4;
+            let word = unsafe { *(&section[index] as *const u8 as *const u32) };
+
+            for j in 0..8 {
+                let channel_index = if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo { i & 1 } else { 0 };
+                let header = headers[j];
+
+                let mut shift = header & 0xf;
+                let filter = (header >> 4) & 0x3;
+
+                if shift > 12 {
+                    shift = 9;
+                }
+
+                let f0 = POS_ADPCM_TABLE[filter as usize];
+                let f1 = NEG_ADPCM_TABLE[filter as usize];
+
+
+                let nibble = ((word >> (j * 4)) & 0xf) as i32;
+
+                let mut sample = (((nibble << 12) as i16) >> shift) as i32;
+
+                sample += (self.old_samples[channel_index] as i32 * f0 + self.older_samples[channel_index] as i32 * f1 + 32) / 64;
+
+                sample = sample.clamp(-0x8000, 0x7fff);
+
+                self.sample_buffer[channel_index].push_back(sample as i16);
+
+                self.older_samples[channel_index] = self.old_samples[channel_index];
+                self.old_samples[channel_index] = sample as i16;
+            }
         }
     }
 
