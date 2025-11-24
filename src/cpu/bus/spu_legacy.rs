@@ -105,6 +105,8 @@ pub struct SPU {
     capture_index: u32,
     writing_to_capture_half: bool,
     pub audio_buffer: Vec<f32>,
+    pub cd_left_samples: VecDeque<i16>,
+    pub cd_right_samples: VecDeque<i16>,
 }
 
 pub const CPU_TO_APU_CYCLES: i32 = 768;
@@ -143,6 +145,8 @@ impl SPU {
             capture_index: 0,
             writing_to_capture_half: false,
             audio_buffer: Vec::with_capacity(NUM_SAMPLES),
+            cd_left_samples: VecDeque::new(),
+            cd_right_samples: VecDeque::new(),
         }
     }
 
