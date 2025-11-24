@@ -3,7 +3,10 @@ use std::collections::VecDeque;
 use memmap2::Mmap;
 use registers::HntmaskRegister;
 
-use crate::cpu::bus::spu_legacy::{SPU, voices::{NEG_ADPCM_TABLE, POS_ADPCM_TABLE}};
+use crate::cpu::bus::spu_legacy::{
+    SPU,
+    voices::{NEG_ADPCM_TABLE, POS_ADPCM_TABLE},
+};
 
 use super::{
     registers::interrupt_register::InterruptRegister,
@@ -55,14 +58,14 @@ enum SpeakerOutput {
 
 enum BitsPerSample {
     FourBits,
-    EightBits
+    EightBits,
 }
 
 struct CodingInfo {
     speaker_output: SpeakerOutput,
     sample_rate: usize,
     bits_per_sample: BitsPerSample,
-    _emphasis: bool
+    _emphasis: bool,
 }
 
 impl CodingInfo {
@@ -119,7 +122,7 @@ impl CDSubheader {
 
         Self {
             _file_num: file_num,
-            channel_num: channel_num,
+            channel_num,
             read_mode,
             _form: form,
             coding_info: CodingInfo::new(bytes[3]),
@@ -221,7 +224,7 @@ pub struct CDRom {
     pending_stat: Option<u8>,
     sample_buffer: [VecDeque<i16>; 2],
     old_samples: [i16; 2],
-    older_samples: [i16; 2]
+    older_samples: [i16; 2],
 }
 
 impl CDRom {
@@ -260,10 +263,7 @@ impl CDRom {
             reading_buffer: false,
             pre_seek: false,
             pending_stat: None,
-            sample_buffer: [
-                VecDeque::with_capacity(28),
-                VecDeque::with_capacity(28),
-            ],
+            sample_buffer: [VecDeque::with_capacity(28), VecDeque::with_capacity(28)],
             old_samples: [0; 2],
             older_samples: [0; 2],
         }
@@ -587,34 +587,45 @@ impl CDRom {
             let index = block_start + i * 4;
             let word = unsafe { *(&section[index] as *const u8 as *const u32) };
 
-            for j in 0..8 {
-                let channel_index = if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo { i & 1 } else { 0 };
-                let header = headers[j];
+            self.decode_xa_word(word, headers);
+        }
+    }
 
-                let mut shift = header & 0xf;
-                let filter = (header >> 4) & 0x3;
+    fn decode_xa_word(&mut self, word: u32, headers: &[u8]) {
+        for i in 0..8 {
+            let channel_index =
+                if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
+                    i & 1
+                } else {
+                    0
+                };
+            let header = headers[i];
 
-                if shift > 12 {
-                    shift = 9;
-                }
+            let mut shift = header & 0xf;
+            let filter = (header >> 4) & 0x3;
 
-                let f0 = POS_ADPCM_TABLE[filter as usize];
-                let f1 = NEG_ADPCM_TABLE[filter as usize];
-
-
-                let nibble = ((word >> (j * 4)) & 0xf) as i32;
-
-                let mut sample = (((nibble << 12) as i16) >> shift) as i32;
-
-                sample += (self.old_samples[channel_index] as i32 * f0 + self.older_samples[channel_index] as i32 * f1 + 32) / 64;
-
-                sample = sample.clamp(-0x8000, 0x7fff);
-
-                self.sample_buffer[channel_index].push_back(sample as i16);
-
-                self.older_samples[channel_index] = self.old_samples[channel_index];
-                self.old_samples[channel_index] = sample as i16;
+            if shift > 12 {
+                shift = 9;
             }
+
+            let f0 = POS_ADPCM_TABLE[filter as usize];
+            let f1 = NEG_ADPCM_TABLE[filter as usize];
+
+            let nibble = ((word >> (i * 4)) & 0xf) as i32;
+
+            let mut sample = (((nibble << 12) as i16) >> shift) as i32;
+
+            sample += (self.old_samples[channel_index] as i32 * f0
+                + self.older_samples[channel_index] as i32 * f1
+                + 32)
+                / 64;
+
+            sample = sample.clamp(-0x8000, 0x7fff);
+
+            self.sample_buffer[channel_index].push_back(sample as i16);
+
+            self.older_samples[channel_index] = self.old_samples[channel_index];
+            self.old_samples[channel_index] = sample as i16;
         }
     }
 

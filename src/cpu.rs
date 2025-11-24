@@ -518,7 +518,10 @@ impl CPU {
                 EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler),
                 EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
                 EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
-                EventType::CDRead => self.bus.cdrom.cd_read_sector(&mut self.bus.scheduler, &mut self.bus.spu),
+                EventType::CDRead => self
+                    .bus
+                    .cdrom
+                    .cd_read_sector(&mut self.bus.scheduler, &mut self.bus.spu),
                 EventType::TickSpu => self
                     .bus
                     .spu
