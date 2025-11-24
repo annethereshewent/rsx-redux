@@ -56,7 +56,6 @@ impl SoundRam {
     }
 }
 
-#[derive(Default)]
 struct DataTransfer {
     control: u16,
     transfer_address: u32,
@@ -75,7 +74,6 @@ impl DataTransfer {
     }
 }
 
-#[derive(Default)]
 pub struct SPU {
     pub previous_value: i16,
     voices: [Voice; 24],

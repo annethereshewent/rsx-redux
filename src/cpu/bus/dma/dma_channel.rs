@@ -12,14 +12,6 @@ use super::{
     dma_interrupt_register::DmaInterruptRegister,
 };
 
-#[derive(Copy, Clone, Default)]
-pub struct DmaChannel {
-    pub base_address: u32,
-    pub block_size: u32,
-    pub num_blocks: u32,
-    pub control: DmaChannelControlRegister,
-}
-
 pub const DMA_MDEC_IN: usize = 0;
 pub const DMA_MDEC_OUT: usize = 1;
 pub const DMA_GPU: usize = 2;
@@ -27,6 +19,20 @@ pub const DMA_CDROM: usize = 3;
 pub const DMA_SPU: usize = 4;
 pub const DMA_PIO: usize = 5;
 pub const DMA_OTC: usize = 6;
+
+#[derive(Copy, Clone)]
+pub struct DmaChannel {
+    pub base_address: u32,
+    pub block_size: u32,
+    pub num_blocks: u32,
+    pub control: DmaChannelControlRegister,
+}
+
+impl Default for DmaChannel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl DmaChannel {
     pub fn new() -> Self {
@@ -287,11 +293,16 @@ impl DmaChannel {
     }
 }
 
-#[derive(Default)]
 pub struct Dma {
     pub channels: [DmaChannel; 7],
     pub dma_control: DmaControlRegister,
     pub dicr: DmaInterruptRegister,
+}
+
+impl Default for Dma {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Dma {

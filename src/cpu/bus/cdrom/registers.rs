@@ -1,7 +1,6 @@
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Default)]
     pub struct HntmaskRegister: u8 {
         const ENBFEMPT = 1 << 3;
         const ENBFWRDY = 1 << 4;

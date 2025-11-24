@@ -18,7 +18,6 @@ use bitflags::bitflags;
   31    No effect, should be CPU memory access enable (R/W)
 */
 bitflags! {
-    #[derive(Default)]
     pub struct DmaControlRegister: u32 {
         const DMA0_ENABLE = 1 << 3;
         const DMA1_ENABLE = 1 << 7;

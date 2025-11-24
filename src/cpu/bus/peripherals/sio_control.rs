@@ -1,7 +1,6 @@
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Default)]
     pub struct SIOControl: u16 {
         const TX_ENABLE = 1;
         const DTR_OUT = 1 << 1;
