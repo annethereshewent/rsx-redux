@@ -533,12 +533,12 @@ impl CPU {
 
     fn update_tty(&mut self) {
         if self.pc == 0xb0 && self.r[9] == 0x3d {
-            let mut buf: Vec<u8> = Vec::new();
-
-            buf.push(self.r[4] as u8);
-            buf.push((self.r[4] >> 8) as u8);
-            buf.push((self.r[4] >> 16) as u8);
-            buf.push((self.r[4] >> 24) as u8);
+            let buf = vec![
+                self.r[4] as u8,
+                (self.r[4] >> 8) as u8,
+                (self.r[4] >> 16) as u8,
+                (self.r[4] >> 24) as u8,
+            ];
 
             self.output += &String::from_utf8(buf).unwrap();
 

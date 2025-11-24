@@ -93,7 +93,7 @@ impl Dma {
             match address {
                 0x1f8010f0 => self.dma_control.bits(),
                 0x1f8010f4 => self.dicr.bits(),
-                _ => panic!("invalid dma address given: 0x{:x}", address),
+                _ => panic!("invalid dma address given: 0x{address:x}"),
             }
         }
     }
@@ -396,7 +396,7 @@ impl Dma {
 
                     self.dicr = DmaInterruptRegister::from_bits_retain(bits)
                 }
-                _ => panic!("invalid dma address given: 0x{:x}", address),
+                _ => panic!("invalid dma address given: 0x{address:x}"),
             }
 
             return;

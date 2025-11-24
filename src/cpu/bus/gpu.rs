@@ -371,9 +371,8 @@ impl GPU {
                 0 => timers[0].is_active = false,
                 1 | 2 => timers[0].counter = 0,
                 3 => {
-                    if let Some(_) = &mut timers[0].switch_free_run {
+                    if timers[0].switch_free_run.take().is_some() {
                         timers[0].is_active = true;
-                        timers[0].switch_free_run = None;
                     } else {
                         timers[0].is_active = false;
                         timers[0].switch_free_run = Some(true);
@@ -601,9 +600,9 @@ impl GPU {
                 vertices: vertices1,
                 is_line: false,
                 textured: self.is_textured,
-                texpage: texpage.clone(),
-                transparent_mode: if texpage.is_some() {
-                    texpage.unwrap().semi_transparency
+                texpage,
+                transparent_mode: if let Some(texpage) = texpage {
+                    texpage.semi_transparency
                 } else {
                     self.texpage.semi_transparency
                 },
@@ -618,8 +617,8 @@ impl GPU {
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 textured: self.is_textured,
-                transparent_mode: if texpage.is_some() {
-                    texpage.unwrap().semi_transparency
+                transparent_mode: if let Some(texpage) = texpage {
+                    texpage.semi_transparency
                 } else {
                     self.texpage.semi_transparency
                 },
@@ -632,8 +631,8 @@ impl GPU {
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 textured: self.is_textured,
-                transparent_mode: if texpage.is_some() {
-                    texpage.unwrap().semi_transparency
+                transparent_mode: if let Some(texpage) = texpage {
+                    texpage.semi_transparency
                 } else {
                     self.texpage.semi_transparency
                 },
@@ -719,7 +718,7 @@ impl GPU {
             color,
         };
 
-        let vertices = vec![v0, v1, v2, v3];
+        let vertices = [v0, v1, v2, v3];
 
         let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
         let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
@@ -727,7 +726,7 @@ impl GPU {
         self.polygons.push(Polygon {
             vertices: vertices1,
             is_line: false,
-            texpage: Some(self.texpage.clone()),
+            texpage: Some(self.texpage),
             clut: (self.clut_x as u32, self.clut_y as u32),
             semitransparent: self.is_semitransparent,
             transparent_mode: self.texpage.semi_transparency,
@@ -736,7 +735,7 @@ impl GPU {
         self.polygons.push(Polygon {
             vertices: vertices2,
             is_line: false,
-            texpage: Some(self.texpage.clone()),
+            texpage: Some(self.texpage),
             clut: (self.clut_x as u32, self.clut_y as u32),
             semitransparent: self.is_semitransparent,
             transparent_mode: self.texpage.semi_transparency,
@@ -830,7 +829,7 @@ impl GPU {
         todo!("vram to vram");
     }
 
-    pub fn cross_product(v: &Vec<Vertex>) -> i32 {
+    pub fn cross_product(v: &[Vertex]) -> i32 {
         (v[1].x - v[0].x) * (v[2].y - v[0].y) - (v[1].y - v[0].y) * (v[2].x - v[0].x)
     }
 
@@ -841,9 +840,9 @@ impl GPU {
         let mut g = (color >> 8) & 0xff;
         let mut b = (color >> 16) & 0xff;
 
-        r = r >> 3;
-        g = g >> 3;
-        b = b >> 3;
+        r >>= 3;
+        g >>= 3;
+        b >>= 3;
 
         let pixel = r as u16 | (g as u16) << 5 | (b as u16) << 10;
 
@@ -873,7 +872,7 @@ impl GPU {
         let upper = word >> 29;
 
         if self.debug_on {
-            println!("got word 0x{:x}", word);
+            println!("got word 0x{word:x}");
         }
 
         match upper {
@@ -1146,7 +1145,7 @@ impl GPU {
             0
         };
 
-        let value = self.even_flag << 31 |
+        self.even_flag << 31 |
             self.texpage.x_base |
             self.texpage.y_base1 << 4 |
             self.texpage.semi_transparency << 5 |
@@ -1168,9 +1167,7 @@ impl GPU {
             (self.irq_enabled as u32) << 24 |
             0x7 << 26 |
             (self.dma_direction as u32) << 29 |
-            bit31 << 31;
-
-        value
+            bit31 << 31
     }
 
     pub fn cap_fps(&mut self) {
@@ -1211,9 +1208,8 @@ impl GPU {
                 0 => timers[1].is_active = false,
                 1 | 2 => timers[1].counter = 0,
                 3 => {
-                    if let Some(_) = &mut timers[0].switch_free_run {
+                    if timers[0].switch_free_run.take().is_some() {
                         timers[1].is_active = true;
-                        timers[1].switch_free_run = None;
                     } else {
                         timers[1].is_active = false;
                         timers[1].switch_free_run = Some(true);

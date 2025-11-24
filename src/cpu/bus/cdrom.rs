@@ -213,7 +213,7 @@ impl CDRom {
     }
 
     pub fn transfer_response(&mut self, scheduler: &mut Scheduler) {
-        if self.result_fifo.len() < 16 && self.controller_response_fifo.len() > 0 {
+        if self.result_fifo.len() < 16 && !self.controller_response_fifo.is_empty() {
             let value = self.controller_response_fifo.pop_front().unwrap();
             self.result_fifo.push_back(value);
 

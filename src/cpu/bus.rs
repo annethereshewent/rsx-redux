@@ -1,5 +1,5 @@
 use cdrom::CDRom;
-use dma::dma::Dma;
+use dma::dma_channel::Dma;
 use gpu::GPU;
 use mdec::Mdec;
 use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};

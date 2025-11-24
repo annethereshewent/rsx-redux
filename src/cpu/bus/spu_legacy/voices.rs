@@ -133,7 +133,7 @@ impl Voice {
     pub fn get_samples(&mut self, noise_level: i16) -> (f32, f32) {
         self.adsr.tick();
 
-        let sample_index = (self.counter >> 12) as usize;
+        let sample_index = self.counter >> 12;
 
         let mut sample = if self.noise {
             SPU::to_f32(noise_level)
@@ -168,7 +168,7 @@ impl Voice {
 
         self.counter += step as usize;
 
-        let sample_index = (self.counter >> 12) as usize;
+        let sample_index = self.counter >> 12;
 
         if sample_index >= MAX_SAMPLES {
             let new_index = sample_index - MAX_SAMPLES;
@@ -230,11 +230,7 @@ impl Voice {
 
                 sample += filter;
 
-                if sample > 0x7fff {
-                    sample = 0x7fff;
-                } else if sample < -0x8000 {
-                    sample = -0x8000;
-                }
+                sample = sample.clamp(-0x8000, 0x7fff);
 
                 self.samples[i * 4 + j] = sample as i16;
                 self.previous_samples[1] = self.previous_samples[0];
@@ -263,7 +259,7 @@ impl Voice {
         let older = self.get_sample(sample_index - 2) as i32;
         let oldest = self.get_sample(sample_index - 3) as i32;
 
-        let gauss_index = ((self.counter >> 4) & 0xff) as usize;
+        let gauss_index = (self.counter >> 4) & 0xff;
 
         // per https://psx-spx.consoledev.net/soundprocessingunitspu/#4-point-gaussian-interpolation
         let mut out = (GAUSS_TABLE[0xff - gauss_index] * oldest) >> 15;

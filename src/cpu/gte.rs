@@ -130,10 +130,10 @@ impl Gte {
         self.flags = 0;
 
         if self.debug_on {
-            if !self.executed_commands.contains_key(&op_code) {
-                println!("executed {:X}", op_code);
-                self.executed_commands.insert(op_code, true);
-            }
+            self.executed_commands.entry(op_code).or_insert_with(|| {
+                println!("executed {op_code:X}");
+                true
+            });
         }
 
         let cycles = match op_code {
@@ -159,7 +159,7 @@ impl Gte {
             0x3d => self.gpf(),
             0x3e => self.gpl(),
             0x3f => self.ncct(),
-            _ => panic!("unimplemented op code for gte: {:x}", op_code),
+            _ => panic!("unimplemented op code for gte: {op_code:x}"),
         };
 
         if (self.flags & 0x7f87e000) != 0 {
@@ -817,7 +817,7 @@ impl Gte {
                 [
                     -((self.rgbc.r as i16) << 4),
                     (self.rgbc.r as i16) << 4,
-                    self.ir[0] as i16,
+                    self.ir[0],
                 ],
                 [
                     self.rotation[0][2],
@@ -1132,8 +1132,8 @@ impl Gte {
         self.set_mac0_flags(sx2);
         self.set_mac0_flags(sy2);
 
-        sx2 = sx2 >> 16;
-        sy2 = sy2 >> 16;
+        sx2 >>= 16;
+        sy2 >>= 16;
 
         // finally saturate sx2 and sy2 to -0x400 to 0x3ff
         let sx2_saturated = self.set_sn_flags(sx2, 1);
@@ -1205,7 +1205,7 @@ impl Gte {
     }
 
     fn set_ir_flag3(&mut self, previous: i64, value: i32) -> i16 {
-        if previous < -0x8000 || previous > 0x7fff {
+        if !(-0x8000..0x7fff).contains(&previous) {
             self.flags |= 1 << 22;
         }
 
@@ -1279,7 +1279,7 @@ impl Gte {
             return 0;
         }
 
-        return val as u8;
+        val as u8
     }
 
     pub fn read_data(&mut self, destination: usize) -> u32 {

@@ -197,7 +197,7 @@ impl SPU {
 
         let mut parity_bit = (self.noise_level >> 15) & 0b1;
 
-        for i in 12..9 {
+        for i in (9..12).rev() {
             parity_bit ^= (self.noise_level >> i) & 0b1;
         }
 
@@ -334,17 +334,17 @@ impl SPU {
 
     fn to_i16(sample: f32) -> i16 {
         if sample >= 0.0 {
-            (sample * f32::from(i16::max_value())) as i16
+            (sample * f32::from(i16::MAX)) as i16
         } else {
-            (-sample * f32::from(i16::min_value())) as i16
+            (-sample * f32::from(i16::MIN)) as i16
         }
     }
 
     pub fn to_f32(value: i16) -> f32 {
         if value >= 0 {
-            f32::from(value) / f32::from(i16::max_value())
+            f32::from(value) / f32::from(i16::MAX)
         } else {
-            -f32::from(value) / f32::from(i16::min_value())
+            -f32::from(value) / f32::from(i16::MIN)
         }
     }
 
@@ -370,7 +370,7 @@ impl SPU {
     pub fn read16(&self, address: usize) -> u16 {
         match address {
             0x1f80_1c00..=0x1f80_1d7f => {
-                let voice = ((address >> 4) & 0x1f) as usize;
+                let voice = (address >> 4) & 0x1f;
                 let offset = address & 0xf;
 
                 self.voices[voice].read16(offset)
@@ -412,14 +412,14 @@ impl SPU {
             0x1f80_1db8 => self.current_volume_left as u16,
             0x1f80_1dba => self.current_volume_right as u16,
             0x1f801e00..=0x1f801fff => 0xffff,
-            _ => panic!("reading from unsupported SPU address: {:X}", address),
+            _ => panic!("reading from unsupported SPU address: {address:X}"),
         }
     }
 
     pub fn write16(&mut self, address: usize, val: u16) {
         match address {
             0x1f80_1c00..=0x1f80_1d7f => {
-                let voice = ((address >> 4) & 0x1f) as usize;
+                let voice = (address >> 4) & 0x1f;
                 let offset = address & 0xf;
 
                 self.voices[voice].write16(offset, val);
@@ -513,7 +513,7 @@ impl SPU {
             0x1f80_1db8 => self.current_volume_left = val as i16,
             0x1f80_1dba => self.current_volume_right = val as i16,
             0x1f80_1dc0..=0x1f80_1dff => self.reverb.write16(address, val),
-            _ => panic!("writing to unsupported SPU address: {:X}", address),
+            _ => panic!("writing to unsupported SPU address: {address:X}"),
         }
     }
 }
