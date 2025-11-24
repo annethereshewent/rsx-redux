@@ -11,22 +11,23 @@ struct FragmentUniforms {
     int depth;
     uint transparentMode;
     uint pass;
+    uint2 page;
 };
 
 struct VertexIn {
     float2 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
     float4 color    [[attribute(2)]];
-    uint2 page [[attribute(3)]];
-    uint2 clut [[attribute(4)]];
+    uint2 clut [[attribute(3)]];
+    float2 orig [[attribute(4)]];
 };
 
 struct VertexOut {
     float4 position [[position]];
     float2 uv [[center_no_perspective]];
     float4 color;
-    uint2 page;
     uint2 clut;
+    float2 orig;
 };
 
 vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
@@ -34,18 +35,19 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
     out.position = float4(in.position, 0.0, 1.0);
     out.uv = in.uv;
     out.color = in.color;
-    out.page = in.page;
     out.clut = in.clut;
+    out.orig = in.orig;
 
     return out;
 }
+
 // TODO: actually implement CLUT
 float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-    uint offsetU = in.page[0] + u;
-    uint offsetV = in.page[1] + v;
+    uint offsetU = uniforms.page[0] + u;
+    uint offsetV = uniforms.page[1] + v;
 
     ushort texel = vram.read(uint2(offsetU, offsetV)).r;
 
@@ -53,7 +55,7 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    float a = 31.0;
+    float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
         a = -31.0;
@@ -66,8 +68,8 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-    uint offsetU = in.page[0] + u / 4;
-    uint offsetV = in.page[1] + v;
+    uint offsetU = uniforms.page[0] + u / 4;
+    uint offsetV = uniforms.page[1] + v;
 
     uint halfWord = vram.read(uint2(offsetU, offsetV)).r;
 
@@ -85,7 +87,6 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    // normally would be 255, but it's easier just to divide everything by 31
     float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
@@ -99,8 +100,8 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
     uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-    uint offsetU = in.page[0] + u / 2;
-    uint offsetV = in.page[1] + v;
+    uint offsetU = uniforms.page[0] + u / 2;
+    uint offsetV = uniforms.page[1] + v;
 
     uint halfWord = vram.read(uint2(offsetU, offsetV)).r;
 
@@ -128,6 +129,8 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 )
 {
     float4 finalColor;
+    float texAlpha = 0;
+
     if (uniforms.hasTexture) {
         float4 texColor;
         switch (uniforms.depth) {
@@ -142,7 +145,9 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 break;
         }
 
-        if (texColor[3] < 0.0) {
+        texAlpha = texColor[3];
+
+        if (texAlpha == -1) {
             discard_fragment();
         }
 
@@ -151,43 +156,45 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         finalColor = float4(in.color);
     }
 
-    float alpha = 1.0;
+    if (uniforms.semitransparent && (!uniforms.hasTexture || texAlpha == 1)) {
+        ushort pixel = vram.read(uint2(in.orig)).r;
 
-    bool isST = uniforms.hasTexture ? finalColor[3] > 0.5 : uniforms.semitransparent;
+        uint r = pixel & 0x1f;
+        uint g = (pixel >> 5) & 0x1f;
+        uint b = (pixel >> 10) & 0x1f;
 
-    if (uniforms.semitransparent) {
+        float4 old = float4(r, g, b, 31.0) / 31.0;
+
         switch (uniforms.transparentMode) {
-            case 0: alpha = isST ? 0.5 : 1.0; break;
-            case 1: alpha = isST ? 1.0 : 0.0; break;
+            case 0:
+                finalColor = min((old + finalColor) / 2, 1.0);
+                break;
+            case 1:
+                finalColor = min(old + finalColor, 1.0);
+                break;
             case 2:
-                if (!uniforms.hasTexture) {
-                    alpha = 1.0;
-                } else if (uniforms.pass == 1) {
-                    if (isST) {
-                        discard_fragment();
-                    }
-                } else if (!isST) {
-                    discard_fragment();
-                }
+                finalColor = max(old - finalColor, 0.0);
                 break;
             case 3:
-                if (!uniforms.hasTexture) {
-                    alpha = 0.25;
-                } else if (uniforms.pass == 1) {
-                    if (isST) {
-                        discard_fragment();
-                    }
-                } else {
-                    if (!isST) {
-                        discard_fragment();
-                    }
-                    alpha = 0.25;
-                }
+                finalColor = min(old + (finalColor / 4), 1.0);
                 break;
         }
     }
 
-    finalColor[3] = alpha;
+    finalColor[3] = 1.0;
 
     return finalColor;
+}
+
+kernel void rgba8_to_rgb5551(texture2d<float, access::sample> src [[texture(0)]],
+                             texture2d<ushort, access::write> dst [[texture(1)]],
+                             constant uint2 &dstOrigin [[buffer(0)]],
+                             uint2 gid [[thread_position_in_grid]]) {
+    float3 c = src.read(gid + dstOrigin).rgb;
+    ushort r = ushort(c.r * 31.0);
+    ushort g = ushort(c.g * 31.0);
+    ushort b = ushort(c.b * 31.0);
+    ushort a = (r | g | b) ? 1 : 0;
+    ushort packed = r | (g << 5) | (b << 10) | (a << 15);
+    dst.write(packed, dstOrigin + gid);
 }

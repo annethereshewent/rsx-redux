@@ -44,7 +44,7 @@ pub struct CPUTransferParams {
     pub height: u32,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct FillVramParams {
     pub start_x: u32,
     pub start_y: u32,
@@ -94,7 +94,7 @@ pub enum TexturePageColors {
     Bit15 = 2,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,
@@ -504,7 +504,7 @@ impl GPU {
         let mut texpage = Texpage::new();
 
         texpage.x_base = word & 0xf;
-        texpage.y_base1 = (word >> 4) & 0x1;
+        texpage.y_base1 = word & 0x10;
         texpage.semi_transparency = (word >> 5) & 0x3;
         texpage.texture_page_colors = match (word >> 7) & 0x3 {
             0 => TexturePageColors::Bit4,
@@ -535,7 +535,7 @@ impl GPU {
     fn push_polygon(&mut self) {
         let mut command_index = 0;
 
-        let mut texpage: Option<Texpage> = None;
+        let mut texpage = Some(self.texpage);
 
         let mut vertices: Vec<Vertex> = Vec::new();
 
@@ -673,6 +673,8 @@ impl GPU {
 
             u = word & 0xff;
             v = (word >> 8) & 0xff;
+
+            (self.clut_x, self.clut_y) = Self::parse_clut(word >> 16);
         }
 
         let (width, height) = match self.rectangle_size {
@@ -760,10 +762,10 @@ impl GPU {
     }
 
     fn texture_window(&mut self, word: u32) {
-        self.texture_window_mask_x = word & 0x1f;
-        self.texture_window_mask_y = (word >> 5) & 0x1f;
-        self.texture_window_offset_x = (word >> 10) & 0x1f;
-        self.texture_window_offset_y = (word >> 15) & 0x1f;
+        self.texture_window_mask_x = (word & 0x1f) * 8;
+        self.texture_window_mask_y = ((word >> 5) & 0x1f) * 8;
+        self.texture_window_offset_x = ((word >> 10) & 0x1f) * 8;
+        self.texture_window_offset_y = ((word >> 15) & 0x1f) * 8;
     }
 
     fn mask_bit(&mut self, word: u32) {
@@ -808,7 +810,7 @@ impl GPU {
         let dimensions = self.current_command_buffer.pop_front().unwrap();
 
         self.transfer_x = destination & 0x3ff;
-        self.transfer_y = (destination >> 16) & 0x1ff;
+        self.transfer_y = (destination >> 16) & 0x3ff;
 
         self.transfer_width = dimensions & 0x3ff;
         self.transfer_height = (dimensions >> 16) & 0x1ff;
@@ -835,11 +837,15 @@ impl GPU {
     fn fill_vram(&mut self) {
         let color = self.current_command_buffer.pop_front().unwrap();
 
-        let r = (color & 0xff) >> 3;
-        let g = ((color >> 8) & 0xff) >> 3;
-        let b = ((color >> 16) & 0xff) >> 3;
+        let mut r = color & 0xff;
+        let mut g = (color >> 8) & 0xff;
+        let mut b = (color >> 16) & 0xff;
 
-        let pixel = r as u16 | (g as u16) << 5 | (b as u16) << 5;
+        r = r >> 3;
+        g = g >> 3;
+        b = b >> 3;
+
+        let pixel = r as u16 | (g as u16) << 5 | (b as u16) << 10;
 
         let destination = self.current_command_buffer.pop_front().unwrap();
         let dimensions = self.current_command_buffer.pop_front().unwrap();
