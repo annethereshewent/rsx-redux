@@ -4,8 +4,8 @@ use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
 use objc2_foundation::NSString;
 use objc2_metal::{
-    MTLBuffer, MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
-    MTLCompareFunction, MTLComputeCommandEncoder, MTLComputePipelineState,
+    MTLBlitCommandEncoder, MTLBuffer, MTLClearColor, MTLCommandBuffer, MTLCommandEncoder,
+    MTLCommandQueue, MTLCompareFunction, MTLComputeCommandEncoder, MTLComputePipelineState,
     MTLCreateSystemDefaultDevice, MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState,
     MTLDevice, MTLLibrary, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion,
     MTLRenderCommandEncoder, MTLRenderPassDescriptor, MTLRenderPipelineDescriptor,
@@ -599,6 +599,97 @@ impl Renderer {
                 }
                 GPUCommand::VRAMtoCPU(params) => {
                     gpu.transfer_params = Some(params);
+                }
+                GPUCommand::VramToVram(params) => {
+                    let texture_descriptor = unsafe {
+                        MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                            MTLPixelFormat::RGBA8Unorm,
+                            params.width as usize,
+                            params.height as usize,
+                            false,
+                        )
+                    };
+
+                    texture_descriptor.setStorageMode(MTLStorageMode::Shared);
+                    texture_descriptor
+                        .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+
+                    let read_texture = self
+                        .device
+                        .newTextureWithDescriptor(&texture_descriptor)
+                        .unwrap();
+                    let write_texture = self
+                        .device
+                        .newTextureWithDescriptor(&texture_descriptor)
+                        .unwrap();
+
+                    let command_buffer = self.command_queue.commandBuffer().unwrap();
+                    let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
+
+                    let origin = MTLOrigin {
+                        x: params.source_start_x as usize,
+                        y: params.source_start_y as usize,
+                        z: 0,
+                    };
+                    let start_origin = MTLOrigin { x: 0, y: 0, z: 0 };
+                    let size = MTLSize {
+                        width: params.width as usize,
+                        height: params.height as usize,
+                        depth: 1,
+                    };
+
+                    unsafe {
+                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                            self.vram_write.as_ref().unwrap(),
+                            0,
+                            0,
+                            origin,
+                            size,
+                            &write_texture,
+                            0,
+                            0,
+                            start_origin
+                        );
+
+                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                            &write_texture,
+                            0,
+                            0,
+                            start_origin,
+                            size,
+                            self.vram_write.as_ref().unwrap(),
+                            0,
+                            0,
+                            origin
+                        );
+
+                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                            self.vram_read.as_ref().unwrap(),
+                            0,
+                            0,
+                            origin,
+                            size,
+                            &read_texture,
+                            0,
+                            0,
+                            start_origin
+                        );
+
+                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                            &read_texture,
+                            0,
+                            0,
+                            start_origin,
+                            size,
+                            self.vram_read.as_ref().unwrap(),
+                            0,
+                            0,
+                            origin
+                        );
+                    }
+
+                    blit_encoder.endEncoding();
+                    command_buffer.commit();
                 }
                 GPUCommand::FillVRAM(params) => {
                     let mut halfwords: Vec<u16> = Vec::new();

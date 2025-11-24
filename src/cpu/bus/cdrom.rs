@@ -12,7 +12,8 @@ pub mod registers;
 
 // TODO: use actual numbers instead of these placeholder values lmao
 pub const CDROM_CYCLES: usize = 768;
-pub const BYTES_PER_SECTOR: usize = 2352; // this one is verified to be a legit number per the CDROM standards
+pub const BYTES_PER_SECTOR: usize = 2352;
+// this one is verified to be a legit number per the CDROM standards
 pub const CD_READ_CYCLES: usize = 451584;
 
 #[derive(Debug, PartialEq)]

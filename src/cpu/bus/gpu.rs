@@ -25,6 +25,17 @@ pub enum GPUCommand {
     CPUtoVram(VRamTransferParams),
     VRAMtoCPU(CPUTransferParams),
     FillVRAM(FillVramParams),
+    VramToVram(VramToVramTransferParams),
+}
+
+#[derive(Copy, Clone)]
+pub struct VramToVramTransferParams {
+    pub source_start_x: u32,
+    pub source_start_y: u32,
+    pub destination_start_x: u32,
+    pub destination_start_y: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(Clone)]
@@ -832,7 +843,32 @@ impl GPU {
     }
 
     fn vram_to_vram_transfer(&mut self) {
-        todo!("vram to vram");
+        self.current_command_buffer.pop_front().unwrap();
+
+        let source = self.current_command_buffer.pop_front().unwrap();
+        let destination = self.current_command_buffer.pop_front().unwrap();
+        let dimensions = self.current_command_buffer.pop_front().unwrap();
+
+        let source_start_x = source & 0x3ff;
+        let source_start_y = (source >> 16) & 0x1ff;
+
+        let destination_start_x = destination & 0x3ff;
+        let destination_start_y = (destination >> 16) & 0x1ff;
+
+        let width = dimensions & 0x3ff;
+        let height = (dimensions >> 16) & 0x1ff;
+
+        self.gpu_commands
+            .push(GPUCommand::VramToVram(VramToVramTransferParams {
+                source_start_x,
+                source_start_y,
+                destination_start_x,
+                destination_start_y,
+                width,
+                height,
+            }));
+
+        self.commands_ready = true;
     }
 
     pub fn cross_product(v: &[Vertex]) -> i32 {
