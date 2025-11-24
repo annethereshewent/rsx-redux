@@ -8,11 +8,6 @@ use memmap2::Mmap;
 use objc2_core_foundation::CGSize;
 use rsx_redux::cpu::CPU;
 
-#[cfg(feature = "new_spu")]
-use rsx_redux::cpu::bus::spu::NUM_SAMPLES;
-#[cfg(feature = "old_spu")]
-use rsx_redux::cpu::bus::spu_legacy::NUM_SAMPLES;
-
 pub mod frontend;
 pub mod renderer;
 
@@ -41,12 +36,10 @@ fn main() {
 
     let mut frontend = Frontend::new(&cpu.bus.gpu);
 
-    unsafe {
-        frontend.renderer.metal_layer.setDrawableSize(CGSize::new(
-            cpu.bus.gpu.display_width as f64,
-            cpu.bus.gpu.display_height as f64,
-        ));
-    }
+    frontend.renderer.metal_layer.setDrawableSize(CGSize::new(
+        cpu.bus.gpu.display_width as f64,
+        cpu.bus.gpu.display_height as f64,
+    ));
 
     loop {
         while !cpu.bus.gpu.frame_finished {
