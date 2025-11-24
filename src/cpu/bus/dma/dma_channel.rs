@@ -16,7 +16,7 @@ use super::{
     dma_interrupt_register::DmaInterruptRegister,
 };
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct DmaChannel {
     pub base_address: u32,
     pub block_size: u32,
@@ -68,6 +68,7 @@ impl DmaChannel {
     }
 }
 
+#[derive(Default)]
 pub struct Dma {
     channels: [DmaChannel; 7],
     pub dma_control: DmaControlRegister,

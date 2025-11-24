@@ -54,6 +54,12 @@ pub struct Bus {
     pub peripherals: Peripherals,
 }
 
+impl Default for Bus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Bus {
     pub fn new() -> Self {
         let mut scheduler = Scheduler::new();

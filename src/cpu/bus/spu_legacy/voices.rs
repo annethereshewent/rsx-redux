@@ -55,7 +55,7 @@ pub const GAUSS_TABLE: [i32; 512] = [
 pub const POS_ADPCM_TABLE: [i32; 5] = [0, 60, 115, 98, 122];
 pub const NEG_ADPCM_TABLE: [i32; 5] = [0, 0, -52, -55, -60];
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Voice {
     volume_left: i16,
     volume_right: i16,

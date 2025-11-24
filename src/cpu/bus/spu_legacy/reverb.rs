@@ -2,6 +2,7 @@ use std::cmp;
 
 use super::{SPU, SoundRam};
 
+#[derive(Default)]
 pub struct Reverb {
     pub mbase: u32,
     dapf1: u32,

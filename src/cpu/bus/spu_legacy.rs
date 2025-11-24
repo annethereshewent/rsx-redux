@@ -22,6 +22,7 @@ pub const NUM_SAMPLES: usize = 32768;
 
 const SPU_CYCLES: usize = 768;
 
+#[derive(Default)]
 pub struct SoundRam {
     data: Box<[u8]>,
     pub irq_address: u32,
@@ -55,6 +56,7 @@ impl SoundRam {
     }
 }
 
+#[derive(Default)]
 struct DataTransfer {
     control: u16,
     transfer_address: u32,
@@ -73,6 +75,7 @@ impl DataTransfer {
     }
 }
 
+#[derive(Default)]
 pub struct SPU {
     pub previous_value: i16,
     voices: [Voice; 24],

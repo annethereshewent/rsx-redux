@@ -66,6 +66,12 @@ pub struct Gte {
     lzcr: i32,
 }
 
+impl Default for Gte {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Gte {
     pub fn new() -> Self {
         Self {

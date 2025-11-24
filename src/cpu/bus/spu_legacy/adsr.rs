@@ -34,6 +34,12 @@ pub struct Adsr {
     pub cycles: i32,
 }
 
+impl Default for Adsr {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Adsr {
     pub fn new() -> Self {
         Self {

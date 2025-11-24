@@ -46,6 +46,12 @@ pub struct COP0 {
     pub bad_addr: u32,
 }
 
+impl Default for COP0 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 bitflags! {
     pub struct StatusRegister: u32 {
         const IEC = 1 << 0;

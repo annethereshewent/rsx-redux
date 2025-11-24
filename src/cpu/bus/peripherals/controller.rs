@@ -1,3 +1,4 @@
+#[derive(Default)]
 pub struct Controller {
     state: usize,
     digital_mode: bool,

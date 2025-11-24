@@ -30,6 +30,12 @@ pub struct Scheduler {
     pub queue: PriorityQueue<EventType, Reverse<usize>>,
 }
 
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Scheduler {
     pub fn new() -> Self {
         Self {

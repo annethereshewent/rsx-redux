@@ -167,6 +167,12 @@ impl Texpage {
     }
 }
 
+impl Default for Texpage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct GPU {
     pub frame_finished: bool,
     pub current_line: usize,

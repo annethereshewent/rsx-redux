@@ -15,6 +15,7 @@ pub enum WideDma {
     Normal = 0,
     Override = 1,
 }
+
 pub struct DelayRegister {
     pub write_delay: u32,
     pub read_delay: u32,
@@ -32,6 +33,12 @@ pub struct DelayRegister {
     pub wide_dma: WideDma,
     pub wait: bool,
     pub dma_timing_override: u32,
+}
+
+impl Default for DelayRegister {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DelayRegister {

@@ -6,6 +6,7 @@ pub enum RamTransferMode {
     DmaRead,
 }
 
+#[derive(Default)]
 pub struct SpuControlRegister {
     val: u16,
 }

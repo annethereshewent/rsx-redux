@@ -8,7 +8,7 @@ pub enum SyncMode {
 }
 
 bitflags! {
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Default)]
     pub struct DmaChannelControlRegister: u32 {
         const TRANSFER_DIR = 1;
         const DECREMENT = 1 << 1;

@@ -13,6 +13,7 @@ use bitflags::bitflags;
   10    IRQ10 Controller - Lightpen Interrupt. Also shared by PIO and DTL cards.
 */
 bitflags! {
+    #[derive(Default)]
     pub struct InterruptRegister: u32 {
         const VBLANK = 1 << 0;
         const GPU = 1 << 1;

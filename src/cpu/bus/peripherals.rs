@@ -39,6 +39,12 @@ pub struct Peripherals {
     pub controller: Controller,
 }
 
+impl Default for Peripherals {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Peripherals {
     pub fn new() -> Self {
         Self {
