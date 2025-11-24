@@ -10,7 +10,14 @@ use spu::SPU;
 use spu_legacy::SPU;
 use timer::Timer;
 
-use crate::cpu::bus::peripherals::Peripherals;
+use crate::cpu::bus::{
+    dma::{
+        dma_channel::{DMA_CDROM, DMA_GPU, DMA_MDEC_IN, DMA_MDEC_OUT, DMA_OTC, DMA_PIO, DMA_SPU},
+        dma_channel_control_register::SyncMode,
+    },
+    peripherals::Peripherals,
+    scheduler::EventType,
+};
 
 pub mod cdrom;
 pub mod dma;
@@ -238,17 +245,7 @@ impl Bus {
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
             }
             0x1f801074 => self.interrupt_mask = InterruptRegister::from_bits_truncate(value),
-            0x1f801080..=0x1f8010f4 => self.dma.write_registers(
-                address,
-                value,
-                &mut self.scheduler,
-                &mut self.main_ram,
-                &mut self.gpu,
-                &mut self.spu,
-                &mut self.cdrom,
-                &mut self.mdec,
-                &mut self.interrupt_stat,
-            ),
+            0x1f801080..=0x1f8010f4 => self.write_dma_registers(address, value),
             0x1f801114 => self.timers[1].write_counter_register(value as u16),
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.process_gp0_commands(value),
@@ -259,6 +256,59 @@ impl Bus {
                 self.cache_config &= !((1 << 6) | (1 << 10));
             }
             _ => todo!("(mem_write32) address: 0x{:x}", address),
+        }
+    }
+
+    fn write_dma_registers(&mut self, address: usize, value: u32) {
+        // write_registers returns true if a dma transfer is started
+        if self.dma.write_registers(address, value) {
+            // start dma transfer
+            let channel = (address - 0x1f801080) / 0x10;
+
+            let dma_channel = &mut self.dma.channels[channel];
+
+            let mut num_words = dma_channel.get_num_words();
+
+            let clocks = match channel {
+                0 | 1 | 2 | 6 => 1,
+                3 => 24,
+                4 => 4,
+                5 => 20,
+                _ => panic!("Unknown DMA channel"),
+            };
+
+            match channel {
+                DMA_MDEC_IN => {
+                    dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec)
+                }
+                DMA_MDEC_OUT => dma_channel.start_mdec_out_transfer(),
+                DMA_GPU => match dma_channel.control.sync_mode() {
+                    SyncMode::LinkedList => {
+                        num_words =
+                            dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu)
+                    }
+                    SyncMode::Burst | SyncMode::Slice => {
+                        dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu);
+                    }
+                },
+                DMA_CDROM => dma_channel.start_cdrom_transfer(&mut self.main_ram, &mut self.cdrom),
+                DMA_SPU => dma_channel.start_spu_transfer(&mut self.main_ram, &mut self.spu),
+                DMA_PIO => dma_channel.start_pio_transfer(),
+                DMA_OTC => {
+                    dma_channel.start_otc_transfer(&mut self.main_ram)
+                }
+                _ => todo!("dma transfer for channel {channel}"),
+            }
+
+            // only OTC finishes the transfer immediately
+            if channel != DMA_OTC {
+                self.scheduler.schedule(
+                    EventType::DmaFinished(channel),
+                    (num_words * clocks) as usize,
+                );
+            } else {
+                self.dma.finish_transfer(channel, &mut self.interrupt_stat);
+            }
         }
     }
 
