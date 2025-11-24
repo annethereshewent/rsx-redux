@@ -436,7 +436,7 @@ impl CDRom {
         match self.command {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
-            0x6 => self.cd_read_command(scheduler),
+            0x6 | 0x1b => self.cd_read_command(scheduler),
             0x9 => self.pause(scheduler),
             0xa => self.init(scheduler),
             0xb | 0xc => self.stat(),
