@@ -14,7 +14,7 @@ use objc2_metal::{
     MTLTextureUsage, MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
-use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPUCommand, Polygon, TexturePageColors, GPU};
+use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors};
 use std::cmp;
 
 use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
@@ -342,7 +342,10 @@ impl Renderer {
         device.newDepthStencilStateWithDescriptor(&ds).unwrap()
     }
 
-    fn setup_encoder(gpu: &GPU, encoder_ref: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>) {
+    fn setup_encoder(
+        gpu: &GPU,
+        encoder_ref: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>,
+    ) {
         encoder_ref.setCullMode(MTLCullMode::None);
         encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
 
@@ -384,7 +387,7 @@ impl Renderer {
             depth,
             transparent_mode: polygon.transparent_mode,
             pass: 1,
-            page: [0; 2]
+            page: [0; 2],
         };
 
         let cross_product = GPU::cross_product(&polygon.vertices);

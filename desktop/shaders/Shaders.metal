@@ -55,15 +55,13 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    float a = float((texel >> 15) & 1);
+    float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
-        a = -1.0;
+        a = -31.0;
     }
 
-    float3 color = float3(r, g, b) / 31.0;
-
-    return float4(color, a);
+    return float4(r, g, b, a) / 31.0;
 }
 
 float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
@@ -89,15 +87,13 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    float a = float((texel >> 15) & 1);
+    float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
-        a = -1.0;
+        a = -31.0;
     }
 
-    float3 color = float3(r, g, b) / 31.0;
-
-    return float4(color, a);
+    return float4(r, g, b, a) / 31.0;
 }
 
 float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
@@ -117,15 +113,13 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint g = (texel >> 5) & 0x1f;
     uint b = (texel >> 10) & 0x1f;
 
-    float a = float((texel >> 15) & 1);
+    float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
-        a = -1.0;
+        a = -31.0;
     }
 
-    float3 color = float3(r, g, b) / 31.0;
-
-    return float4(color, a);
+    return float4(r, g, b, a) / 31.0;
 }
 
 // Fragment
