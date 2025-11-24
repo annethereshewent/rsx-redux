@@ -55,7 +55,7 @@ pub const GAUSS_TABLE: [i32; 512] = [
 pub const POS_ADPCM_TABLE: [i32; 5] = [0, 60, 115, 98, 122];
 pub const NEG_ADPCM_TABLE: [i32; 5] = [0, 0, -52, -55, -60];
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Voice {
     volume_left: i16,
     volume_right: i16,
@@ -133,7 +133,7 @@ impl Voice {
     pub fn get_samples(&mut self, noise_level: i16) -> (f32, f32) {
         self.adsr.tick();
 
-        let sample_index = (self.counter >> 12) as usize;
+        let sample_index = self.counter >> 12;
 
         let mut sample = if self.noise {
             SPU::to_f32(noise_level)
@@ -168,7 +168,7 @@ impl Voice {
 
         self.counter += step as usize;
 
-        let sample_index = (self.counter >> 12) as usize;
+        let sample_index = self.counter >> 12;
 
         if sample_index >= MAX_SAMPLES {
             let new_index = sample_index - MAX_SAMPLES;
@@ -177,11 +177,7 @@ impl Voice {
             self.counter &= 0xfff;
             self.counter |= new_index << 12;
 
-            let mut j = 0;
-            for i in 24..28 {
-                self.last_samples[j] = self.samples[i];
-                j += 1;
-            }
+            self.last_samples[0..4].copy_from_slice(&self.samples[24..28]);
 
             self.decode_samples(sound_ram);
         }
@@ -230,11 +226,7 @@ impl Voice {
 
                 sample += filter;
 
-                if sample > 0x7fff {
-                    sample = 0x7fff;
-                } else if sample < -0x8000 {
-                    sample = -0x8000;
-                }
+                sample = sample.clamp(-0x8000, 0x7fff);
 
                 self.samples[i * 4 + j] = sample as i16;
                 self.previous_samples[1] = self.previous_samples[0];
@@ -263,7 +255,7 @@ impl Voice {
         let older = self.get_sample(sample_index - 2) as i32;
         let oldest = self.get_sample(sample_index - 3) as i32;
 
-        let gauss_index = ((self.counter >> 4) & 0xff) as usize;
+        let gauss_index = (self.counter >> 4) & 0xff;
 
         // per https://psx-spx.consoledev.net/soundprocessingunitspu/#4-point-gaussian-interpolation
         let mut out = (GAUSS_TABLE[0xff - gauss_index] * oldest) >> 15;

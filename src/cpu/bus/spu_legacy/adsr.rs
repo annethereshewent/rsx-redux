@@ -31,7 +31,13 @@ pub struct Adsr {
     pub release_direction: AdsrDirection,
     pub endx: bool,
     pub state: AdsrState,
-    pub cycles: u32,
+    pub cycles: i32,
+}
+
+impl Default for Adsr {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Adsr {
@@ -76,7 +82,7 @@ impl Adsr {
                 direction = AdsrDirection::Increasing;
                 target = 0x7fff;
                 next = AdsrState::Decay;
-                step = self.attack_step() as i32;
+                step = self.attack_step();
             }
             AdsrState::Decay => {
                 shift = self.decay_shift() as i32;
@@ -114,7 +120,7 @@ impl Adsr {
         }
 
         let mut cycles = 1 << cycle_shift;
-        step = step << step_shift;
+        step <<= step_shift;
 
         if mode == AdsrMode::Exponential {
             if direction == AdsrDirection::Increasing {
@@ -131,12 +137,7 @@ impl Adsr {
 
             let mut new_volume = (self.current_volume as i32) + step;
 
-            if new_volume > 0x7fff {
-                new_volume = 0x7fff;
-            }
-            if new_volume < 0 {
-                new_volume = 0;
-            }
+            new_volume = new_volume.clamp(0, 0x7fff);
 
             self.current_volume = new_volume as i16;
 

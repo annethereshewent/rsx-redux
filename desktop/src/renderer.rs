@@ -137,25 +137,22 @@ impl Renderer {
                 .objectAtIndexedSubscript(0)
         };
 
-        // color_attachment.setPixelFormat(MTLPixelFormat::BGRA8Unorm);
-        unsafe {
-            color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
-            color_attachment.setBlendingEnabled(false);
-            color_attachment.setRgbBlendOperation(objc2_metal::MTLBlendOperation::Add);
-            color_attachment.setAlphaBlendOperation(objc2_metal::MTLBlendOperation::Add);
-            // straight (non‑premultiplied) alpha
-            color_attachment.setSourceRGBBlendFactor(objc2_metal::MTLBlendFactor::SourceAlpha);
-            color_attachment
-                .setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
-            color_attachment.setSourceAlphaBlendFactor(objc2_metal::MTLBlendFactor::One);
-            color_attachment
-                .setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+        color_attachment.setPixelFormat(MTLPixelFormat::RGBA8Unorm);
+        color_attachment.setBlendingEnabled(false);
+        color_attachment.setRgbBlendOperation(objc2_metal::MTLBlendOperation::Add);
+        color_attachment.setAlphaBlendOperation(objc2_metal::MTLBlendOperation::Add);
+        // straight (non‑premultiplied) alpha
+        color_attachment.setSourceRGBBlendFactor(objc2_metal::MTLBlendFactor::SourceAlpha);
+        color_attachment
+            .setDestinationRGBBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
+        color_attachment.setSourceAlphaBlendFactor(objc2_metal::MTLBlendFactor::One);
+        color_attachment
+            .setDestinationAlphaBlendFactor(objc2_metal::MTLBlendFactor::OneMinusSourceAlpha);
 
-            fb_color_attachment.setPixelFormat(metal_layer.pixelFormat());
-            fb_color_attachment.setBlendingEnabled(false);
-        }
+        fb_color_attachment.setPixelFormat(metal_layer.pixelFormat());
+        fb_color_attachment.setBlendingEnabled(false);
 
-        let vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
+        let vertex_descriptor = MTLVertexDescriptor::new();
 
         let attributes = vertex_descriptor.attributes();
 
@@ -197,7 +194,7 @@ impl Renderer {
 
         unsafe { layout.setStride((std::mem::size_of::<MetalVertex>()) as usize) };
 
-        let fb_vertex_descriptor = unsafe { MTLVertexDescriptor::new() };
+        let fb_vertex_descriptor = MTLVertexDescriptor::new();
 
         let fb_attributes = fb_vertex_descriptor.attributes();
 
@@ -234,7 +231,7 @@ impl Renderer {
             .newComputePipelineStateWithFunction_error(&compute_function)
             .unwrap();
 
-        unsafe { metal_layer.setDevice(Some(&device)) };
+        metal_layer.setDevice(Some(&device));
 
         let command_queue = device.newCommandQueue().unwrap();
 
@@ -254,7 +251,7 @@ impl Renderer {
         let vram_read = Self::create_texture(&device, true);
         let vram_write = Self::create_texture(&device, false);
 
-        let rpd = unsafe { MTLRenderPassDescriptor::new() };
+        let rpd = MTLRenderPassDescriptor::new();
         let command_buffer = command_queue.commandBuffer();
 
         let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
@@ -325,11 +322,11 @@ impl Renderer {
         cmp: MTLCompareFunction,
         pass_op: MTLStencilOperation,
     ) -> Retained<ProtocolObject<dyn MTLDepthStencilState>> {
-        let ds = unsafe { MTLDepthStencilDescriptor::new() };
+        let ds = MTLDepthStencilDescriptor::new();
         ds.setDepthCompareFunction(MTLCompareFunction::Always);
         ds.setDepthWriteEnabled(false);
 
-        let front = unsafe { MTLStencilDescriptor::new() };
+        let front = MTLStencilDescriptor::new();
         front.setStencilCompareFunction(cmp);
         front.setReadMask(0xFF);
         front.setWriteMask(0xFF);
@@ -513,7 +510,7 @@ impl Renderer {
     }
 
     fn create_encoder(&mut self) {
-        let rpd = unsafe { MTLRenderPassDescriptor::new() };
+        let rpd = MTLRenderPassDescriptor::new();
         self.command_buffer = self.command_queue.commandBuffer();
 
         let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
@@ -793,10 +790,6 @@ impl Renderer {
             }
 
             command_buffer.commit();
-            unsafe {
-                command_buffer.waitUntilScheduled();
-                command_buffer.waitUntilCompleted();
-            }
 
             self.create_encoder();
 
@@ -807,7 +800,7 @@ impl Renderer {
     }
 
     pub fn present(&mut self, gpu: &mut GPU) {
-        let drawable = unsafe { self.metal_layer.nextDrawable() };
+        let drawable = self.metal_layer.nextDrawable();
 
         if let (Some(encoder), Some(command_buffer)) =
             (&mut self.encoder.take(), &mut self.command_buffer.take())
@@ -817,7 +810,7 @@ impl Renderer {
         }
 
         if let Some(drawable) = &drawable {
-            let rpd = unsafe { MTLRenderPassDescriptor::new() };
+            let rpd = MTLRenderPassDescriptor::new();
 
             self.command_buffer = self.command_queue.commandBuffer();
 
@@ -832,9 +825,7 @@ impl Renderer {
                 blue: 0.0,
                 alpha: 1.0,
             });
-            unsafe {
-                color_attachment.setTexture(Some(&drawable.texture()));
-            }
+            color_attachment.setTexture(Some(&drawable.texture()));
 
             if let Some(command_buffer) = &self.command_buffer {
                 if let Some(draw_encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd)
@@ -848,12 +839,11 @@ impl Renderer {
 
                         gpu.resolution_changed = false;
 
-                        unsafe {
-                            self.metal_layer.setDrawableSize(CGSize::new(
-                                gpu.display_width as f64,
-                                gpu.display_height as f64,
-                            ));
-                        }
+                        self.metal_layer.setDrawableSize(CGSize::new(
+                            gpu.display_width as f64,
+                            gpu.display_height as f64,
+                        ));
+
                         self.vertices = Self::get_vertices(gpu.display_width, gpu.display_height);
 
                         self.buffer = unsafe {

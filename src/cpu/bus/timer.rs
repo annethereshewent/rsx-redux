@@ -138,19 +138,17 @@ impl Timer {
                 self.counter += cycles as u32;
 
                 self.check_overflow_or_target(previous_counter, interrupt_stat);
-            } else {
-                if let Some(prescalar_cycles) = &mut self.prescalar_cycles {
-                    *prescalar_cycles -= cycles as isize;
+            } else if let Some(prescalar_cycles) = &mut self.prescalar_cycles {
+                *prescalar_cycles -= cycles as isize;
 
-                    if *prescalar_cycles <= 0 {
-                        let previous_counter = self.counter;
-                        let cycles_left = *prescalar_cycles;
-                        self.counter += 1;
+                if *prescalar_cycles <= 0 {
+                    let previous_counter = self.counter;
+                    let cycles_left = *prescalar_cycles;
+                    self.counter += 1;
 
-                        self.update_prescalar(cycles_left);
+                    self.update_prescalar(cycles_left);
 
-                        self.check_overflow_or_target(previous_counter, interrupt_stat);
-                    }
+                    self.check_overflow_or_target(previous_counter, interrupt_stat);
                 }
             }
         }
@@ -193,7 +191,7 @@ impl Timer {
         let current_cycles = self.counter;
 
         if current_cycles >= 0xffff {
-            self.counter = current_cycles as u32 - 0xffff;
+            self.counter = current_cycles - 0xffff;
 
             self.counter_register
                 .insert(CounterModeRegister::REACHED_FFFF);
@@ -211,7 +209,7 @@ impl Timer {
                 .counter_register
                 .contains(CounterModeRegister::RESET_COUNTER)
             {
-                self.counter = current_cycles as u32 - self.counter_target as u32;
+                self.counter = current_cycles - self.counter_target as u32;
             }
 
             self.counter_register

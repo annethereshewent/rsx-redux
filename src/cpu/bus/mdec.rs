@@ -13,6 +13,12 @@ pub struct Mdec {
     with_color: bool,
 }
 
+impl Default for Mdec {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Mdec {
     pub fn new() -> Self {
         Self {

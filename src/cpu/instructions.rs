@@ -681,7 +681,7 @@ impl CPU {
             self.lo = (dividend / divisor) as u32;
             self.hi = (dividend % divisor) as u32;
         } else {
-            self.lo = if dividend >= 0 { -1 as i32 as u32 } else { 1 };
+            self.lo = if dividend >= 0 { -1_i32 as u32 } else { 1 };
             self.hi = dividend as u32;
         }
 
@@ -695,8 +695,8 @@ impl CPU {
         let divisor = self.r[instruction.rt()];
 
         if divisor != 0 {
-            self.lo = (dividend / divisor) as u32;
-            self.hi = (dividend % divisor) as u32;
+            self.lo = dividend / divisor;
+            self.hi = dividend % divisor;
         } else {
             self.lo = 0xffff_ffff;
             self.hi = dividend;

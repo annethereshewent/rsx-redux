@@ -109,7 +109,7 @@ impl CPU {
             0x39 => "SWC1",
             0x3a => "SWC2",
             0x3b => "SWC3",
-            _ => panic!("invalid value given to disassembler: 0x{:x}", upper),
+            _ => panic!("invalid value given to disassembler: 0x{upper:x}"),
         };
 
         let taken_str = format!("(Taken? {})", if taken { "Yes ✅" } else { "No ❌" });
@@ -220,11 +220,11 @@ impl CPU {
         let processor_number = (instruction >> 26) & 0x3;
         match upper_cop0 {
             0x4 => match mid {
-                0x0 => return format!("MFC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
-                0x2 => return format!("CFC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
-                0x4 => return format!("MTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
-                0x6 => return format!("CTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
-                0x10 => return "RFE".to_string(),
+                0x0 => format!("MFC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
+                0x2 => format!("CFC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
+                0x4 => format!("MTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
+                0x6 => format!("CTC{} r{}, r{}", processor_number, instr.rt(), instr.rd()),
+                0x10 => "RFE".to_string(),
                 _ => format!("GTE 0x{:x}", instr.cop2_command()),
             },
             0xc => format!(
@@ -241,10 +241,7 @@ impl CPU {
                 instr.rs(),
                 instr.immediate16()
             ),
-            _ => panic!(
-                "invalid option for cop instruction given: 0x{:x}",
-                upper_cop0
-            ),
+            _ => panic!("invalid option for cop instruction given: 0x{upper_cop0:x}"),
         }
     }
 }

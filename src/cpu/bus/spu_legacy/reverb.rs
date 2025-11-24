@@ -2,6 +2,7 @@ use std::cmp;
 
 use super::{SPU, SoundRam};
 
+#[derive(Default)]
 pub struct Reverb {
     pub mbase: u32,
     dapf1: u32,
@@ -237,7 +238,7 @@ impl Reverb {
             0x1f80_1dfa => self.mrapf2 = (val as u32) * 8,
             0x1f80_1dfc => self.vlin = val as i16,
             0x1f80_1dfe => self.vrin = val as i16,
-            _ => panic!("write to unhandled SPU address: {:X}", address),
+            _ => panic!("write to unhandled SPU address: {address:X}"),
         }
     }
 
