@@ -9,8 +9,6 @@ use cop0::{COP0, CauseRegister, StatusRegister};
 use gte::Gte;
 use instructions::Instruction;
 
-use crate::cpu::bus::timer::ClockSource;
-
 pub mod bus;
 pub mod cop0;
 pub mod disassembler;
@@ -254,26 +252,6 @@ impl CPU {
         }
     }
 
-    pub fn tick(&mut self, cycles: usize) {
-        // Note: This emulator generally uses a scheduler based system to schedule events
-        // Except for timers. Most components like GPU, DMA, controllers, etc. are deterministic enough
-        // That using a scheduler works without any problem, but timers have way too many gotchas and edge cases,
-        // like pausing the timer at certain points and updating the counter value. Using a scheduler would just
-        // add a lot of overhead, so timers are the only exception and we tick those manually.
-        for i in 0..self.bus.timers.len() {
-            let timer = &mut self.bus.timers[i];
-
-            if timer.is_active
-                && [ClockSource::SystemClock, ClockSource::SystemClockDiv8]
-                    .contains(&timer.clock_source)
-            {
-                timer.tick(cycles, &mut self.bus.interrupt_stat);
-            }
-        }
-
-        self.bus.scheduler.tick(cycles);
-    }
-
     fn handle_interrupts(&mut self) {
         let interrupts = self.bus.interrupt_mask.bits() & self.bus.interrupt_stat.bits();
 
@@ -455,7 +433,7 @@ impl CPU {
 
         let cycles = self.decode_opcode(opcode);
 
-        self.tick(cycles);
+        self.bus.tick(cycles);
 
         self.handle_events();
 

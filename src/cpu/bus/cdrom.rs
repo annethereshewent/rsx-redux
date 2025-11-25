@@ -628,6 +628,10 @@ impl CDRom {
     }
 
     fn read_audio(&mut self, spu: &mut SPU) {
+        if self.subheader.coding_info.bits_per_sample == BitsPerSample::EightBits {
+            todo!("8 bit audio not supported");
+        }
+
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer() + 24;
 
@@ -945,18 +949,6 @@ impl CDRom {
 
     pub fn write(&mut self, address: usize, value: u8) {
         match address {
-            0x1f801803 => match self.bank {
-                0 => {
-                    if (value >> 7) & 1 == 1 {
-                        self.reading_buffer = true;
-                    } else {
-                        self.buffer_index = 0;
-                    }
-                }
-                1 => self.write_control(value),
-                2 | 3 => (), // TODO: SPU CD Audio stuff
-                _ => todo!("bank = {}", self.bank),
-            },
             0x1f801801 => match self.bank {
                 0 => self.command_latch = Some(value),
                 2 | 3 => (), // TODO: SPU CD Audio stuff
@@ -965,6 +957,20 @@ impl CDRom {
             0x1f801802 => match self.bank {
                 0 => self.parameter_fifo.push_back(value),
                 1 => self.hntmask.write(value),
+                2 | 3 => (), // TODO: SPU CD Audio stuff
+                _ => todo!("bank = {}", self.bank),
+            },
+            0x1f801803 => match self.bank {
+                0 => {
+                    if (value >> 7) & 1 == 0 {
+                        println!("disabling data transfer");
+                        self.buffer_index = 0x930;
+                    } else if self.output_buffer_empty() {
+                        println!("output buffer is empty, resetting buffer index to 0");
+                        self.buffer_index = 0;
+                    }
+                }
+                1 => self.write_control(value),
                 2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank),
             },

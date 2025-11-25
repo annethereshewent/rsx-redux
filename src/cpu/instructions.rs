@@ -646,7 +646,7 @@ impl CPU {
     }
 
     pub fn mult(&mut self, instruction: Instruction) -> usize {
-        self.tick(1);
+        self.bus.tick(1);
 
         let result =
             self.r[instruction.rs()] as i32 as i64 * self.r[instruction.rt()] as i32 as i64;
@@ -658,7 +658,7 @@ impl CPU {
     }
 
     pub fn multu(&mut self, instruction: Instruction) -> usize {
-        self.tick(1);
+        self.bus.tick(1);
 
         let result = self.r[instruction.rs()] as u64 * self.r[instruction.rt()] as u64;
 
@@ -669,7 +669,7 @@ impl CPU {
     }
 
     pub fn div(&mut self, instruction: Instruction) -> usize {
-        self.tick(1);
+        self.bus.tick(1);
 
         let dividend = self.r[instruction.rs()] as i32;
         let divisor = self.r[instruction.rt()] as i32;
@@ -689,7 +689,7 @@ impl CPU {
     }
 
     pub fn divu(&mut self, instruction: Instruction) -> usize {
-        self.tick(1);
+        self.bus.tick(1);
 
         let dividend = self.r[instruction.rs()];
         let divisor = self.r[instruction.rt()];
