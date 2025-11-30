@@ -228,10 +228,31 @@ impl Msf {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum ControllerStatus {
+#[derive(Copy, Clone, PartialEq)]
+enum ControllerMode {
     Idle,
-    Busy,
+    ExecuteCommand,
+    LatchInterrupts,
+    TransferCommand,
+    TransferParams,
+    ClearResponseFifo,
+    TransferResponse
+}
+
+#[derive(Copy, Clone, PartialEq)]
+enum DriveMode {
+    Idle,
+    Seek,
+    Stat,
+    Play,
+    Read,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+enum SubresponseMode {
+    Disabled,
+    GetId,
+    GetStat,
 }
 
 pub struct CDRom {
@@ -243,7 +264,9 @@ pub struct CDRom {
     result_fifo: VecDeque<u8>,
     irq_latch: u8,
     irqs: u8,
-    controller_status: ControllerStatus,
+    controller_mode: ControllerMode,
+    drive_mode: DriveMode,
+    subresponse_mode: SubresponseMode,
     command_latch: Option<u8>,
     command: u8,
     is_playing: bool,
@@ -251,7 +274,7 @@ pub struct CDRom {
     is_reading: bool,
     current_msf: Msf,
     msf: Msf,
-    next_event: Option<EventType>,
+    next_mode: Option<DriveMode>,
     double_speed: bool,
     send_to_spu: bool,
     sector_size: usize,
@@ -272,12 +295,14 @@ pub struct CDRom {
     p: usize,
     filter_file: u8,
     filter_channel: u8,
+    drive_cycles: usize,
+    controller_cycles: usize,
+    subresponse_cycles: usize,
 }
 
 impl CDRom {
     pub fn new(scheduler: &mut Scheduler) -> Self {
-        scheduler.schedule(EventType::CDCheckCommands, CDROM_CYCLES);
-        scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES);
+        scheduler.schedule(EventType::TickCDRom, CDROM_CYCLES);
 
         Self {
             hntmask: HntmaskRegister::from_bits_retain(0),
@@ -285,7 +310,9 @@ impl CDRom {
             parameter_fifo: VecDeque::with_capacity(16),
             result_fifo: VecDeque::with_capacity(16),
             irq_latch: 0,
-            controller_status: ControllerStatus::Idle,
+            controller_mode: ControllerMode::Idle,
+            drive_mode: DriveMode::Idle,
+            subresponse_mode: SubresponseMode::Disabled,
             irqs: 0,
             controller_param_fifo: VecDeque::with_capacity(16),
             command: 0,
@@ -296,7 +323,7 @@ impl CDRom {
             is_seeking: false,
             current_msf: Msf::new(),
             msf: Msf::new(),
-            next_event: None,
+            next_mode: None,
             double_speed: false,
             xa_filter: false,
             send_to_spu: false,
@@ -316,18 +343,24 @@ impl CDRom {
             p: 0,
             filter_file: 0,
             filter_channel: 0,
+            drive_cycles: 1,
+            controller_cycles: 1,
+            subresponse_cycles: 1,
         }
     }
 
-    pub fn transfer_response(&mut self, scheduler: &mut Scheduler) {
+    fn transfer_response(&mut self) {
         if self.result_fifo.len() < 16 && !self.controller_response_fifo.is_empty() {
             let value = self.controller_response_fifo.pop_front().unwrap();
             self.result_fifo.push_back(value);
 
-            scheduler.schedule(EventType::CDResponseTransfer, 10 * CDROM_CYCLES);
+            self.controller_mode = ControllerMode::TransferResponse;
+
         } else {
-            scheduler.schedule(EventType::CDLatchInterrupts, 10 * CDROM_CYCLES);
+            self.controller_mode = ControllerMode::LatchInterrupts;
         }
+
+        self.controller_cycles += 10;
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -393,13 +426,13 @@ impl CDRom {
     6   DRQSTS   Data request          (R, 1=one or more RDDATA reads or WRDATA writes pending)
     7   BUSYSTS  Busy status           (R, 1=HC05 busy acknowledging command)
     */
-    pub fn read_hsts(&self) -> u8 {
+    fn read_hsts(&self) -> u8 {
         (self.bank as u8)
             | (self.parameter_fifo.is_empty() as u8) << 3
             | ((self.parameter_fifo.len() < 16) as u8) << 4
             | (!self.result_fifo.is_empty() as u8) << 5
             | (!self.output_buffer_empty() as u8) << 6
-            | ((self.controller_status != ControllerStatus::Idle) as u8) << 7
+            | ((self.controller_mode != ControllerMode::Idle) as u8) << 7
     }
 
     /*
@@ -418,20 +451,19 @@ impl CDRom {
         self.execute_subcommand(subcommand);
     }
 
-    pub fn check_commands(&mut self, scheduler: &mut Scheduler) {
+    fn check_commands(&mut self) {
         if self.command_latch.is_some() {
-            self.controller_status = ControllerStatus::Busy;
             if !self.parameter_fifo.is_empty() {
-                scheduler.schedule(EventType::CDParamTransfer, CDROM_CYCLES);
+                self.controller_mode = ControllerMode::TransferParams;
             } else {
-                scheduler.schedule(EventType::CDCommandTransfer, CDROM_CYCLES);
+                self.controller_mode = ControllerMode::TransferCommand;
             }
-        } else {
-            scheduler.schedule(EventType::CDCheckCommands, CDROM_CYCLES);
         }
+
+        self.controller_cycles += 1;
     }
 
-    pub fn stat(&mut self) {
+    fn stat(&mut self) {
         let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
 
         val |= (self.is_reading as u8) << 5;
@@ -441,57 +473,111 @@ impl CDRom {
         self.controller_response_fifo.push_back(val);
     }
 
-    pub fn process_irqs(
-        &mut self,
-        scheduler: &mut Scheduler,
-        interrupt_register: &mut InterruptRegister,
-        is_async: bool,
-        cycles_left: usize,
-    ) {
+    pub fn tick(&mut self, scheduler: &mut Scheduler, spu: &mut SPU, interrupt_register: &mut InterruptRegister, cycles_left: usize) {
+        self.tick_subresponse();
+        self.tick_drive(spu, interrupt_register);
+        self.tick_controller(interrupt_register);
+
+        self.process_irqs(interrupt_register);
+
+        scheduler.schedule(EventType::TickCDRom, CDROM_CYCLES - cycles_left);
+    }
+
+    fn tick_subresponse(&mut self) {
+        if self.subresponse_mode != SubresponseMode::Disabled {
+            self.subresponse_cycles -= 1;
+        }
+
+        if self.subresponse_cycles == 0 {
+            match self.subresponse_mode {
+                SubresponseMode::Disabled => (),
+                SubresponseMode::GetId => self.read_id(),
+                SubresponseMode::GetStat => self.sub_stat(),
+            }
+        }
+    }
+
+    fn sub_stat(&mut self) {
+        if self.irqs == 0 {
+            self.irq_latch = 2;
+            self.stat();
+
+            self.controller_cycles += 10;
+            self.controller_mode = ControllerMode::ClearResponseFifo;
+            self.subresponse_mode = SubresponseMode::Disabled;
+        }
+    }
+
+    fn tick_drive(&mut self, spu: &mut SPU, interrupt_register: &mut InterruptRegister) {
+        if self.drive_mode != DriveMode::Idle {
+            self.drive_cycles -= 1;
+        }
+
+        if self.drive_cycles == 0 {
+            match self.drive_mode {
+                DriveMode::Idle => (),
+                DriveMode::Seek => self.seek_cd(),
+                DriveMode::Stat => self.cd_stat(),
+                DriveMode::Read => self.cd_read_sector(spu, interrupt_register),
+                DriveMode::Play => todo!("play drive")
+            }
+        }
+    }
+
+    fn tick_controller(&mut self, interrupt_register: &mut InterruptRegister) {
+        match self.controller_mode {
+            ControllerMode::Idle => self.check_commands(),
+            ControllerMode::ExecuteCommand => self.execute_command(),
+            ControllerMode::LatchInterrupts => self.transfer_interrupts(interrupt_register),
+            ControllerMode::TransferCommand => self.transfer_command(),
+            ControllerMode::TransferParams => self.transfer_params(),
+            ControllerMode::ClearResponseFifo => self.clear_response(),
+            ControllerMode::TransferResponse => self.transfer_response(),
+        }
+    }
+
+    fn process_irqs(&mut self, interrupt_register: &mut InterruptRegister) {
         if self.irqs & self.hntmask.enable_irq() != 0 {
             interrupt_register.insert(InterruptRegister::CDROM);
         }
-
-        if is_async {
-            scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES - cycles_left);
-        }
     }
 
-    pub fn transfer_command(&mut self, scheduler: &mut Scheduler) {
+    fn transfer_command(&mut self) {
         self.command = self.command_latch.take().unwrap();
 
-        scheduler.schedule(EventType::CDExecuteCommand, CDROM_CYCLES * 10);
+        self.controller_mode = ControllerMode::ExecuteCommand;
+
+        self.controller_cycles += 10;
     }
 
-    pub fn transfer_params(&mut self, scheduler: &mut Scheduler) {
+    fn transfer_params(&mut self) {
         if !self.parameter_fifo.is_empty() {
             let byte = self.parameter_fifo.pop_front().unwrap();
 
             self.controller_param_fifo.push_back(byte);
-
-            scheduler.schedule(EventType::CDParamTransfer, CDROM_CYCLES * 10);
         } else {
-            scheduler.schedule(EventType::CDCommandTransfer, CDROM_CYCLES * 10);
+            self.controller_mode = ControllerMode::TransferCommand
         }
+
+        self.controller_cycles += 10;
     }
 
-    pub fn transfer_interrupts(
+    fn transfer_interrupts(
         &mut self,
-        scheduler: &mut Scheduler,
         interrupt_register: &mut InterruptRegister,
     ) {
         if self.irqs == 0 {
             self.irqs = self.irq_latch;
-            self.process_irqs(scheduler, interrupt_register, false, 0);
+            self.process_irqs(interrupt_register);
 
-            self.controller_status = ControllerStatus::Idle;
-            scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
+            self.controller_mode = ControllerMode::Idle;
+            self.controller_cycles += 10;
         } else {
-            scheduler.schedule(EventType::CDLatchInterrupts, CDROM_CYCLES);
+            self.controller_cycles += 1;
         }
     }
 
-    pub fn execute_subcommand(&mut self, subcommand: u8) {
+    fn execute_subcommand(&mut self, subcommand: u8) {
         match subcommand {
             0x20 => {
                 // get date
@@ -523,17 +609,27 @@ impl CDRom {
         // bits 0 and 1 are audio related so no need to worry about them
     }
 
-    fn pause(&mut self, scheduler: &mut Scheduler) {
+    fn pause(&mut self) {
         self.stat();
+
+        if !self.is_playing && !self.is_reading && !self.is_seeking {
+            self.subresponse_cycles += 10;
+        } else {
+            self.subresponse_cycles += if self.double_speed {
+                1400
+            } else {
+                2800
+            };
+        }
 
         self.is_playing = false;
         self.is_seeking = false;
         self.is_reading = false;
 
-        scheduler.schedule(EventType::CDStat, 100 * CDROM_CYCLES);
+        self.subresponse_mode = SubresponseMode::GetStat;
     }
 
-    fn init(&mut self, scheduler: &mut Scheduler) {
+    fn init(&mut self) {
         self.stat();
 
         self.double_speed = false;
@@ -543,10 +639,11 @@ impl CDRom {
         self.is_seeking = false;
         self.is_reading = false;
 
-        scheduler.schedule(EventType::CDStat, 10 * CDROM_CYCLES);
+        self.subresponse_mode = SubresponseMode::GetStat;
+        self.subresponse_cycles += 10;
     }
 
-    pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
+    fn execute_command(&mut self) {
         self.controller_response_fifo.clear();
 
         self.irq_latch = 3;
@@ -556,36 +653,40 @@ impl CDRom {
         match self.command {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
-            0x6 | 0x1b => self.cd_read_command(scheduler),
-            0x9 => self.pause(scheduler),
-            0xa => self.init(scheduler),
+            0x6 | 0x1b => self.cd_read_command(),
+            0x9 => self.pause(),
+            0xa => self.init(),
             0xb | 0xc => self.stat(),
             0xe => self.set_mode(),
-            0x15 => self.seek(scheduler),
+            0x15 => self.seek(),
             0x19 => self.commandx19(),
-            0x1a => self.get_id(scheduler),
-            0x1e => self.toc(scheduler),
+            0x1a => self.get_id(),
+            0x1e => self.toc(),
             _ => todo!("command byte 0x{:x}", self.command),
         }
 
-        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+        self.controller_mode = ControllerMode::ClearResponseFifo;
+        self.controller_cycles += 10;
 
         self.controller_param_fifo.clear();
     }
 
-    fn toc(&mut self, scheduler: &mut Scheduler) {
+    fn toc(&mut self) {
         self.stat();
 
-        scheduler.schedule(EventType::CDGetTOC, 44100 * CDROM_CYCLES);
+        self.subresponse_mode = SubresponseMode::GetStat;
+        self.subresponse_cycles += 44100;
     }
 
-    pub fn cd_read_sector(
+    fn cd_read_sector(
         &mut self,
-        scheduler: &mut Scheduler,
         spu: &mut SPU,
         interrupt_register: &mut InterruptRegister,
     ) {
         if !self.is_reading {
+            self.drive_mode = DriveMode::Idle;
+            self.drive_cycles += 1;
+
             return;
         }
 
@@ -616,7 +717,7 @@ impl CDRom {
             }
 
             match self.subheader.read_mode {
-                CDReadMode::Data => self.read_data(scheduler, interrupt_register),
+                CDReadMode::Data => self.read_data(interrupt_register),
                 CDReadMode::Audio => {
                     if !self.xa_filter
                         || (self.filter_file == self.subheader.file_num
@@ -641,15 +742,14 @@ impl CDRom {
             }
         }
         if self.is_reading {
-            scheduler.schedule(
-                EventType::CDRead,
-                if self.double_speed {
-                    CD_READ_CYCLES / 2
-                } else {
-                    CD_READ_CYCLES
-                },
-            );
+            self.drive_cycles += self.get_drive_cycles();
         }
+    }
+
+    fn get_drive_cycles(&self) -> usize {
+        let divisor = if self.double_speed { 150 } else { 75 };
+
+        44100 / divisor
     }
 
     fn read_audio(&mut self, spu: &mut SPU) {
@@ -787,7 +887,7 @@ impl CDRom {
         }
     }
 
-    fn read_data(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
+    fn read_data(&mut self, interrupt_register: &mut InterruptRegister) {
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
 
@@ -802,7 +902,7 @@ impl CDRom {
 
             if self.irqs == 0 {
                 self.irqs = 1;
-                self.process_irqs(scheduler, interrupt_register, false, 0);
+                self.process_irqs(interrupt_register);
                 self.result_fifo.push_back(val);
             } else {
                 self.pending_stat = Some(val);
@@ -810,31 +910,27 @@ impl CDRom {
         }
     }
 
-    fn cd_read_command(&mut self, scheduler: &mut Scheduler) {
+    fn cd_read_command(&mut self) {
         if !self.pre_seek {
             // cd has been seeked and is able to be read
             self.is_reading = true;
             self.is_seeking = false;
             self.is_playing = false;
 
-            scheduler.schedule(
-                EventType::CDRead,
-                if self.double_speed {
-                    CD_READ_CYCLES / 2
-                } else {
-                    CD_READ_CYCLES
-                },
-            );
+            self.drive_cycles += self.get_drive_cycles();
+            self.drive_mode = DriveMode::Read;
+
         } else {
             self.is_seeking = true;
             self.is_reading = false;
             self.is_playing = false;
             // request a seek
-            self.next_event = Some(EventType::CDRead);
+            self.next_mode = Some(DriveMode::Read);
 
             let cycles = if self.double_speed { 14 } else { 28 };
 
-            scheduler.schedule(EventType::CDSeek, cycles * CDROM_CYCLES);
+            self.drive_cycles += cycles;
+            self.drive_mode = DriveMode::Seek;
         }
 
         self.stat();
@@ -852,16 +948,22 @@ impl CDRom {
         ((value >> 4) * 10) + (value & 0xf)
     }
 
-    pub fn cd_stat(&mut self, scheduler: &mut Scheduler) {
+    fn cd_stat(&mut self) {
         assert!(self.irqs == 0);
 
         self.stat();
 
         self.irq_latch = 0x2;
-        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+
+        self.controller_cycles += 10;
+        self.controller_mode = ControllerMode::ClearResponseFifo;
+
+        self.drive_mode = DriveMode::Idle;
+
+        self.subresponse_mode = SubresponseMode::Disabled;
     }
 
-    pub fn seek_cd(&mut self, scheduler: &mut Scheduler) {
+    fn seek_cd(&mut self) {
         let mut msf = Msf::new();
 
         self.pre_seek = false;
@@ -872,40 +974,39 @@ impl CDRom {
 
         self.current_msf = msf;
 
-        if let Some(event) = self.next_event.take() {
-            match event {
-                EventType::CDStat => scheduler.schedule(event, 100 * CDROM_CYCLES),
-                EventType::CDRead => {
+        if let Some(mode) = self.next_mode.take() {
+            self.drive_mode = mode;
+            match mode {
+                DriveMode::Play => {
+                    self.is_playing = true;
+                    self.is_seeking = false;
+                    self.is_reading = false;
+                    self.drive_cycles += self.get_drive_cycles();
+                }
+                DriveMode::Read => {
                     self.is_reading = true;
                     self.is_seeking = false;
                     self.is_playing = false;
-
-                    scheduler.schedule(
-                        event,
-                        if self.double_speed {
-                            CD_READ_CYCLES / 2
-                        } else {
-                            CD_READ_CYCLES
-                        },
-                    )
+                    self.drive_cycles += self.get_drive_cycles();
                 }
-                _ => scheduler.schedule(EventType::CDSeek, 10 * CDROM_CYCLES),
+                _ => self.drive_cycles += 10,
             }
         }
     }
 
-    fn seek(&mut self, scheduler: &mut Scheduler) {
+    fn seek(&mut self) {
         self.stat();
 
         self.is_playing = false;
         self.is_reading = false;
         self.is_seeking = true;
 
-        self.next_event = Some(EventType::CDStat);
+        self.next_mode = Some(DriveMode::Stat);
 
         let cycles = if self.double_speed { 14 } else { 28 };
 
-        scheduler.schedule(EventType::CDSeek, cycles * CDROM_CYCLES);
+        self.drive_cycles += cycles;
+        self.drive_mode = DriveMode::Seek;
     }
 
     fn set_loc(&mut self) {
@@ -918,24 +1019,14 @@ impl CDRom {
         self.pre_seek = true;
     }
 
-    pub fn get_toc(&mut self, scheduler: &mut Scheduler) {
-        if self.irqs == 0 {
-            self.irq_latch = 2;
-            self.stat();
-
-            scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
-        } else {
-            scheduler.schedule(EventType::CDGetTOC, CDROM_CYCLES);
-        }
-    }
-
-    fn get_id(&mut self, scheduler: &mut Scheduler) {
+    fn get_id(&mut self) {
         self.stat();
 
-        scheduler.schedule(EventType::CDGetId, 50 * CDROM_CYCLES)
+        self.subresponse_mode = SubresponseMode::GetId;
+        self.subresponse_cycles += 50;
     }
 
-    pub fn read_id(&mut self, scheduler: &mut Scheduler) {
+    fn read_id(&mut self) {
         assert!(self.irqs == 0);
 
         self.irq_latch = 0x2;
@@ -950,23 +1041,25 @@ impl CDRom {
             self.controller_response_fifo.push_back(*byte);
         }
 
-        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+        self.controller_mode = ControllerMode::ClearResponseFifo;
+
+        self.subresponse_mode = SubresponseMode::Disabled;
+        self.controller_cycles += 10;
     }
 
-    pub fn clear_response(&mut self, scheduler: &mut Scheduler) {
+    fn clear_response(&mut self) {
         if !self.result_fifo.is_empty() {
             self.result_fifo.pop_back();
-
-            scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
         } else {
-            scheduler.schedule(EventType::CDResponseTransfer, 10 * CDROM_CYCLES);
+            self.controller_mode = ControllerMode::TransferResponse;
         }
+
+        self.controller_cycles += 10;
     }
 
     fn write_control(
         &mut self,
         value: u8,
-        scheduler: &mut Scheduler,
         interrupt_register: &mut InterruptRegister,
     ) {
         self.irqs &= !(value & 0x1f);
@@ -979,7 +1072,7 @@ impl CDRom {
             if let Some(stat) = self.pending_stat.take() {
                 self.result_fifo.push_back(stat);
                 self.irqs = 0x1;
-                self.process_irqs(scheduler, interrupt_register, false, 0);
+                self.process_irqs(interrupt_register);
             }
         }
     }
@@ -988,7 +1081,6 @@ impl CDRom {
         &mut self,
         address: usize,
         value: u8,
-        scheduler: &mut Scheduler,
         interrupt_register: &mut InterruptRegister,
     ) {
         match address {
@@ -1001,7 +1093,7 @@ impl CDRom {
                 0 => self.parameter_fifo.push_back(value),
                 1 => {
                     self.hntmask.write(value);
-                    self.process_irqs(scheduler, interrupt_register, false, 0);
+                    self.process_irqs(interrupt_register);
                 }
                 2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank),
@@ -1014,7 +1106,7 @@ impl CDRom {
                         self.buffer_index = 0;
                     }
                 }
-                1 => self.write_control(value, scheduler, interrupt_register),
+                1 => self.write_control(value, interrupt_register),
                 2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank),
             },

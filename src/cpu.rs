@@ -467,42 +467,11 @@ impl CPU {
                     .bus
                     .dma
                     .finish_transfer(channel, &mut self.bus.interrupt_stat),
-                EventType::CDExecuteCommand => {
-                    self.bus.cdrom.execute_command(&mut self.bus.scheduler)
-                }
-                EventType::CDLatchInterrupts => self
-                    .bus
-                    .cdrom
-                    .transfer_interrupts(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
-                EventType::CDCheckCommands => {
-                    self.bus.cdrom.check_commands(&mut self.bus.scheduler)
-                }
-                EventType::CDCommandTransfer => {
-                    self.bus.cdrom.transfer_command(&mut self.bus.scheduler)
-                }
-                EventType::CDParamTransfer => {
-                    self.bus.cdrom.transfer_params(&mut self.bus.scheduler)
-                }
-                EventType::CDResponseTransfer => {
-                    self.bus.cdrom.transfer_response(&mut self.bus.scheduler)
-                }
-                EventType::CDResponseClear => {
-                    self.bus.cdrom.clear_response(&mut self.bus.scheduler)
-                }
-                EventType::CDCheckIrqs => self.bus.cdrom.process_irqs(
-                    &mut self.bus.scheduler,
-                    &mut self.bus.interrupt_stat,
-                    true,
-                    cycles_left,
-                ),
-                EventType::CDGetId => self.bus.cdrom.read_id(&mut self.bus.scheduler),
-                EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler),
-                EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
-                EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
-                EventType::CDRead => self.bus.cdrom.cd_read_sector(
+                EventType::TickCDRom => self.bus.cdrom.tick(
                     &mut self.bus.scheduler,
                     &mut self.bus.spu,
                     &mut self.bus.interrupt_stat,
+                    cycles_left,
                 ),
                 EventType::TickSpu => self
                     .bus

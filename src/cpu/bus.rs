@@ -395,7 +395,6 @@ impl Bus {
                 self.cdrom.write(
                     address,
                     value,
-                    &mut self.scheduler,
                     &mut self.interrupt_stat,
                 );
             }
