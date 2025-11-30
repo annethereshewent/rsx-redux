@@ -70,7 +70,7 @@ impl Mdec {
                 0x1 => self.decode_macroblocks(),
                 0x2 => self.set_quant_table(value),
                 0x3 => self.set_scale_table(),
-                _ => (),
+                _ => todo!("mdec command 0x{:x}", self.command.unwrap()),
             }
         }
     }

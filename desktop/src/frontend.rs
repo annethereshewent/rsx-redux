@@ -160,7 +160,8 @@ impl Frontend {
                 Event::KeyDown { keycode, .. } => {
                     if let Some(keycode) = keycode {
                         if keycode == Keycode::G {
-                            cpu.debug_on = !cpu.debug_on
+                            cpu.debug_on = !cpu.debug_on;
+                            println!("setting debug on to {}", cpu.debug_on);
                         } else if keycode == Keycode::F {
                             cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
                         }

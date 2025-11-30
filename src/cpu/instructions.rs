@@ -616,8 +616,6 @@ impl CPU {
     }
 
     pub fn mfhi(&mut self, instruction: Instruction) -> usize {
-        self.ignored_load_delay = Some(instruction.rd());
-
         self.r[instruction.rd()] = self.hi;
         self.ignored_load_delay = Some(instruction.rd());
 
@@ -631,8 +629,6 @@ impl CPU {
     }
 
     pub fn mflo(&mut self, instruction: Instruction) -> usize {
-        self.ignored_load_delay = Some(instruction.rd());
-
         self.r[instruction.rd()] = self.lo;
         self.ignored_load_delay = Some(instruction.rd());
 

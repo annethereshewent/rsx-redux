@@ -94,6 +94,7 @@ enum SpeakerOutput {
     Stereo,
 }
 
+#[derive(PartialEq)]
 enum BitsPerSample {
     FourBits,
     EightBits,
@@ -262,7 +263,6 @@ pub struct CDRom {
     subheader: CDSubheader,
     output_buffer: [u8; 0x930],
     buffer_index: usize,
-    reading_buffer: bool,
     pre_seek: bool,
     pending_stat: Option<u8>,
     sample_buffer: Vec<i16>,
@@ -276,7 +276,7 @@ pub struct CDRom {
 
 impl CDRom {
     pub fn new(scheduler: &mut Scheduler) -> Self {
-        scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
+        scheduler.schedule(EventType::CDCheckCommands, CDROM_CYCLES);
         scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES);
 
         Self {
@@ -307,7 +307,6 @@ impl CDRom {
             subheader: CDSubheader::new(),
             buffer_index: 0,
             output_buffer: [0; 0x930],
-            reading_buffer: false,
             pre_seek: false,
             pending_stat: None,
             sample_buffer: Vec::new(),
@@ -422,9 +421,13 @@ impl CDRom {
     pub fn check_commands(&mut self, scheduler: &mut Scheduler) {
         if self.command_latch.is_some() {
             self.controller_status = ControllerStatus::Busy;
-            scheduler.schedule(EventType::CDParamTransfer, 10 * CDROM_CYCLES);
+            if !self.parameter_fifo.is_empty() {
+                scheduler.schedule(EventType::CDParamTransfer, CDROM_CYCLES);
+            } else {
+                scheduler.schedule(EventType::CDCommandTransfer, CDROM_CYCLES);
+            }
         } else {
-            scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
+            scheduler.schedule(EventType::CDCheckCommands, CDROM_CYCLES);
         }
     }
 
@@ -442,12 +445,16 @@ impl CDRom {
         &mut self,
         scheduler: &mut Scheduler,
         interrupt_register: &mut InterruptRegister,
+        is_async: bool,
+        cycles_left: usize,
     ) {
         if self.irqs & self.hntmask.enable_irq() != 0 {
             interrupt_register.insert(InterruptRegister::CDROM);
         }
 
-        scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES);
+        if is_async {
+            scheduler.schedule(EventType::CDCheckIrqs, CDROM_CYCLES - cycles_left);
+        }
     }
 
     pub fn transfer_command(&mut self, scheduler: &mut Scheduler) {
@@ -468,9 +475,14 @@ impl CDRom {
         }
     }
 
-    pub fn transfer_interrupts(&mut self, scheduler: &mut Scheduler) {
+    pub fn transfer_interrupts(
+        &mut self,
+        scheduler: &mut Scheduler,
+        interrupt_register: &mut InterruptRegister,
+    ) {
         if self.irqs == 0 {
             self.irqs = self.irq_latch;
+            self.process_irqs(scheduler, interrupt_register, false, 0);
 
             self.controller_status = ControllerStatus::Idle;
             scheduler.schedule(EventType::CDCheckCommands, 10 * CDROM_CYCLES);
@@ -531,13 +543,15 @@ impl CDRom {
         self.is_seeking = false;
         self.is_reading = false;
 
-        scheduler.schedule(EventType::CDStat, 100 * CDROM_CYCLES);
+        scheduler.schedule(EventType::CDStat, 10 * CDROM_CYCLES);
     }
 
     pub fn execute_command(&mut self, scheduler: &mut Scheduler) {
         self.controller_response_fifo.clear();
 
         self.irq_latch = 3;
+
+        self.controller_response_fifo.clear();
 
         match self.command {
             0x1 => self.stat(),
@@ -550,7 +564,7 @@ impl CDRom {
             0x15 => self.seek(scheduler),
             0x19 => self.commandx19(),
             0x1a => self.get_id(scheduler),
-            0x1e => scheduler.schedule(EventType::CDGetTOC, 44100 * CDROM_CYCLES),
+            0x1e => self.toc(scheduler),
             _ => todo!("command byte 0x{:x}", self.command),
         }
 
@@ -559,7 +573,18 @@ impl CDRom {
         self.controller_param_fifo.clear();
     }
 
-    pub fn cd_read_sector(&mut self, scheduler: &mut Scheduler, spu: &mut SPU) {
+    fn toc(&mut self, scheduler: &mut Scheduler) {
+        self.stat();
+
+        scheduler.schedule(EventType::CDGetTOC, 44100 * CDROM_CYCLES);
+    }
+
+    pub fn cd_read_sector(
+        &mut self,
+        scheduler: &mut Scheduler,
+        spu: &mut SPU,
+        interrupt_register: &mut InterruptRegister,
+    ) {
         if !self.is_reading {
             return;
         }
@@ -591,7 +616,7 @@ impl CDRom {
             }
 
             match self.subheader.read_mode {
-                CDReadMode::Data => self.read_data(),
+                CDReadMode::Data => self.read_data(scheduler, interrupt_register),
                 CDReadMode::Audio => {
                     if !self.xa_filter
                         || (self.filter_file == self.subheader.file_num
@@ -708,7 +733,7 @@ impl CDRom {
         sum.clamp(-0x8000, 0x7fff) as i16
     }
 
-    fn resample_18900_sample(&mut self, sample: &[i16], spu: &mut SPU) {
+    fn resample_18900_sample(&mut self, _samples: &[i16], _spu: &mut SPU) {
         todo!("0x18900 resample");
     }
 
@@ -762,7 +787,7 @@ impl CDRom {
         }
     }
 
-    fn read_data(&mut self) {
+    fn read_data(&mut self, scheduler: &mut Scheduler, interrupt_register: &mut InterruptRegister) {
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
 
@@ -777,6 +802,7 @@ impl CDRom {
 
             if self.irqs == 0 {
                 self.irqs = 1;
+                self.process_irqs(scheduler, interrupt_register, false, 0);
                 self.result_fifo.push_back(val);
             } else {
                 self.pending_stat = Some(val);
@@ -806,7 +832,9 @@ impl CDRom {
             // request a seek
             self.next_event = Some(EventType::CDRead);
 
-            scheduler.schedule(EventType::CDSeek, 25 * CDROM_CYCLES);
+            let cycles = if self.double_speed { 14 } else { 28 };
+
+            scheduler.schedule(EventType::CDSeek, cycles * CDROM_CYCLES);
         }
 
         self.stat();
@@ -830,7 +858,6 @@ impl CDRom {
         self.stat();
 
         self.irq_latch = 0x2;
-
         scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
     }
 
@@ -862,7 +889,7 @@ impl CDRom {
                         },
                     )
                 }
-                _ => (),
+                _ => scheduler.schedule(EventType::CDSeek, 10 * CDROM_CYCLES),
             }
         }
     }
@@ -876,7 +903,9 @@ impl CDRom {
 
         self.next_event = Some(EventType::CDStat);
 
-        scheduler.schedule(EventType::CDSeek, CDROM_CYCLES * 50);
+        let cycles = if self.double_speed { 14 } else { 28 };
+
+        scheduler.schedule(EventType::CDSeek, cycles * CDROM_CYCLES);
     }
 
     fn set_loc(&mut self) {
@@ -890,10 +919,14 @@ impl CDRom {
     }
 
     pub fn get_toc(&mut self, scheduler: &mut Scheduler) {
-        self.irq_latch = 2;
-        self.stat();
+        if self.irqs == 0 {
+            self.irq_latch = 2;
+            self.stat();
 
-        scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+            scheduler.schedule(EventType::CDResponseClear, 10 * CDROM_CYCLES);
+        } else {
+            scheduler.schedule(EventType::CDGetTOC, CDROM_CYCLES);
+        }
     }
 
     fn get_id(&mut self, scheduler: &mut Scheduler) {
@@ -930,24 +963,34 @@ impl CDRom {
         }
     }
 
-    fn write_control(&mut self, value: u8) {
+    fn write_control(
+        &mut self,
+        value: u8,
+        scheduler: &mut Scheduler,
+        interrupt_register: &mut InterruptRegister,
+    ) {
         self.irqs &= !(value & 0x1f);
-
-        if self.irqs == 0 {
-            if let Some(stat) = self.pending_stat.take() {
-                self.result_fifo.push_back(stat);
-                self.irqs = 0x1;
-            }
-        }
-
-        self.result_fifo.clear();
 
         if (value >> 6) & 1 == 1 {
             self.parameter_fifo.clear();
         }
+        self.result_fifo.clear();
+        if self.irqs == 0 {
+            if let Some(stat) = self.pending_stat.take() {
+                self.result_fifo.push_back(stat);
+                self.irqs = 0x1;
+                self.process_irqs(scheduler, interrupt_register, false, 0);
+            }
+        }
     }
 
-    pub fn write(&mut self, address: usize, value: u8) {
+    pub fn write(
+        &mut self,
+        address: usize,
+        value: u8,
+        scheduler: &mut Scheduler,
+        interrupt_register: &mut InterruptRegister,
+    ) {
         match address {
             0x1f801801 => match self.bank {
                 0 => self.command_latch = Some(value),
@@ -956,21 +999,22 @@ impl CDRom {
             },
             0x1f801802 => match self.bank {
                 0 => self.parameter_fifo.push_back(value),
-                1 => self.hntmask.write(value),
+                1 => {
+                    self.hntmask.write(value);
+                    self.process_irqs(scheduler, interrupt_register, false, 0);
+                }
                 2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank),
             },
             0x1f801803 => match self.bank {
                 0 => {
                     if (value >> 7) & 1 == 0 {
-                        println!("disabling data transfer");
                         self.buffer_index = 0x930;
                     } else if self.output_buffer_empty() {
-                        println!("output buffer is empty, resetting buffer index to 0");
                         self.buffer_index = 0;
                     }
                 }
-                1 => self.write_control(value),
+                1 => self.write_control(value, scheduler, interrupt_register),
                 2 | 3 => (), // TODO: SPU CD Audio stuff
                 _ => todo!("bank = {}", self.bank),
             },

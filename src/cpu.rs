@@ -336,18 +336,15 @@ impl CPU {
 
         index += 4;
 
-        // let file_size = util::read_word(&bytes, index);
         let file_size = unsafe { *(&bytes[index] as *const u8 as *const u32) };
 
         index += 0x10 + 4;
 
-        // let sp_base = util::read_word(&bytes, index);
         let sp_base = unsafe { *(&bytes[index] as *const u8 as *const u32) };
 
         index += 4;
 
         if sp_base != 0 {
-            // let sp_offset = util::read_word(&bytes, index);
             let sp_offset = unsafe { *(&bytes[index] as *const u8 as *const u32) };
 
             self.r[29] = sp_base + sp_offset;
@@ -394,8 +391,11 @@ impl CPU {
             self.enter_exception(ExceptionType::Interrupt);
 
             if (opcode >> 25) == 0x25 {
-                self.gte.execute_command(Instruction(opcode));
+                let cycles = self.gte.execute_command(Instruction(opcode));
+                self.bus.tick(cycles);
             }
+
+            self.handle_events();
 
             if self.should_transfer_load {
                 self.transfer_load();
@@ -470,9 +470,10 @@ impl CPU {
                 EventType::CDExecuteCommand => {
                     self.bus.cdrom.execute_command(&mut self.bus.scheduler)
                 }
-                EventType::CDLatchInterrupts => {
-                    self.bus.cdrom.transfer_interrupts(&mut self.bus.scheduler)
-                }
+                EventType::CDLatchInterrupts => self
+                    .bus
+                    .cdrom
+                    .transfer_interrupts(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
                 EventType::CDCheckCommands => {
                     self.bus.cdrom.check_commands(&mut self.bus.scheduler)
                 }
@@ -488,18 +489,21 @@ impl CPU {
                 EventType::CDResponseClear => {
                     self.bus.cdrom.clear_response(&mut self.bus.scheduler)
                 }
-                EventType::CDCheckIrqs => self
-                    .bus
-                    .cdrom
-                    .process_irqs(&mut self.bus.scheduler, &mut self.bus.interrupt_stat),
+                EventType::CDCheckIrqs => self.bus.cdrom.process_irqs(
+                    &mut self.bus.scheduler,
+                    &mut self.bus.interrupt_stat,
+                    true,
+                    cycles_left,
+                ),
                 EventType::CDGetId => self.bus.cdrom.read_id(&mut self.bus.scheduler),
                 EventType::CDGetTOC => self.bus.cdrom.get_toc(&mut self.bus.scheduler),
                 EventType::CDSeek => self.bus.cdrom.seek_cd(&mut self.bus.scheduler),
                 EventType::CDStat => self.bus.cdrom.cd_stat(&mut self.bus.scheduler),
-                EventType::CDRead => self
-                    .bus
-                    .cdrom
-                    .cd_read_sector(&mut self.bus.scheduler, &mut self.bus.spu),
+                EventType::CDRead => self.bus.cdrom.cd_read_sector(
+                    &mut self.bus.scheduler,
+                    &mut self.bus.spu,
+                    &mut self.bus.interrupt_stat,
+                ),
                 EventType::TickSpu => self
                     .bus
                     .spu

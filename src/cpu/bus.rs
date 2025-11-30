@@ -258,9 +258,9 @@ impl Bus {
             0x1f801010 => self.bios_delay.write(value), // TODO
             0x1f801014 => self.spu_delay.write(value),  // TODO
             0x1f801018 => self.cdrom_delay.write(value), // TODO
-            0x1f80101c => self.exp2_delay.write(value),
+            0x1f80101c => self.exp2_delay.write(value), // TODO
             0x1f801020 => self.com_delay = value & 0xffff, // TODO: actually implement
-            0x1f801060 => self.ram_size = value,           // TODO: actually implement lmao
+            0x1f801060 => self.ram_size = value,        // TODO: actually implement lmao
             0x1f801070 => {
                 let new_stat = self.interrupt_stat.bits() & value;
                 self.interrupt_stat = InterruptRegister::from_bits_retain(new_stat);
@@ -392,7 +392,12 @@ impl Bus {
             }
             0x1f801801..=0x1f801803 => {
                 self.tick(5);
-                self.cdrom.write(address, value);
+                self.cdrom.write(
+                    address,
+                    value,
+                    &mut self.scheduler,
+                    &mut self.interrupt_stat,
+                );
             }
             0x1f802041 => {
                 self.tick(5);
