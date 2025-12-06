@@ -301,7 +301,7 @@ impl CPU {
     pub fn lb(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        let value = self.bus.mem_read8(address) as i8 as i16 as i32 as u32;
+        let value = self.load8(address) as i8 as i16 as i32 as u32;
 
         self.update_load(instruction.rt(), value);
 
@@ -311,7 +311,7 @@ impl CPU {
     pub fn lh(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
         if address & 1 == 0 {
-            let value = self.bus.mem_read16(address) as i16 as i32 as u32;
+            let value = self.load16(address) as i16 as i32 as u32;
             self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
@@ -331,7 +331,7 @@ impl CPU {
         }
 
         let aligned_address = address & !3;
-        let aligned_word = self.bus.mem_read32(aligned_address);
+        let aligned_word = self.load32(aligned_address);
         result = match address & 0x3 {
             0 => (result & 0xffffff) | (aligned_word << 24),
             1 => (result & 0xffff) | (aligned_word << 16),
@@ -349,7 +349,7 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         if address & 0x3 == 0 {
-            let value = self.bus.mem_read32(address);
+            let value = self.load32(address);
             self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
@@ -362,7 +362,7 @@ impl CPU {
     pub fn lbu(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        let value = self.bus.mem_read8(address);
+        let value = self.load8(address);
         self.update_load(instruction.rt(), value);
 
         2
@@ -372,7 +372,7 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         if address & 1 == 0 {
-            let value = self.bus.mem_read16(address);
+            let value = self.load16(address);
             self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
@@ -394,7 +394,7 @@ impl CPU {
 
         let aligned_address = address & !3;
 
-        let aligned_word = self.bus.mem_read32(aligned_address);
+        let aligned_word = self.load32(aligned_address);
         result = match address & 0x3 {
             0 => aligned_word,
             1 => (result & 0xff000000) | (aligned_word >> 8),
@@ -435,7 +435,7 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         let value = self.r[instruction.rt()];
-        let mem_value = self.bus.mem_read32(address & !3);
+        let mem_value = self.load32(address & !3);
 
         let result = match address & 0x3 {
             0 => (mem_value & 0xffffff00) | (value >> 24),
@@ -469,7 +469,7 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         let value = self.r[instruction.rt()];
-        let mem_value = self.bus.mem_read32(address & !3);
+        let mem_value = self.load32(address & !3);
 
         let result = match address & 0x3 {
             0 => value,
@@ -495,7 +495,7 @@ impl CPU {
     pub fn lwc2(&mut self, instruction: Instruction) -> usize {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
-        let value = self.bus.mem_read32(address);
+        let value = self.load32(address);
 
         self.gte.write_data(instruction.rt(), value);
 

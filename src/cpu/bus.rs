@@ -148,25 +148,25 @@ impl Bus {
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),
             0x1f801080..=0x1f8010f4 => {
-                self.tick(5);
+                // self.tick(5);
                 self.dma.read_registers(address)
             }
             0x1f801110 => self.timers[1].counter,
             0x1f801810 => {
-                self.tick(5);
+                // self.tick(5);
                 self.gpu.read_gpu()
             }
             0x1f801814 => {
-                self.tick(5);
+                // self.tick(5);
                 self.gpu.read_stat()
             }
             0x1f801820..=0x1f801824 => {
-                self.tick(5);
+                // self.tick(5);
                 self.mdec.read(address)
             }
             0x1fc00000..=0x1fc80000 => {
                 if (self.cache_config >> 11) & 1 == 0 {
-                    self.tick(4);
+                    // self.tick(4);
                 }
 
                 unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u32) }
@@ -188,24 +188,24 @@ impl Bus {
             0x1f801044 => self.peripherals.read_stat() as u32,
             0x1f80104a => self.peripherals.read_ctrl() as u32,
             0x1f801070 => {
-                self.tick(5);
+                // self.tick(5);
                 self.interrupt_stat.bits() & 0xffff
             }
             0x1f801072 => {
-                self.tick(5);
+                // self.tick(5);
                 (self.interrupt_stat.bits() >> 16) & 0xffff
             }
             0x1f801074 => {
-                self.tick(5);
+                // self.tick(5);
                 self.interrupt_mask.bits() & 0xffff
             }
             0x1f801076 => {
-                self.tick(5);
+                // self.tick(5);
                 self.interrupt_mask.bits() >> 16
             }
             0x1f801120 => self.timers[2].counter,
             0x1f801c00..=0x1f801e7f => {
-                self.tick(5);
+                // self.tick(5);
                 self.spu.read16(address) as u32
             }
             _ => todo!("(mem_read16) address: 0x{:x}", address),
@@ -220,13 +220,13 @@ impl Bus {
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] as u32,
             0x1f801040 => self.peripherals.read_byte() as u32,
             0x1f801800..=0x1f801803 => {
-                self.tick(5);
+                // self.tick(5);
                 self.cdrom.read(address) as u32
             }
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => {
                 if (self.cache_config >> 1) & 1 == 0 {
-                    self.tick(4);
+                    // self.tick(4);
                 }
                 self.bios[address - 0x1fc00000] as u32
             }
@@ -238,7 +238,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         if (0x1f801000..=0x1f802000).contains(&address) {
-            self.tick(5);
+            // self.tick(5);
         }
 
         match address {
@@ -335,7 +335,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         if (0x1f801000..=0x1f802000).contains(&address) {
-            self.tick(5);
+            // self.tick(5);
         }
 
         match address {
@@ -387,11 +387,11 @@ impl Bus {
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
             0x1f801040 => self.peripherals.write_byte(value, &mut self.scheduler),
             0x1f801800 => {
-                self.tick(5);
+                // self.tick(5);
                 self.cdrom.write_bank(value);
             }
             0x1f801801..=0x1f801803 => {
-                self.tick(5);
+                // self.tick(5);
                 self.cdrom.write(
                     address,
                     value,
@@ -399,7 +399,7 @@ impl Bus {
                 );
             }
             0x1f802041 => {
-                self.tick(5);
+                // self.tick(5);
                 self.exp1_post = value;
             }
             _ => todo!("(mem_write8) address: 0x{:x}", address),
