@@ -219,6 +219,18 @@ impl Bus {
             0x00000000..=0x001fffff => self.main_ram[address] as u32,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] as u32,
             0x1f801040 => self.peripherals.read_byte() as u32,
+            0x1f801080..=0x1f8010f7 => {
+                // self.tick(5);
+                let value = self.dma.read_registers(address & !0x3);
+
+                match address & 0x3 {
+                    0 => value & 0xff,
+                    1 => (value >> 8) & 0xff,
+                    2 => (value >> 16) & 0xff,
+                    3 => (value >> 24) & 0xff,
+                    _ => unreachable!(),
+                }
+            }
             0x1f801800..=0x1f801803 => {
                 // self.tick(5);
                 self.cdrom.read(address) as u32
@@ -237,9 +249,9 @@ impl Bus {
     pub fn mem_write32(&mut self, address: u32, value: u32) {
         let address = Self::translate_address(address);
 
-        if (0x1f801000..=0x1f802000).contains(&address) {
-            // self.tick(5);
-        }
+        // if (0x1f801000..=0x1f802000).contains(&address) {
+        //     self.tick(5);
+        // }
 
         match address {
             0x00000000..=0x001fffff => unsafe {
@@ -334,9 +346,9 @@ impl Bus {
     pub fn mem_write16(&mut self, address: u32, value: u16) {
         let address = Self::translate_address(address);
 
-        if (0x1f801000..=0x1f802000).contains(&address) {
-            // self.tick(5);
-        }
+        // if (0x1f801000..=0x1f802000).contains(&address) {
+        //     self.tick(5);
+        // }
 
         match address {
             0x00000000..=0x001fffff => unsafe {
@@ -386,17 +398,27 @@ impl Bus {
             0x00000000..=0x001fffff => self.main_ram[address] = value,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
             0x1f801040 => self.peripherals.write_byte(value, &mut self.scheduler),
+            0x1f801080..=0x1f8010f7 => {
+                // self.tick(5);
+                let read_value = self.dma.read_registers(address & !0x3);
+
+                let write_value = match address & 0x3 {
+                    0 => (read_value & 0xffffff00) | value as u32,
+                    1 => (read_value & 0xffff00ff) | (value as u32) << 8,
+                    2 => (read_value & 0xff00ffff) | (value as u32) << 16,
+                    3 => (read_value & 0x00ffffff) | (value as u32) << 24,
+                    _ => unreachable!(),
+                };
+
+                self.dma.write_registers(address & !0x3, write_value);
+            }
             0x1f801800 => {
                 // self.tick(5);
                 self.cdrom.write_bank(value);
             }
             0x1f801801..=0x1f801803 => {
                 // self.tick(5);
-                self.cdrom.write(
-                    address,
-                    value,
-                    &mut self.interrupt_stat,
-                );
+                self.cdrom.write(address, value, &mut self.interrupt_stat);
             }
             0x1f802041 => {
                 // self.tick(5);

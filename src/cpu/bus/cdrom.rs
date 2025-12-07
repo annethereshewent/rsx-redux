@@ -236,7 +236,7 @@ enum ControllerMode {
     TransferCommand,
     TransferParams,
     ClearResponseFifo,
-    TransferResponse
+    TransferResponse,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -355,7 +355,6 @@ impl CDRom {
             self.result_fifo.push_back(value);
 
             self.controller_mode = ControllerMode::TransferResponse;
-
         } else {
             self.controller_mode = ControllerMode::LatchInterrupts;
         }
@@ -409,6 +408,7 @@ impl CDRom {
         match address {
             0x1f801800 => self.read_hsts(),
             0x1f801801 => self.read_response(),
+            0x1f801802 => self.read_data_buffer_byte(),
             0x1f801803 => match self.bank {
                 0 | 2 => self.hntmask.bits(),
                 1 | 3 => self.read_hintsts(),
@@ -473,7 +473,13 @@ impl CDRom {
         self.controller_response_fifo.push_back(val);
     }
 
-    pub fn tick(&mut self, scheduler: &mut Scheduler, spu: &mut SPU, interrupt_register: &mut InterruptRegister, cycles_left: usize) {
+    pub fn tick(
+        &mut self,
+        scheduler: &mut Scheduler,
+        spu: &mut SPU,
+        interrupt_register: &mut InterruptRegister,
+        cycles_left: usize,
+    ) {
         self.tick_subresponse();
         self.tick_drive(spu, interrupt_register);
         self.tick_controller(interrupt_register);
@@ -519,7 +525,7 @@ impl CDRom {
                 DriveMode::Seek => self.seek_cd(),
                 DriveMode::Stat => self.cd_stat(),
                 DriveMode::Read => self.cd_read_sector(spu, interrupt_register),
-                DriveMode::Play => todo!("play drive")
+                DriveMode::Play => todo!("play drive"),
             }
         }
     }
@@ -562,10 +568,7 @@ impl CDRom {
         self.controller_cycles += 10;
     }
 
-    fn transfer_interrupts(
-        &mut self,
-        interrupt_register: &mut InterruptRegister,
-    ) {
+    fn transfer_interrupts(&mut self, interrupt_register: &mut InterruptRegister) {
         if self.irqs == 0 {
             self.irqs = self.irq_latch;
             self.process_irqs(interrupt_register);
@@ -615,11 +618,7 @@ impl CDRom {
         if !self.is_playing && !self.is_reading && !self.is_seeking {
             self.subresponse_cycles += 10;
         } else {
-            self.subresponse_cycles += if self.double_speed {
-                1400
-            } else {
-                2800
-            };
+            self.subresponse_cycles += if self.double_speed { 1400 } else { 2800 };
         }
 
         self.is_playing = false;
@@ -678,11 +677,7 @@ impl CDRom {
         self.subresponse_cycles += 44100;
     }
 
-    fn cd_read_sector(
-        &mut self,
-        spu: &mut SPU,
-        interrupt_register: &mut InterruptRegister,
-    ) {
+    fn cd_read_sector(&mut self, spu: &mut SPU, interrupt_register: &mut InterruptRegister) {
         if !self.is_reading {
             self.drive_mode = DriveMode::Idle;
             self.drive_cycles += 1;
@@ -919,7 +914,6 @@ impl CDRom {
 
             self.drive_cycles += self.get_drive_cycles();
             self.drive_mode = DriveMode::Read;
-
         } else {
             self.is_seeking = true;
             self.is_reading = false;
@@ -1057,11 +1051,7 @@ impl CDRom {
         self.controller_cycles += 10;
     }
 
-    fn write_control(
-        &mut self,
-        value: u8,
-        interrupt_register: &mut InterruptRegister,
-    ) {
+    fn write_control(&mut self, value: u8, interrupt_register: &mut InterruptRegister) {
         self.irqs &= !(value & 0x1f);
 
         if (value >> 6) & 1 == 1 {
@@ -1077,12 +1067,7 @@ impl CDRom {
         }
     }
 
-    pub fn write(
-        &mut self,
-        address: usize,
-        value: u8,
-        interrupt_register: &mut InterruptRegister,
-    ) {
+    pub fn write(&mut self, address: usize, value: u8, interrupt_register: &mut InterruptRegister) {
         match address {
             0x1f801801 => match self.bank {
                 0 => self.command_latch = Some(value),
