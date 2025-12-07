@@ -68,8 +68,8 @@ impl Mdec {
 
             match (value >> 29) & 0x7 {
                 0x1 => self.decode_macroblocks(),
-                0x2 => self.set_quant_table(value),
-                0x3 => self.set_scale_table(),
+                0x2 => self.set_quant_table_word_size(value),
+                0x3 => self.set_scale_table_word_size(value),
                 _ => todo!("mdec command 0x{:x}", self.command.unwrap()),
             }
         }
@@ -110,7 +110,7 @@ impl Mdec {
         }
     }
 
-    fn set_quant_table(&mut self, value: u32) {
+    fn set_quant_table_word_size(&mut self, value: u32) {
         // The command word is followed by 64 unsigned parameter bytes for the Luminance Quant Table
         // (used for Y1..Y4), and if Command.Bit0 was set, by another 64 unsigned parameter bytes
         // for the Color Quant Table (used for Cb and Cr).
@@ -121,7 +121,7 @@ impl Mdec {
         }
     }
 
-    fn set_scale_table(&mut self) {
+    fn set_scale_table_word_size(&mut self, _value: u32) {
         // The command is followed by 64 signed halfwords with 14bit fractional part,
         // the values should be usually/always the same values (based on the standard JPEG constants,
         // although, MDEC(3) allows to use other values than that constants).
