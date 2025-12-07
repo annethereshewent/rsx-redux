@@ -156,6 +156,8 @@ impl Mdec {
                 }
             }
         }
+
+        self.current_block = 0;
     }
 
     fn yuv_to_rgb(&mut self, output: &mut [u8], xx: usize, yy: usize) {
@@ -324,8 +326,6 @@ impl Mdec {
             3 => OutputDepth::Bit15,
             _ => unreachable!(),
         };
-
-        self.current_block = 0;
 
         self.is_signed = (value >> 26) & 0x1 == 1;
         self.output_bit15 = (value >> 25) & 0x1 == 1;
