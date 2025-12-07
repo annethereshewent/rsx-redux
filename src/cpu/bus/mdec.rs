@@ -28,7 +28,7 @@ pub struct Mdec {
     out_fifo: VecDeque<u8>,
     dma_in_enable: bool,
     dma_out_enable: bool,
-    words_remaining: u32,
+    words_remaining: u16,
     command: Option<u32>,
     luminance_quant_table: [u8; 64],
     color_quant_table: [u8; 64],
@@ -330,7 +330,7 @@ impl Mdec {
         self.is_signed = (value >> 26) & 0x1 == 1;
         self.output_bit15 = (value >> 25) & 0x1 == 1;
 
-        self.words_remaining = value & 0xffff;
+        self.words_remaining = value as u16;
     }
 
     fn populate_scale_table(&mut self) {
@@ -392,7 +392,7 @@ impl Mdec {
             | (self.is_signed as u32) << 24
             | (self.output_bit15 as u32) << 23
             | ((self.current_block as u32 + 4) % 6) << 16
-            | (self.words_remaining - 1)
+            | (self.words_remaining - 1) as u32
     }
 
     fn write_control(&mut self, value: u32) {

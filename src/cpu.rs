@@ -274,8 +274,6 @@ impl CPU {
             return;
         }
 
-        self.bus.tick(5);
-
         self.bus.mem_write8(address, value);
     }
 
@@ -284,8 +282,6 @@ impl CPU {
             // TODO: implement this but for real
             return;
         }
-
-        self.bus.tick(5);
 
         self.bus.mem_write16(address, value);
     }
@@ -311,24 +307,18 @@ impl CPU {
             return;
         }
 
-        self.bus.tick(5);
-
         self.bus.mem_write32(address, value);
     }
 
     pub fn load8(&mut self, address: u32) -> u32 {
-        self.bus.tick(5);
-
         self.bus.mem_read8(address)
     }
 
     pub fn load32(&mut self, address: u32) -> u32 {
-        self.bus.tick(5);
         self.bus.mem_read32(address)
     }
 
     pub fn load16(&mut self, address: u32) -> u32 {
-        self.bus.tick(5);
         self.bus.mem_read16(address)
     }
     pub fn step_frame(&mut self) {
