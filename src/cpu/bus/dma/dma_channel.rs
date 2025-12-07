@@ -336,13 +336,7 @@ impl Dma {
             .control
             .remove(DmaChannelControlRegister::START_TRANSFER);
 
-        let shift = 24 + channel;
-
-        let mut interrupt_bits = self.dicr.bits();
-
-        interrupt_bits |= 1 << shift;
-
-        self.dicr = DmaInterruptRegister::from_bits_retain(interrupt_bits);
+        self.dicr.set_channel_irq_if_enabled(channel);
 
         if self.dicr.master_interrupt_flag() {
             interrupt_stat.insert(InterruptRegister::DMA);
