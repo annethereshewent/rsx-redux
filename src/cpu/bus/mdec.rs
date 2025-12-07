@@ -24,7 +24,7 @@ const ZIGZAG_TABLE: [usize; 64] = [
 ];
 
 pub struct Mdec {
-    pub in_fifo: VecDeque<u32>,
+    pub in_fifo: VecDeque<u16>,
     out_fifo: VecDeque<u8>,
     dma_in_enable: bool,
     dma_out_enable: bool,
@@ -95,7 +95,9 @@ impl Mdec {
 
     pub fn write_command(&mut self, value: u32) {
         if let Some(command) = self.command {
-            self.in_fifo.push_back(value);
+
+            self.in_fifo.push_back(value as u16);
+            self.in_fifo.push_back((value >> 16) as u16);
 
             self.words_remaining -= 1;
 
@@ -120,8 +122,18 @@ impl Mdec {
         }
     }
 
+    pub fn read_out_fifo(&mut self) -> u32 {
+        let mut value = 0;
+        for i in 0..4 {
+            value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)
+        }
+
+        value
+    }
+
     fn decode_macroblocks(&mut self) {
         let mut output = [0; 768];
+
         while !self.in_fifo.is_empty() {
             if self.current_block > 1 {
                 let index = self.current_block - 2;
@@ -132,10 +144,12 @@ impl Mdec {
                 let xx = lower_bit * 8;
                 let yy = upper_bit * 8;
 
+                let is_final_block = self.current_block == 5;
+
                 self.decode_block(BlockType::Yb);
                 self.yuv_to_rgb(&mut output, xx, yy);
 
-                if self.current_block >= 5 {
+                if is_final_block {
                     let multiplier = match self.output_depth {
                         OutputDepth::Bit24 => 3,
                         OutputDepth::Bit15 => 2,
@@ -156,8 +170,6 @@ impl Mdec {
                 }
             }
         }
-
-        self.current_block = 0;
     }
 
     fn yuv_to_rgb(&mut self, output: &mut [u8], xx: usize, yy: usize) {
@@ -213,8 +225,7 @@ impl Mdec {
     }
 
     fn decode_block(&mut self, block_type: BlockType) {
-        let mut is_upper_half = false;
-        let mut word = self.in_fifo.pop_front().unwrap();
+        let mut halfword = self.in_fifo.pop_front().unwrap();
 
         let block = &mut self.blocks[block_type as usize];
 
@@ -222,35 +233,28 @@ impl Mdec {
             block[i] = 0;
         }
 
-        let mut halfword = word as u16;
-
         while halfword == 0xfe00 {
             if self.in_fifo.is_empty() {
                 return;
             }
-            is_upper_half = !is_upper_half;
 
-            halfword = if is_upper_half {
-                word >> 16
-            } else {
-                self.in_fifo.pop_front().unwrap()
-            } as u16;
+            halfword = self.in_fifo.pop_front().unwrap();
         }
 
         let mut k = 0;
 
-        let quant_table = if [BlockType::Cr, BlockType::Cb].contains(&block_type) {
-            &self.color_quant_table
-        } else {
+        let quant_table = if block_type == BlockType::Yb {
             &self.luminance_quant_table
+        } else {
+            &self.color_quant_table
         };
 
-        let q_scale = ((halfword >> 10) & 0x3f) as i8 as i16;
-        let mut val = Self::sign_extend_i10(halfword & 0x3ff) * quant_table[k] as i8 as i16;
+        let q_scale = (halfword >> 10) & 0x3f;
+        let mut val = Self::sign_extend_i10(halfword & 0x3ff) * quant_table[k] as i16;
 
         while k < 64 {
             if q_scale == 0 {
-                val = (Self::sign_extend_i10(halfword & 0x3ff) * 2) * 2;
+                val = Self::sign_extend_i10(halfword & 0x3ff) * 2;
             }
             val = val.clamp(-0x400, 0x3ff);
 
@@ -260,26 +264,18 @@ impl Mdec {
                 block[k] = val;
             }
 
-            is_upper_half = !is_upper_half;
-
-            halfword = if is_upper_half {
-                (word >> 16) as u16
+            halfword = if let Some(next) = self.in_fifo.pop_front() {
+                next
             } else {
-                word = if let Some(next) = self.in_fifo.pop_front() {
-                    next
-                } else {
-                    return;
-                };
-
-                word as u16
+                return;
             };
 
             k += (((halfword as usize) >> 10) & 0x3f) + 1;
 
             if k < 64 {
                 val = (Self::sign_extend_i10(halfword & 0x3ff)
-                    * quant_table[k] as i8 as i16
-                    * q_scale
+                    * quant_table[k] as i16
+                    * q_scale as i16
                     + 4)
                     / 8;
             }
@@ -305,9 +301,9 @@ impl Mdec {
                     let mut sum = 0;
 
                     for z in 0..8 {
-                        sum += block[y + z * 8] * (self.scale_table[x + z * 8] / 8);
+                        sum += block[y + z * 8] as i32 * (self.scale_table[x + z * 8] as i32 / 8);
                     }
-                    dest[x + y * 8] = (sum + 0xfff) / 0x2000;
+                    dest[x + y * 8] = ((sum + 0xfff) / 0x2000) as i16;
                 }
             }
             mem::swap(block, &mut dest);
@@ -315,11 +311,11 @@ impl Mdec {
     }
 
     fn sign_extend_i10(value: u16) -> i16 {
-        ((value as i16) << 6) >> 6
+        ((value << 6) as i16) >> 6
     }
 
     fn set_decode_macroblocks_params(&mut self, value: u32) {
-        self.output_depth = match (value >> 28) & 0x3 {
+        self.output_depth = match (value >> 27) & 0x3 {
             0 => OutputDepth::Bit4,
             1 => OutputDepth::Bit8,
             2 => OutputDepth::Bit24,
@@ -334,32 +330,31 @@ impl Mdec {
     }
 
     fn populate_scale_table(&mut self) {
-        for i in (0..64).step_by(2) {
-            let word = self.in_fifo.pop_front().unwrap();
+        for i in 0..64 {
+            let halfword = self.in_fifo.pop_front().unwrap();
 
-            self.scale_table[i] = word as i16;
-            self.scale_table[i + 1] = (word >> 16) as i16;
+            self.scale_table[i] = halfword as i16;
         }
     }
 
     fn populate_quant_table(&mut self) {
-        for i in (0..64).step_by(4) {
-            let word = self.in_fifo.pop_front().unwrap();
+        for i in 0..32 {
+            let halfword = self.in_fifo.pop_front().unwrap();
 
-            self.luminance_quant_table[i] = word as u8;
-            self.luminance_quant_table[i + 1] = (word >> 8) as u8;
-            self.luminance_quant_table[i + 2] = (word >> 16) as u8;
-            self.luminance_quant_table[i + 3] = (word >> 24) as u8;
+            let index = i * 2;
+
+            self.luminance_quant_table[index] = halfword as u8;
+            self.luminance_quant_table[index + 1] = (halfword >> 8) as u8;
         }
 
         if self.with_color {
-            for i in (0..64).step_by(4) {
-                let word = self.in_fifo.pop_front().unwrap();
+            for i in 0..32 {
+                let halfword = self.in_fifo.pop_front().unwrap();
 
-                self.color_quant_table[i] = word as u8;
-                self.color_quant_table[i + 1] = (word >> 8) as u8;
-                self.color_quant_table[i + 2] = (word >> 16) as u8;
-                self.color_quant_table[i + 3] = (word >> 24) as u8;
+                let index = i * 2;
+
+                self.color_quant_table[index] = halfword as u8;
+                self.color_quant_table[index + 1] = (halfword >> 8) as u8;
             }
         }
     }
@@ -385,6 +380,7 @@ impl Mdec {
 
     fn read_status(&self) -> u32 {
         (self.out_fifo.is_empty() as u32) << 31
+            | (!(self.in_fifo.is_empty()) as u32) << 30
             | (self.command.is_some() as u32) << 29
             | (self.dma_in_enable as u32) << 28
             | (self.dma_out_enable as u32) << 27

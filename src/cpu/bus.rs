@@ -314,7 +314,7 @@ impl Bus {
                 DMA_MDEC_IN => {
                     dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec)
                 }
-                DMA_MDEC_OUT => dma_channel.start_mdec_out_transfer(),
+                DMA_MDEC_OUT => dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec),
                 DMA_GPU => match dma_channel.control.sync_mode() {
                     SyncMode::LinkedList => {
                         num_words =

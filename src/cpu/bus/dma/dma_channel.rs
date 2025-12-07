@@ -79,6 +79,7 @@ impl DmaChannel {
 
     pub fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
         assert_eq!(self.control.sync_mode(), SyncMode::Slice);
+        assert!(self.control.contains(DmaChannelControlRegister::TRANSFER_DIR));
 
         let mut current_address = self.base_address & 0x1fffff;
         let block_size = self.block_size;
@@ -99,8 +100,29 @@ impl DmaChannel {
         }
     }
 
-    pub fn start_mdec_out_transfer(&mut self) {
-        todo!("mdec out transfer");
+    pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
+        assert!(self.control.sync_mode() == SyncMode::Slice);
+        assert!(!self.control.contains(DmaChannelControlRegister::TRANSFER_DIR));
+
+        let mut current_address = self.base_address & 0x1fffff;
+        let block_size = self.block_size;
+        let num_blocks = self.num_blocks;
+
+        let num_words = block_size * num_blocks;
+
+        // println!("num_words: {}", num_words);
+
+        for _ in 0..num_words {
+            let word = mdec.read_out_fifo();
+
+            unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = word };
+
+            if self.control.contains(DmaChannelControlRegister::DECREMENT) {
+                current_address -= 4;
+            } else {
+                current_address += 4;
+            }
+        }
     }
 
     pub fn start_gpu_transfer(&mut self, ram: &mut [u8], gpu: &mut GPU) -> u32 {
