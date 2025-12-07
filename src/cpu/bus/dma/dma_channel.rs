@@ -110,8 +110,6 @@ impl DmaChannel {
 
         let num_words = block_size * num_blocks;
 
-        // println!("num_words: {}", num_words);
-
         for _ in 0..num_words {
             let word = mdec.read_out_fifo();
 
