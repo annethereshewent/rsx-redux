@@ -974,6 +974,15 @@ impl Renderer {
                     unsafe {
                         draw_encoder.setVertexBuffer_offset_atIndex(Some(&self.buffer), 0, 0);
                         draw_encoder.setFragmentTexture_atIndex(self.vram_write.as_deref(), 0);
+                        draw_encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 1);
+
+                        let display_depth = gpu.display_depth as u32;
+                        draw_encoder.setFragmentBytes_length_atIndex(
+                            NonNull::new(&display_depth as *const u32 as *mut c_void).unwrap(),
+                            std::mem::size_of::<u32>(),
+                            0,
+                        );
+
                         draw_encoder.drawPrimitives_vertexStart_vertexCount(
                             MTLPrimitiveType::TriangleStrip,
                             0,

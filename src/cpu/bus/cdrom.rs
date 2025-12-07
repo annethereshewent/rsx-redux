@@ -148,7 +148,7 @@ impl CDSubheader {
             CDReadMode::Video
         } else if (bytes[2] >> 2) & 1 == 1 {
             CDReadMode::Audio
-        } else if (bytes[2] >> 3) & 1 == 1 {
+        } else if ((bytes[2] >> 3) & 1 == 1) || bytes[2] == 0 {
             CDReadMode::Data
         } else {
             panic!("unknown mode received")
@@ -733,6 +733,10 @@ impl CDRom {
                 if self.current_msf.ass >= 60 {
                     self.current_msf.amm += 1;
                     self.current_msf.ass = 0;
+
+                    if self.current_msf.amm == 74 {
+                        self.current_msf.amm = 0;
+                    }
                 }
             }
         }
