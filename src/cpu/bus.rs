@@ -400,17 +400,9 @@ impl Bus {
             0x1f801040 => self.peripherals.write_byte(value, &mut self.scheduler),
             0x1f801080..=0x1f8010f7 => {
                 self.tick(5);
-                let read_value = self.dma.read_registers(address & !0x3);
+                let shift = address & 0x3;
 
-                let write_value = match address & 0x3 {
-                    0 => (read_value & 0xffffff00) | value as u32,
-                    1 => (read_value & 0xffff00ff) | (value as u32) << 8,
-                    2 => (read_value & 0xff00ffff) | (value as u32) << 16,
-                    3 => (read_value & 0x00ffffff) | (value as u32) << 24,
-                    _ => unreachable!(),
-                };
-
-                self.dma.write_registers(address & !0x3, write_value);
+                self.write_dma_registers(address & !0x3, (value as u32) << (shift * 8));
             }
             0x1f801800 => {
                 self.tick(5);

@@ -164,6 +164,9 @@ impl Frontend {
                             println!("setting debug on to {}", cpu.debug_on);
                         } else if keycode == Keycode::F {
                             cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
+                        } else if keycode == Keycode::T {
+                            cpu.bus.cdrom.debug_on = !cpu.bus.cdrom.debug_on;
+                            println!("setting cdrom debug on to {}", cpu.bus.cdrom.debug_on);
                         }
                     }
                 }

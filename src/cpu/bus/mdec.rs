@@ -62,7 +62,7 @@ impl Mdec {
             command: None,
             with_color: false,
             current_block: 0,
-            output_depth: OutputDepth::Bit8,
+            output_depth: OutputDepth::Bit4,
             is_signed: false,
             output_bit15: false,
             blocks: [[0; 64]; 3],
@@ -102,13 +102,13 @@ impl Mdec {
             self.words_remaining -= 1;
 
             if self.words_remaining == 0 {
-                self.command = None;
                 match command {
                     0x1 => self.decode_macroblocks(),
                     0x2 => self.populate_quant_table(),
                     0x3 => self.populate_scale_table(),
                     _ => todo!("mdec command 0x{:x}", command),
                 }
+                self.command = None;
             }
         } else {
             self.command = Some((value >> 29) & 0x7);

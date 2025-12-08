@@ -356,6 +356,10 @@ impl Dma {
             .control
             .remove(DmaChannelControlRegister::START_TRANSFER);
 
+        dma_channel
+            .control
+            .remove(DmaChannelControlRegister::FORCE_TRANSFER);
+
         self.dicr.set_channel_irq_if_enabled(channel);
 
         if self.dicr.master_interrupt_flag() {
