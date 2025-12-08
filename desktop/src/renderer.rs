@@ -252,7 +252,6 @@ impl Renderer {
         let vram_write = Self::create_texture(&device, false);
 
         let rpd = MTLRenderPassDescriptor::new();
-        let command_buffer = command_queue.commandBuffer();
 
         let color_attachment = unsafe { rpd.colorAttachments().objectAtIndexedSubscript(0) };
 
@@ -266,13 +265,6 @@ impl Renderer {
             alpha: 1.0,
         });
         color_attachment.setTexture(vram_write.as_deref());
-
-        if let Some(command_buffer) = &command_buffer {
-            if let Some(encoder) = command_buffer.renderCommandEncoderWithDescriptor(&rpd) {
-                encoder.endEncoding();
-                command_buffer.commit();
-            }
-        }
 
         let no_mask = Self::make_stencil_state(
             &device,

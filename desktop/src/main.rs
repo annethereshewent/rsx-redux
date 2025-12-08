@@ -46,10 +46,10 @@ fn main() {
             cpu.step();
             frontend.renderer.process(&mut cpu.bus.gpu);
         }
+        cpu.bus.gpu.frame_finished = false;
 
         frontend.renderer.present(&mut cpu.bus.gpu);
 
-        cpu.bus.gpu.frame_finished = false;
         cpu.bus.gpu.cap_fps();
 
         frontend.handle_events(&mut cpu);

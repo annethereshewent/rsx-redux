@@ -301,7 +301,6 @@ pub struct CDRom {
     drive_cycles: usize,
     controller_cycles: usize,
     subresponse_cycles: usize,
-    pub debug_on: bool,
 }
 
 impl CDRom {
@@ -350,7 +349,6 @@ impl CDRom {
             drive_cycles: 1,
             controller_cycles: 1,
             subresponse_cycles: 1,
-            debug_on: false,
         }
     }
 
@@ -696,10 +694,6 @@ impl CDRom {
 
         // TODO: refactor this to allow for WASM builds to work as well
         if let Some(game_data) = &mut self.game_data {
-            if self.debug_on {
-                println!("pointer: {pointer}");
-                println!("game_data length: {}", game_data.len());
-            }
             self.current_header = CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]);
 
             if self.current_header.mode != CDMode::Mode2 {
