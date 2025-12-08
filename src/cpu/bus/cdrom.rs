@@ -244,6 +244,9 @@ enum DriveMode {
     Idle,
     Seek,
     Stat,
+    #[allow(dead_code)]
+    // Play not needed for PSX games, but
+    // kept here for possible future use.
     Play,
     Read,
 }
@@ -855,14 +858,13 @@ impl CDRom {
     }
 
     fn decode_xa_word(&mut self, word: u32, headers: &[u8]) {
-        for i in 0..8 {
+        for (i, header) in headers.iter().enumerate().take(8) {
             let channel_index =
                 if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
                     i & 1
                 } else {
                     0
                 };
-            let header = headers[i];
 
             let mut shift = header & 0xf;
             let filter = (header >> 4) & 0x3;

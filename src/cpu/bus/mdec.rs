@@ -95,7 +95,6 @@ impl Mdec {
 
     pub fn write_command(&mut self, value: u32) {
         if let Some(command) = self.command {
-
             self.in_fifo.push_back(value as u16);
             self.in_fifo.push_back((value >> 16) as u16);
 
@@ -158,16 +157,14 @@ impl Mdec {
 
                     let num_bytes = multiplier * NUM_COLORS;
 
-                    for i in 0..num_bytes {
-                        self.out_fifo.push_back(output[i]);
+                    for byte in output.iter().take(num_bytes) {
+                        self.out_fifo.push_back(*byte);
                     }
                 }
+            } else if self.current_block == 0 {
+                self.decode_block(BlockType::Cr);
             } else {
-                if self.current_block == 0 {
-                    self.decode_block(BlockType::Cr);
-                } else {
-                    self.decode_block(BlockType::Cb);
-                }
+                self.decode_block(BlockType::Cb);
             }
         }
     }
@@ -229,8 +226,8 @@ impl Mdec {
 
         let block = &mut self.blocks[block_type as usize];
 
-        for i in 0..64 {
-            block[i] = 0;
+        for element in block.iter_mut().take(64) {
+            *element = 0;
         }
 
         while halfword == 0xfe00 {

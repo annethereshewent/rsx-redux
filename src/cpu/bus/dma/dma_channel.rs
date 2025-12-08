@@ -79,7 +79,10 @@ impl DmaChannel {
 
     pub fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
         assert_eq!(self.control.sync_mode(), SyncMode::Slice);
-        assert!(self.control.contains(DmaChannelControlRegister::TRANSFER_DIR));
+        assert!(
+            self.control
+                .contains(DmaChannelControlRegister::TRANSFER_DIR)
+        );
 
         let mut current_address = self.base_address & 0x1fffff;
         let block_size = self.block_size;
@@ -102,7 +105,11 @@ impl DmaChannel {
 
     pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
         assert!(self.control.sync_mode() == SyncMode::Slice);
-        assert!(!self.control.contains(DmaChannelControlRegister::TRANSFER_DIR));
+        assert!(
+            !self
+                .control
+                .contains(DmaChannelControlRegister::TRANSFER_DIR)
+        );
 
         let mut current_address = self.base_address & 0x1fffff;
         let block_size = self.block_size;
