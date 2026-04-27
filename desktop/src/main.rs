@@ -53,6 +53,7 @@ fn main() {
         cpu.bus.gpu.cap_fps();
 
         frontend.handle_events(&mut cpu);
+        frontend.check_controller_status();
         frontend.push_samples(cpu.bus.spu.audio_buffer.drain(..).collect());
     }
 }

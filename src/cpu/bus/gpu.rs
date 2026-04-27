@@ -10,6 +10,8 @@ use super::{
     timer::{ClockSource, Timer, counter_mode_register::CounterModeRegister},
 };
 
+pub mod render;
+
 const HBLANK_START: usize = 2813;
 const CYCLES_PER_SCANLINE: usize = 3413;
 const HBLANK_END: usize = CYCLES_PER_SCANLINE - HBLANK_START;
@@ -468,7 +470,6 @@ impl GPU {
             self.is_semitransparent = is_semitransparent;
             self.modulate = modulate;
 
-            // return num_vertices * multiplier + 1;
             if !is_shaded {
                 return num_vertices * multiplier + 1;
             }

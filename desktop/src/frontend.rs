@@ -6,6 +6,7 @@ use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
+use sdl2::GameControllerSubsystem;
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
 use std::ops::DerefMut;
@@ -63,7 +64,10 @@ impl PsxAudioCallback {
 pub struct Frontend {
     _window: Window,
     event_pump: EventPump,
-    _controller: Option<GameController>,
+    controller: Option<GameController>,
+    game_controller_subsystem: GameControllerSubsystem,
+    controller_id: Option<u32>,
+    retry_attempts: usize,
     pub renderer: Renderer,
     device: AudioDevice<PsxAudioCallback>,
     button_map: HashMap<Button, usize>,
@@ -71,6 +75,33 @@ pub struct Frontend {
 }
 
 impl Frontend {
+    fn reconnect_controller(&mut self, controller_id: u32) -> Option<GameController> {
+        if self.retry_attempts < 5 {
+            match self.game_controller_subsystem.open(controller_id) {
+                Ok(c) => {
+                    Some(c)
+                }
+                Err(_) => {
+                    self.retry_attempts += 1;
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn check_controller_status(&mut self) {
+        if let Some(controller_id) = self.controller_id {
+            self.controller = self.reconnect_controller(controller_id);
+
+            if self.controller.is_some() || self.retry_attempts >= 5 {
+                self.controller_id = None;
+                self.retry_attempts = 0;
+            }
+        }
+    }
+
     pub fn push_samples(&mut self, samples: Vec<f32>) {
         self.device.lock().deref_mut().push_samples(samples);
     }
@@ -143,11 +174,14 @@ impl Frontend {
         Self {
             _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
-            _controller: controller,
+            controller,
+            game_controller_subsystem,
             renderer: Renderer::new(metal_layer, gpu),
             device,
             button_map,
             button_map2,
+            controller_id: None,
+            retry_attempts: 0,
         }
     }
 
@@ -183,6 +217,18 @@ impl Frontend {
                             .peripherals
                             .controller
                             .update_input(*index, value >= 0x3fff);
+                    }
+                }
+                Event::JoyDeviceAdded { which, .. } => {
+                    self.controller = match self.game_controller_subsystem.open(which) {
+                        Ok(c) => {
+                            Some(c)
+                        }
+                        Err(_) => {
+                            self.controller_id = Some(which);
+                            self.retry_attempts = 0;
+                            None
+                        }
                     }
                 }
                 _ => (),
