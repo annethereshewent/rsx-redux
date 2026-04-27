@@ -2,11 +2,11 @@ use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
+use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
-use sdl2::GameControllerSubsystem;
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
 use std::ops::DerefMut;
@@ -78,9 +78,7 @@ impl Frontend {
     fn reconnect_controller(&mut self, controller_id: u32) -> Option<GameController> {
         if self.retry_attempts < 5 {
             match self.game_controller_subsystem.open(controller_id) {
-                Ok(c) => {
-                    Some(c)
-                }
+                Ok(c) => Some(c),
                 Err(_) => {
                     self.retry_attempts += 1;
                     None
@@ -221,9 +219,7 @@ impl Frontend {
                 }
                 Event::JoyDeviceAdded { which, .. } => {
                     self.controller = match self.game_controller_subsystem.open(which) {
-                        Ok(c) => {
-                            Some(c)
-                        }
+                        Ok(c) => Some(c),
                         Err(_) => {
                             self.controller_id = Some(which);
                             self.retry_attempts = 0;
