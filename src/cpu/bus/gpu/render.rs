@@ -1,6 +1,6 @@
 use std::cmp;
 
-use crate::cpu::bus::gpu::{Color, GPU, Polygon, Vertex, deltas::Deltas};
+use crate::cpu::bus::gpu::{Color, GPU, Polygon, TexturePageColors, Vertex, deltas::Deltas};
 
 struct Coordinate2d {
     x: i32,
@@ -128,7 +128,12 @@ impl GPU {
                 let mut output = curr_color;
 
                 if polygon.textured {
-                    if let Some(texture) = self.get_texture(&polygon) {
+                    let uv =
+                        polygon.interpolate_texture_coordinates(&curr_point, u_base, v_base, &d);
+
+                    let masked_uv = self.mask_texture_coordinates(uv);
+
+                    if let Some(texture) = self.get_texture(&polygon, masked_uv) {
                     } else {
                         curr_point.x += 1;
                         continue;
@@ -154,7 +159,52 @@ impl GPU {
         color.b = (d.dbdx * curr_point.x as f32 + d.dbdy * curr_point.y as f32 + b_base) as u8;
     }
 
-    fn get_texture(&self, polygon: &Polygon) -> Option<Color> {}
+    fn get_texture(&self, polygon: &Polygon, uv: (u8, u8)) -> Option<Color> {
+        match self.texpage.texture_page_colors {
+            TexturePageColors::Bit4 => self.read4bit_clut(uv),
+            TexturePageColors::Bit8 => self.read8bit_clut(uv),
+            TexturePageColors::Bit15 => self.read15bit_clut(uv),
+        }
+    }
+
+    fn read4bit_clut(&self, uv: (u8, u8)) -> Option<Color> {
+        let tex_x_base = (self.texpage.x_base as i32) * 64;
+        let tex_y_base = (self.texpage.y_base1 as i32) * 16;
+
+        let offset_u = (2 * tex_x_base + (uv.0 as i32 / 2)) as u32;
+        let offset_v = (tex_y_base + uv.1 as i32) as u32;
+
+        let texture_address = (offset_u + 2048 * offset_v) as usize;
+
+        let texture = unsafe { *(&self.vram[texture_address] as *const u8 as *const u16) };
+
+        if texture == 0 {
+            None
+        } else {
+            Some(Color::translate15bit_to_24(texture))
+        }
+    }
+
+    fn read8bit_clut(&self, uv: (u8, u8)) -> Option<Color> {
+        None
+    }
+
+    fn read15bit_clut(&self, uv: (u8, u8)) -> Option<Color> {
+        None
+    }
+
+    fn mask_texture_coordinates(&self, uv: (u8, u8)) -> (u8, u8) {
+        let mask_x = self.texture_window_mask_x;
+        let mask_y = self.texture_window_mask_y;
+
+        let offset_x = self.texture_window_offset_x;
+        let offset_y = self.texture_window_offset_y;
+
+        let masked_u = (uv.0 as u32 & !mask_x) | (offset_x & mask_x);
+        let masked_v = (uv.1 as u32 & !mask_y) | (offset_y & mask_y);
+
+        (masked_u as u8, masked_v as u8)
+    }
 }
 
 impl Polygon {
@@ -217,5 +267,18 @@ impl Polygon {
         let rel_y = (curr_point.y - base_vertex.y) as f32;
 
         (slope * rel_y) as i32 + base_vertex.x
+    }
+
+    fn interpolate_texture_coordinates(
+        &self,
+        curr_point: &Coordinate2d,
+        u_base: f32,
+        v_base: f32,
+        d: &Deltas,
+    ) -> (u8, u8) {
+        let u = (curr_point.x as f32 * d.dudx + curr_point.y as f32 * d.dudy + u_base) as u8;
+        let v = (curr_point.x as f32 * d.dvdx + curr_point.y as f32 * d.dvdy + v_base) as u8;
+
+        (u, v)
     }
 }

@@ -18,6 +18,7 @@ const CYCLES_PER_SCANLINE: usize = 3413;
 const HBLANK_END: usize = CYCLES_PER_SCANLINE - HBLANK_START;
 const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
+const VRAM_SIZE: usize = 2 * 1024 * 512;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
 pub const SCREEN_WIDTH: usize = 640;
@@ -143,6 +144,21 @@ pub struct Color {
     pub a: u8,
 }
 
+impl Color {
+    pub fn translate15bit_to_24(val: u16) -> Color {
+        let mut r = (val & 0x1f) as u8;
+        let mut g = ((val >> 5) & 0x1f) as u8;
+        let mut b = ((val >> 10) & 0x1f) as u8;
+        let a = ((val >> 15) & 0b1) as u8;
+
+        r = (r << 3) | (r >> 2);
+        g = (g << 3) | (g >> 2);
+        b = (b << 3) | (b >> 2);
+
+        Self { r, g, b, a }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Vertex {
     pub x: i32,
@@ -249,6 +265,7 @@ pub struct GPU {
     pub vram_transfer_halfwords: Vec<u16>,
     pub transfer_params: Option<CPUTransferParams>,
     pub resolution_changed: bool,
+    pub vram: Box<[u8]>,
     dotclock_cycles: usize,
 }
 
@@ -320,6 +337,7 @@ impl GPU {
             transfer_params: None,
             resolution_changed: false,
             dotclock_cycles: 0,
+            vram: vec![0; VRAM_SIZE].into_boxed_slice(),
         }
     }
 
