@@ -10,6 +10,7 @@ use super::{
     timer::{ClockSource, Timer, counter_mode_register::CounterModeRegister},
 };
 
+pub mod deltas;
 pub mod render;
 
 const HBLANK_START: usize = 2813;
@@ -111,6 +112,7 @@ pub enum TexturePageColors {
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,
+    pub is_shaded: bool,
     pub semitransparent: bool,
     pub textured: bool,
     pub texpage: Option<Texpage>,
@@ -125,6 +127,7 @@ impl Polygon {
             is_line,
             semitransparent: false,
             textured: false,
+            is_shaded: false,
             texpage: None,
             clut: (0, 0),
             transparent_mode: 0,
@@ -132,7 +135,7 @@ impl Polygon {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
@@ -140,7 +143,7 @@ pub struct Color {
     pub a: u8,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Vertex {
     pub x: i32,
     pub y: i32,
@@ -626,6 +629,7 @@ impl GPU {
                 },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
+                is_shaded: self.is_shaded,
             });
 
             polygons.push(Polygon {
@@ -640,6 +644,7 @@ impl GPU {
                 } else {
                     self.texpage.semi_transparency
                 },
+                is_shaded: self.is_shaded,
             });
         } else {
             polygons.push(Polygon {
@@ -654,6 +659,7 @@ impl GPU {
                 } else {
                     self.texpage.semi_transparency
                 },
+                is_shaded: self.is_shaded,
             });
         }
 
@@ -749,6 +755,7 @@ impl GPU {
             semitransparent: self.is_semitransparent,
             transparent_mode: self.texpage.semi_transparency,
             textured: self.is_textured,
+            is_shaded: self.is_shaded,
         });
         self.polygons.push(Polygon {
             vertices: vertices2,
@@ -758,6 +765,7 @@ impl GPU {
             semitransparent: self.is_semitransparent,
             transparent_mode: self.texpage.semi_transparency,
             textured: self.is_textured,
+            is_shaded: self.is_shaded,
         });
 
         self.num_vertices = 0;

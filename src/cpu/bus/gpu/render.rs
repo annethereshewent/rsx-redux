@@ -1,3 +1,221 @@
-use crate::cpu::bus::gpu::GPU;
+use std::cmp;
 
-impl GPU {}
+use crate::cpu::bus::gpu::{Color, GPU, Polygon, Vertex, deltas::Deltas};
+
+struct Coordinate2d {
+    x: i32,
+    y: i32,
+}
+
+impl GPU {
+    pub fn rasterize_triangle(&mut self, polygon: &mut Polygon) {
+        polygon.vertices.sort_by(|a, b| a.y.cmp(&b.y));
+
+        let cross_product = GPU::cross_product(&polygon.vertices);
+
+        if cross_product == 0 {
+            // malformed triangle
+            return;
+        }
+
+        let mut min_x = cmp::min(
+            polygon.vertices[0].x,
+            polygon.vertices[1].x.min(polygon.vertices[2].x),
+        );
+        let mut max_x = cmp::max(
+            polygon.vertices[0].x,
+            polygon.vertices[1].x.max(polygon.vertices[2].x),
+        );
+
+        let mut min_y = cmp::min(
+            polygon.vertices[0].y,
+            polygon.vertices[1].y.min(polygon.vertices[2].y),
+        );
+        let mut max_y = cmp::max(
+            polygon.vertices[0].y,
+            polygon.vertices[1].y.max(polygon.vertices[2].y),
+        );
+
+        if (max_x >= 1024 && min_x >= 1024)
+            || (max_x < 0 && min_x < 0)
+            || (max_y >= 512 && min_y >= 512)
+            || (max_y < 0 && min_y < 0)
+            || max_x - min_x >= 1024
+            || max_y - min_y >= 512
+        {
+            return;
+        }
+
+        min_x = cmp::min(min_x, self.x1 as i32);
+        max_x = cmp::max(max_x, self.x2 as i32);
+
+        min_y = cmp::min(min_y, self.y1 as i32);
+        max_y = cmp::max(max_y, self.y2 as i32);
+
+        let d = Deltas::get_deltas(polygon, cross_product as f32);
+
+        // subtract from the first vertex's coordinates so that we start at the "origin" of the color so it's easier to compute the current color later
+        let r_base = polygon.vertices[0].color.r as f32
+            - d.drdx * polygon.vertices[0].x as f32
+            - d.drdy * polygon.vertices[0].y as f32;
+        let g_base = polygon.vertices[0].color.g as f32
+            - d.dgdx * polygon.vertices[0].x as f32
+            - d.dgdy * polygon.vertices[0].y as f32;
+        let b_base = polygon.vertices[0].color.b as f32
+            - d.dbdx * polygon.vertices[0].x as f32
+            - d.dbdy * polygon.vertices[0].y as f32;
+
+        let u_base = polygon.vertices[0].u as f32
+            - d.dudx * polygon.vertices[0].x as f32
+            - d.dudy * polygon.vertices[0].y as f32;
+        let v_base = polygon.vertices[0].v as f32
+            - d.dvdx * polygon.vertices[0].x as f32
+            - d.dvdy * polygon.vertices[0].y as f32;
+
+        let p01_slope = if polygon.vertices[0].y != polygon.vertices[1].y {
+            Some(
+                (polygon.vertices[1].x - polygon.vertices[0].x) as f32
+                    / (polygon.vertices[1].y - polygon.vertices[0].y) as f32,
+            )
+        } else {
+            None
+        };
+
+        let p12_slope = if polygon.vertices[1].y != polygon.vertices[2].y {
+            Some(
+                (polygon.vertices[2].x - polygon.vertices[1].x) as f32
+                    / (polygon.vertices[2].y - polygon.vertices[1].y) as f32,
+            )
+        } else {
+            None
+        };
+
+        let p02_slope = (polygon.vertices[2].x - polygon.vertices[0].x) as f32
+            / (polygon.vertices[2].y - polygon.vertices[0].y) as f32;
+
+        let p02_is_left = cross_product > 0;
+
+        let mut curr_color = polygon.vertices[0].color;
+
+        let mut curr_point = Coordinate2d { x: min_x, y: min_y };
+
+        while curr_point.y < max_y {
+            curr_point.x = min_x;
+            while curr_point.x < max_x {
+                let (boundary1, boundary2) =
+                    polygon.get_boundaries(p01_slope, p12_slope, p02_slope, &curr_point);
+
+                let (curr_min_x, curr_max_x) = if p02_is_left {
+                    (boundary2, boundary1)
+                } else {
+                    (boundary1, boundary2)
+                };
+
+                if curr_point.x >= curr_min_x && curr_point.x < curr_max_x {
+                    // render the pixel!
+                    if polygon.is_shaded {
+                        Self::interpolate_color(
+                            &mut curr_color,
+                            &curr_point,
+                            r_base,
+                            g_base,
+                            b_base,
+                            &d,
+                        );
+                    }
+                }
+
+                let mut output = curr_color;
+
+                if polygon.textured {
+                    if let Some(texture) = self.get_texture(&polygon) {
+                    } else {
+                        curr_point.x += 1;
+                        continue;
+                    }
+                }
+
+                curr_point.x += 1;
+            }
+            curr_point.y += 1;
+        }
+    }
+
+    fn interpolate_color(
+        color: &mut Color,
+        curr_point: &Coordinate2d,
+        r_base: f32,
+        g_base: f32,
+        b_base: f32,
+        d: &Deltas,
+    ) {
+        color.r = (d.drdx * curr_point.x as f32 + d.drdy * curr_point.y as f32 + r_base) as u8;
+        color.g = (d.dgdx * curr_point.x as f32 + d.dgdy * curr_point.y as f32 + g_base) as u8;
+        color.b = (d.dbdx * curr_point.x as f32 + d.dbdy * curr_point.y as f32 + b_base) as u8;
+    }
+
+    fn get_texture(&self, polygon: &Polygon) -> Option<Color> {}
+}
+
+impl Polygon {
+    /// Gets the left and right boundaries of the triangle to where to render pixels to. Considers the 3 possible slopes of a triangle and determines the left boundary
+    /// and the right boundary based on them.
+    fn get_boundaries(
+        &self,
+        p01_slope: Option<f32>,
+        p12_slope: Option<f32>,
+        p02_slope: f32,
+        curr_point: &Coordinate2d,
+    ) -> (i32, i32) {
+        // Three possible cases to consider:
+        // p01 slope is horizontal
+        // p12 slope is horizontal
+        // neither are horizontal
+
+        let boundary1 = if p01_slope.is_none() {
+            if let Some(slope) = p12_slope {
+                Self::get_boundary_from_slope(&self.vertices[1], slope, curr_point)
+            } else {
+                println!("shouldn't happen: p01_slope and p12_slope are both None");
+                0
+            }
+        } else if p12_slope.is_none() {
+            if let Some(slope) = p01_slope {
+                Self::get_boundary_from_slope(&self.vertices[0], slope, curr_point)
+            } else {
+                println!("shouldn't happen: p01_slope and p12_slope are both None");
+                0
+            }
+        } else {
+            // determine what slope to use based on whether the current point is less than the y coordinate of the triangle vertices (vertex 0 vs vertex 1)
+            if curr_point.y <= self.vertices[0].y {
+                // Use p01_slope
+                if let Some(slope) = p01_slope {
+                    Self::get_boundary_from_slope(&self.vertices[0], slope, curr_point)
+                } else {
+                    println!("shouldn't happen: p01_slope is None but should be Some");
+                    0
+                }
+            } else {
+                if let Some(slope) = p12_slope {
+                    Self::get_boundary_from_slope(&self.vertices[1], slope, curr_point)
+                } else {
+                    println!("shouldn't happen: p12_slope is None but should be Some");
+                    0
+                }
+            }
+        };
+
+        // p02 slope is never horizontal, as vertices are sorted by y coordinate, and thus it is always either vertical or diagonal. so we can always use it to calculate the
+        // 2nd boundary
+        let boundary2 = Self::get_boundary_from_slope(&self.vertices[0], p02_slope, curr_point);
+
+        (boundary1, boundary2)
+    }
+
+    fn get_boundary_from_slope(base_vertex: &Vertex, slope: f32, curr_point: &Coordinate2d) -> i32 {
+        let rel_y = (curr_point.y - base_vertex.y) as f32;
+
+        (slope * rel_y) as i32 + base_vertex.x
+    }
+}
