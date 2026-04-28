@@ -11,6 +11,7 @@ use super::{
 };
 
 pub mod deltas;
+#[cfg(feature = "software_gpu")]
 pub mod render;
 
 const HBLANK_START: usize = 2813;
@@ -19,6 +20,8 @@ const HBLANK_END: usize = CYCLES_PER_SCANLINE - HBLANK_START;
 const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 const VRAM_SIZE: usize = 2 * 1024 * 512;
+const VRAM_WIDTH: usize = 1024;
+const VRAM_HEIGHT: usize = 512;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
 pub const SCREEN_WIDTH: usize = 640;
@@ -265,8 +268,15 @@ pub struct GPU {
     pub vram_transfer_halfwords: Vec<u16>,
     pub transfer_params: Option<CPUTransferParams>,
     pub resolution_changed: bool,
+    #[cfg(feature = "software_gpu")]
     pub vram: Box<[u8]>,
     dotclock_cycles: usize,
+    cpu_transfer_x: u32,
+    cpu_transfer_y: u32,
+    cpu_transfer_width: u32,
+    cpu_transfer_height: u32,
+    #[cfg(feature = "software_gpu")]
+    pub picture: Box<[u8]>,
 }
 
 impl GPU {
@@ -327,8 +337,8 @@ impl GPU {
             horizontal_bits1: 0,
             display_start_x: 0,
             display_start_y: 0,
-            display_range_x: (0, 0),
-            display_range_y: (0, 0),
+            display_range_x: (512, 3072),
+            display_range_y: (16, 256),
             display_on: true,
             debug_on: false,
             gpu_commands: Vec::new(),
@@ -337,24 +347,66 @@ impl GPU {
             transfer_params: None,
             resolution_changed: false,
             dotclock_cycles: 0,
+            #[cfg(feature = "software_gpu")]
             vram: vec![0; VRAM_SIZE].into_boxed_slice(),
+            cpu_transfer_x: 0,
+            cpu_transfer_y: 0,
+            cpu_transfer_width: 0,
+            cpu_transfer_height: 0,
+            #[cfg(feature = "software_gpu")]
+            picture: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 3].into_boxed_slice(),
         }
     }
 
     pub fn read_gpu(&mut self) -> u32 {
         if let Some(transfer_type) = self.transfer_type {
             if transfer_type == TransferType::FromVram {
-                let lower = self.transfer_to_cpu();
-                let upper = self.transfer_to_cpu();
+                #[cfg(feature = "hardware_gpu")]
+                {
+                    let lower = self.transfer_to_cpu();
+                    let upper = self.transfer_to_cpu();
 
-                return lower as u32 | (upper as u32) << 16;
+                    return lower as u32 | (upper as u32) << 16;
+                }
+                #[cfg(feature = "software_gpu")]
+                {
+                    let lower = self.transfer_to_cpu_software();
+                    let upper = self.transfer_to_cpu_software();
+
+                    return lower as u32 | (upper as u32) << 16;
+                }
             }
         }
 
         self.gpuread
     }
 
-    pub fn transfer_to_cpu(&mut self) -> u16 {
+    #[cfg(feature = "software_gpu")]
+    fn transfer_to_cpu_software(&mut self) -> u16 {
+        let curr_x = self.cpu_transfer_x + self.read_x;
+        let curr_y = self.cpu_transfer_y + self.read_y;
+
+        self.read_x += 1;
+
+        if self.read_x == self.cpu_transfer_width {
+            self.read_x = 0;
+
+            self.read_y += 1;
+
+            if self.read_y == self.cpu_transfer_height {
+                self.transfer_type = None;
+            }
+        }
+
+        let vram_address = GPU::get_vram_address(curr_x & 0x3ff, curr_y & 0x1ff);
+
+        let halfword = unsafe { *(&self.vram[vram_address] as *const u8 as *const u16) };
+
+        halfword
+    }
+
+    #[cfg(feature = "hardware_gpu")]
+    fn transfer_to_cpu(&mut self) -> u16 {
         if !self.gpuread_fifo.is_empty() {
             let value = self.gpuread_fifo.pop_front().unwrap();
 
@@ -628,62 +680,126 @@ impl GPU {
             vertices.push(vertex);
         }
 
-        let mut polygons: Vec<Polygon> = Vec::new();
+        #[cfg(feature = "hardware_gpu")]
+        {
+            let mut polygons: Vec<Polygon> = Vec::new();
 
-        if vertices.len() > 3 {
-            // split up into two polygons
-            let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
-            let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
+            if vertices.len() > 3 {
+                // split up into two triangles
+                let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
+                let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
 
-            polygons.push(Polygon {
-                vertices: vertices1,
-                is_line: false,
-                textured: self.is_textured,
-                texpage,
-                transparent_mode: if let Some(texpage) = texpage {
-                    texpage.semi_transparency
-                } else {
-                    self.texpage.semi_transparency
-                },
-                clut: (self.clut_x as u32, self.clut_y as u32),
-                semitransparent: self.is_semitransparent,
-                is_shaded: self.is_shaded,
-            });
+                polygons.push(Polygon {
+                    vertices: vertices1,
+                    is_line: false,
+                    textured: self.is_textured,
+                    texpage,
+                    transparent_mode: if let Some(texpage) = texpage {
+                        texpage.semi_transparency
+                    } else {
+                        self.texpage.semi_transparency
+                    },
+                    clut: (self.clut_x as u32, self.clut_y as u32),
+                    semitransparent: self.is_semitransparent,
+                    is_shaded: self.is_shaded,
+                });
 
-            polygons.push(Polygon {
-                vertices: vertices2,
-                is_line: false,
-                texpage,
-                clut: (self.clut_x as u32, self.clut_y as u32),
-                semitransparent: self.is_semitransparent,
-                textured: self.is_textured,
-                transparent_mode: if let Some(texpage) = texpage {
-                    texpage.semi_transparency
-                } else {
-                    self.texpage.semi_transparency
-                },
-                is_shaded: self.is_shaded,
-            });
-        } else {
-            polygons.push(Polygon {
-                vertices,
-                is_line: false,
-                texpage,
-                clut: (self.clut_x as u32, self.clut_y as u32),
-                semitransparent: self.is_semitransparent,
-                textured: self.is_textured,
-                transparent_mode: if let Some(texpage) = texpage {
-                    texpage.semi_transparency
-                } else {
-                    self.texpage.semi_transparency
-                },
-                is_shaded: self.is_shaded,
-            });
+                polygons.push(Polygon {
+                    vertices: vertices2,
+                    is_line: false,
+                    texpage,
+                    clut: (self.clut_x as u32, self.clut_y as u32),
+                    semitransparent: self.is_semitransparent,
+                    textured: self.is_textured,
+                    transparent_mode: if let Some(texpage) = texpage {
+                        texpage.semi_transparency
+                    } else {
+                        self.texpage.semi_transparency
+                    },
+                    is_shaded: self.is_shaded,
+                });
+            } else {
+                polygons.push(Polygon {
+                    vertices,
+                    is_line: false,
+                    texpage,
+                    clut: (self.clut_x as u32, self.clut_y as u32),
+                    semitransparent: self.is_semitransparent,
+                    textured: self.is_textured,
+                    transparent_mode: if let Some(texpage) = texpage {
+                        texpage.semi_transparency
+                    } else {
+                        self.texpage.semi_transparency
+                    },
+                    is_shaded: self.is_shaded,
+                });
+            }
+
+            self.polygons.append(&mut polygons);
+
+            self.commands_ready = true;
+        }
+        #[cfg(feature = "software_gpu")]
+        {
+            if vertices.len() > 3 {
+                // split up into two triangles
+
+                let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
+                let mut polygon = Polygon {
+                    vertices: vertices1,
+                    is_line: false,
+                    texpage,
+                    clut: (self.clut_x as u32, self.clut_y as u32),
+                    semitransparent: self.is_semitransparent,
+                    textured: self.is_textured,
+                    transparent_mode: if let Some(texpage) = texpage {
+                        texpage.semi_transparency
+                    } else {
+                        self.texpage.semi_transparency
+                    },
+                    is_shaded: self.is_shaded,
+                };
+
+                self.rasterize_triangle(&mut polygon);
+
+                let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
+
+                let mut polygon2 = Polygon {
+                    vertices: vertices2,
+                    is_line: false,
+                    texpage,
+                    clut: (self.clut_x as u32, self.clut_y as u32),
+                    semitransparent: self.is_semitransparent,
+                    textured: self.is_textured,
+                    transparent_mode: if let Some(texpage) = texpage {
+                        texpage.semi_transparency
+                    } else {
+                        self.texpage.semi_transparency
+                    },
+                    is_shaded: self.is_shaded,
+                };
+
+                self.rasterize_triangle(&mut polygon2);
+            } else {
+                let mut polygon = Polygon {
+                    vertices,
+                    is_line: false,
+                    texpage,
+                    clut: (self.clut_x as u32, self.clut_y as u32),
+                    semitransparent: self.is_semitransparent,
+                    textured: self.is_textured,
+                    transparent_mode: if let Some(texpage) = texpage {
+                        texpage.semi_transparency
+                    } else {
+                        self.texpage.semi_transparency
+                    },
+                    is_shaded: self.is_shaded,
+                };
+
+                self.rasterize_triangle(&mut polygon);
+            }
         }
 
-        self.polygons.append(&mut polygons);
-
-        self.commands_ready = true;
         self.num_vertices = 0;
     }
 
@@ -830,14 +946,25 @@ impl GPU {
         let width = dimensions & 0x3ff;
         let height = (dimensions >> 16) & 0x1ff;
 
-        self.gpu_commands
-            .push(GPUCommand::VRAMtoCPU(CPUTransferParams {
-                start_x,
-                start_y,
-                width,
-                height,
-            }));
-        self.commands_ready = true;
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.gpu_commands
+                .push(GPUCommand::VRAMtoCPU(CPUTransferParams {
+                    start_x,
+                    start_y,
+                    width,
+                    height,
+                }));
+            self.commands_ready = true;
+        }
+        #[cfg(feature = "software_gpu")]
+        {
+            self.cpu_transfer_x = start_x;
+            self.cpu_transfer_y = start_y;
+
+            self.cpu_transfer_width = width;
+            self.cpu_transfer_height = height;
+        }
 
         self.read_y = 0;
         self.read_x = 0;
@@ -885,17 +1012,40 @@ impl GPU {
         let width = dimensions & 0x3ff;
         let height = (dimensions >> 16) & 0x1ff;
 
-        self.gpu_commands
-            .push(GPUCommand::VramToVram(VramToVramTransferParams {
-                source_start_x,
-                source_start_y,
-                destination_start_x,
-                destination_start_y,
-                width,
-                height,
-            }));
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.gpu_commands
+                .push(GPUCommand::VramToVram(VramToVramTransferParams {
+                    source_start_x,
+                    source_start_y,
+                    destination_start_x,
+                    destination_start_y,
+                    width,
+                    height,
+                }));
 
-        self.commands_ready = true;
+            self.commands_ready = true;
+        }
+        #[cfg(feature = "software_gpu")]
+        {
+            for y in 0..height {
+                for x in 0..width {
+                    let source_x = x + source_start_x;
+                    let dest_x = x + destination_start_x;
+
+                    let source_y = y + source_start_y;
+                    let dest_y = y + destination_start_y;
+
+                    let source_vram_address =
+                        GPU::get_vram_address(source_x & 0x3ff, source_y & 0x1ff);
+                    let destination_vram_address =
+                        GPU::get_vram_address(dest_x & 0x3ff, dest_y & 0x1ff);
+
+                    self.vram[destination_vram_address] = self.vram[source_vram_address];
+                    self.vram[destination_vram_address + 1] = self.vram[source_vram_address + 1];
+                }
+            }
+        }
     }
 
     pub fn cross_product(v: &[Vertex]) -> i32 {
@@ -924,16 +1074,30 @@ impl GPU {
         let w = ((dimensions & 0x3ff) + 0xf) & !0xf;
         let h = (dimensions >> 16) & 0x1ff;
 
-        let fill_vram_params = FillVramParams {
-            start_x,
-            start_y,
-            width: w,
-            height: h,
-            pixel,
-        };
+        #[cfg(feature = "hardware_gpu")]
+        {
+            let fill_vram_params = FillVramParams {
+                start_x,
+                start_y,
+                width: w,
+                height: h,
+                pixel,
+            };
 
-        self.gpu_commands
-            .push(GPUCommand::FillVRAM(fill_vram_params));
+            self.gpu_commands
+                .push(GPUCommand::FillVRAM(fill_vram_params));
+            self.commands_ready = true;
+        }
+        #[cfg(feature = "software_gpu")]
+        {
+            for y in start_y..start_y + h {
+                for x in start_x..start_x + w {
+                    let vram_address = GPU::get_vram_address(x & 0x3ff, y & 0x1ff);
+
+                    unsafe { *(&mut self.vram[vram_address] as *mut u8 as *mut u16) = pixel };
+                }
+            }
+        }
     }
 
     fn execute_command(&mut self, word: u32) {
@@ -981,8 +1145,12 @@ impl GPU {
     }
 
     fn transfer_to_vram(&mut self, halfword: u16) {
+        let curr_x = self.read_x + self.transfer_x;
+        let curr_y = self.read_y + self.transfer_y;
+
         self.read_x += 1;
 
+        #[cfg(feature = "hardware_gpu")]
         self.vram_transfer_halfwords.push(halfword);
 
         if self.read_x == self.transfer_width {
@@ -993,15 +1161,18 @@ impl GPU {
             if self.read_y == self.transfer_height {
                 self.transfer_type = None;
 
-                self.gpu_commands
-                    .push(GPUCommand::CPUtoVram(VRamTransferParams {
-                        halfwords: self.vram_transfer_halfwords.drain(..).collect(),
-                        start_x: self.transfer_x,
-                        start_y: self.transfer_y,
-                        width: self.transfer_width,
-                        height: self.transfer_height,
-                    }));
-                self.commands_ready = true;
+                #[cfg(feature = "hardware_gpu")]
+                {
+                    self.gpu_commands
+                        .push(GPUCommand::CPUtoVram(VRamTransferParams {
+                            halfwords: self.vram_transfer_halfwords.drain(..).collect(),
+                            start_x: self.transfer_x,
+                            start_y: self.transfer_y,
+                            width: self.transfer_width,
+                            height: self.transfer_height,
+                        }));
+                    self.commands_ready = true;
+                }
 
                 self.read_y = 0;
                 self.transfer_width = 0;
@@ -1010,6 +1181,23 @@ impl GPU {
                 self.transfer_y = 0;
             }
         }
+        #[cfg(feature = "software_gpu")]
+        {
+            let vram_address = GPU::get_vram_address(curr_x & 0x3ff, curr_y & 0x1ff);
+
+            self.vram[vram_address] = halfword as u8;
+            self.vram[vram_address + 1] = (halfword >> 8) as u8;
+        }
+    }
+
+    #[cfg(feature = "software_gpu")]
+    fn get_vram_address(x: u32, y: u32) -> usize {
+        (2 * (x + 1024 * y)) as usize
+    }
+
+    #[cfg(feature = "software_gpu")]
+    fn get_vram_address_24(x: u32, y: u32) -> usize {
+        (3 * x + 2048 * y) as usize
     }
 
     pub fn process_gp1_commands(&mut self, word: u32) {
@@ -1038,7 +1226,7 @@ impl GPU {
     }
 
     fn display_range_horizontal(&mut self, word: u32) {
-        self.display_range_x = (word & 0xfff, (word >> 12) & 0x1ff);
+        self.display_range_x = (word & 0xfff, (word >> 12) & 0xfff);
     }
 
     fn read_internal_register(&mut self, word: u32) {

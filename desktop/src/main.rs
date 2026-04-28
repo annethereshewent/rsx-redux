@@ -36,6 +36,7 @@ fn main() {
 
     let mut frontend = Frontend::new(&cpu.bus.gpu);
 
+    #[cfg(feature = "hardware_gpu")]
     frontend.renderer.metal_layer.setDrawableSize(CGSize::new(
         cpu.bus.gpu.display_width as f64,
         cpu.bus.gpu.display_height as f64,
@@ -44,11 +45,15 @@ fn main() {
     loop {
         while !cpu.bus.gpu.frame_finished {
             cpu.step();
+            #[cfg(feature = "hardware_gpu")]
             frontend.renderer.process(&mut cpu.bus.gpu);
         }
         cpu.bus.gpu.frame_finished = false;
 
+        #[cfg(feature = "hardware_gpu")]
         frontend.renderer.present(&mut cpu.bus.gpu);
+        #[cfg(feature = "software_gpu")]
+        frontend.render(&mut cpu.bus.gpu);
 
         cpu.bus.gpu.cap_fps();
 

@@ -1,6 +1,8 @@
 use std::cmp;
 
-use crate::cpu::bus::gpu::{Color, GPU, Polygon, TexturePageColors, Vertex, deltas::Deltas};
+use crate::cpu::bus::gpu::{
+    Color, DisplayDepth, GPU, Polygon, TexturePageColors, Vertex, deltas::Deltas,
+};
 
 struct Coordinate2d {
     x: i32,
@@ -10,6 +12,16 @@ struct Coordinate2d {
 impl GPU {
     pub fn rasterize_triangle(&mut self, polygon: &mut Polygon) {
         polygon.vertices.sort_by(|a, b| a.y.cmp(&b.y));
+
+        println!(
+            "{},{} {},{} {},{}",
+            polygon.vertices[0].x,
+            polygon.vertices[0].y,
+            polygon.vertices[1].x,
+            polygon.vertices[1].y,
+            polygon.vertices[2].x,
+            polygon.vertices[2].y
+        );
 
         let cross_product = GPU::cross_product(&polygon.vertices);
 
@@ -46,11 +58,11 @@ impl GPU {
             return;
         }
 
-        min_x = cmp::min(min_x, self.x1 as i32);
-        max_x = cmp::max(max_x, self.x2 as i32);
+        min_x = cmp::max(min_x, self.x1 as i32);
+        min_y = cmp::max(min_y, self.y1 as i32);
 
-        min_y = cmp::min(min_y, self.y1 as i32);
-        max_y = cmp::max(max_y, self.y2 as i32);
+        max_x = cmp::min(max_x, self.x2 as i32);
+        max_y = cmp::min(max_y, self.y2 as i32);
 
         let d = Deltas::get_deltas(polygon, cross_product as f32);
 
@@ -123,27 +135,55 @@ impl GPU {
                             &d,
                         );
                     }
-                }
+                    let mut output = curr_color;
 
-                let mut output = curr_color;
+                    if polygon.textured {
+                        let uv = polygon.interpolate_texture_coordinates(
+                            &curr_point,
+                            u_base,
+                            v_base,
+                            &d,
+                        );
 
-                if polygon.textured {
-                    let uv =
-                        polygon.interpolate_texture_coordinates(&curr_point, u_base, v_base, &d);
+                        let masked_uv = self.mask_texture_coordinates(uv);
 
-                    let masked_uv = self.mask_texture_coordinates(uv);
-
-                    if let Some(texture) = self.get_texture(&polygon, masked_uv) {
-                    } else {
-                        curr_point.x += 1;
-                        continue;
+                        if let Some(texture) = self.get_texture(&polygon, masked_uv) {
+                        } else {
+                            curr_point.x += 1;
+                            continue;
+                        }
                     }
-                }
 
+                    self.render_pixel(&polygon, output, &curr_point);
+                }
                 curr_point.x += 1;
             }
             curr_point.y += 1;
         }
+    }
+
+    fn render_pixel(&mut self, polygon: &Polygon, output: Color, curr_point: &Coordinate2d) {
+        let vram_address =
+            Self::get_vram_address(curr_point.x as u32 & 0x3ff, curr_point.y as u32 & 0x1ff);
+
+        let r = output.r >> 3;
+        let g = output.g >> 3;
+        let b = output.b >> 3;
+
+        let output = r as u16 | (g as u16) << 5 | (b as u16) << 10 | (output.a as u16) << 15;
+
+        unsafe { *(&mut self.vram[vram_address] as *mut u8 as *mut u16) = output };
+    }
+
+    pub fn color_to_u16(color: Color) -> u16 {
+        let mut pixel = 0;
+
+        pixel |= ((color.r as u16) & 0xf8) >> 3;
+        pixel |= ((color.g as u16) & 0xf8) << 2;
+        pixel |= ((color.b as u16) & 0xf8) << 7;
+        pixel |= (color.a as u16) << 15;
+
+        pixel
     }
 
     fn interpolate_color(
@@ -204,6 +244,45 @@ impl GPU {
         let masked_v = (uv.1 as u32 & !mask_y) | (offset_y & mask_y);
 
         (masked_u as u8, masked_v as u8)
+    }
+
+    pub fn get_dimensions(&self) -> (u32, u32) {
+        (self.display_width, self.display_height)
+    }
+
+    pub fn update_picture(&mut self) {
+        let width = self.display_width;
+        let height = self.display_height;
+
+        let mut i = 0;
+
+        for y in 0..height {
+            for x in 0..width {
+                match self.display_depth {
+                    DisplayDepth::Bit15 => {
+                        let vram_address = GPU::get_vram_address(x & 0x3ff, y & 0x1ff);
+
+                        let halfword =
+                            unsafe { *(&self.vram[vram_address] as *const u8 as *const u16) };
+
+                        let color = Color::translate15bit_to_24(halfword);
+
+                        self.picture[i] = color.r;
+                        self.picture[i + 1] = color.g;
+                        self.picture[i + 2] = color.b;
+                    }
+                    DisplayDepth::Bit24 => {
+                        let vram_address = GPU::get_vram_address_24(x & 0x3ff, y & 0x1ff);
+
+                        self.picture[i] = self.vram[vram_address];
+                        self.picture[i + 1] = self.vram[vram_address + 1];
+                        self.picture[i + 2] = self.vram[vram_address + 2];
+                    }
+                }
+
+                i += 3;
+            }
+        }
     }
 }
 

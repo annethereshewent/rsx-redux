@@ -6,6 +6,9 @@ use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
+use sdl2::pixels::PixelFormatEnum;
+#[cfg(feature = "software_gpu")]
+use sdl2::render::Canvas;
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
@@ -15,6 +18,7 @@ use std::process::exit;
 pub const VRAM_WIDTH: usize = 1024;
 pub const VRAM_HEIGHT: usize = 512;
 
+#[cfg(feature = "hardware_gpu")]
 use crate::renderer::Renderer;
 
 pub struct PsxAudioCallback {
@@ -62,13 +66,17 @@ impl PsxAudioCallback {
 }
 
 pub struct Frontend {
+    #[cfg(feature = "hardware_gpu")]
     _window: Window,
     event_pump: EventPump,
     controller: Option<GameController>,
     game_controller_subsystem: GameControllerSubsystem,
     controller_id: Option<u32>,
     retry_attempts: usize,
+    #[cfg(feature = "hardware_gpu")]
     pub renderer: Renderer,
+    #[cfg(feature = "software_gpu")]
+    canvas: Canvas<Window>,
     device: AudioDevice<PsxAudioCallback>,
     button_map: HashMap<Button, usize>,
     button_map2: HashMap<Axis, usize>,
@@ -126,9 +134,18 @@ impl Frontend {
             .build()
             .unwrap();
 
+        #[cfg(feature = "software_gpu")]
+        let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+
+        #[cfg(feature = "software_gpu")]
+        canvas.set_scale(3.0, 3.0).unwrap();
+
+        #[cfg(feature = "hardware_gpu")]
         let metal_view = unsafe { SDL_Metal_CreateView(window.raw()) };
+        #[cfg(feature = "hardware_gpu")]
         let metal_layer_ptr = unsafe { SDL_Metal_GetLayer(metal_view) };
 
+        #[cfg(feature = "hardware_gpu")]
         let metal_layer: Retained<CAMetalLayer> = unsafe {
             Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer)
                 .expect("Couldn't cast pointer to CAMetalLayer!")
@@ -170,11 +187,15 @@ impl Frontend {
         let button_map2 = HashMap::from([(Axis::TriggerLeft, 8), (Axis::TriggerRight, 9)]);
 
         Self {
+            #[cfg(feature = "hardware_gpu")]
             _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
             controller,
             game_controller_subsystem,
+            #[cfg(feature = "hardware_gpu")]
             renderer: Renderer::new(metal_layer, gpu),
+            #[cfg(feature = "software_gpu")]
+            canvas,
             device,
             button_map,
             button_map2,
@@ -230,5 +251,25 @@ impl Frontend {
                 _ => (),
             }
         }
+    }
+
+    #[cfg(feature = "software_gpu")]
+    pub fn render(&mut self, gpu: &mut GPU) {
+        gpu.update_picture();
+
+        let (width, height) = gpu.get_dimensions();
+
+        let creator = self.canvas.texture_creator();
+        let mut texture = creator
+            .create_texture_target(PixelFormatEnum::RGB24, width, height)
+            .unwrap();
+
+        texture
+            .update(None, &gpu.picture, width as usize * 3)
+            .unwrap();
+
+        self.canvas.copy(&texture, None, None).unwrap();
+
+        self.canvas.present();
     }
 }

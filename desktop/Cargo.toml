@@ -17,6 +17,8 @@ ringbuf="0.4.8"
 
 
 [features]
-default = ["rsx-redux/old_spu"]
+default = ["old_spu", "software_gpu"]
 old_spu = ["rsx-redux/old_spu"]
 new_spu = ["rsx-redux/new_spu"]
+software_gpu = ["rsx-redux/software_gpu"]
+hardware_gpu = ["rsx-redux/hardware_gpu"]
