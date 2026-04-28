@@ -138,6 +138,7 @@ impl GPU {
                         let masked_uv = self.mask_texture_coordinates(uv);
 
                         if let Some(texture) = self.get_texture(&polygon, masked_uv) {
+                            output = texture;
                         } else {
                             curr_point.x += 1;
                             continue;
@@ -191,22 +192,28 @@ impl GPU {
 
     fn get_texture(&self, polygon: &Polygon, uv: (u8, u8)) -> Option<Color> {
         match self.texpage.texture_page_colors {
-            TexturePageColors::Bit4 => self.read4bit_clut(uv),
+            TexturePageColors::Bit4 => self.read4bit_clut(polygon, uv),
             TexturePageColors::Bit8 => self.read8bit_clut(uv),
             TexturePageColors::Bit15 => self.read15bit_clut(uv),
         }
     }
 
-    fn read4bit_clut(&self, uv: (u8, u8)) -> Option<Color> {
-        let tex_x_base = (self.texpage.x_base as i32) * 64;
-        let tex_y_base = (self.texpage.y_base1 as i32) * 16;
+    fn read4bit_clut(&self, polygon: &Polygon, uv: (u8, u8)) -> Option<Color> {
+        let tex_x_base = (self.texpage.x_base as u32) * 64;
+        let tex_y_base = (self.texpage.y_base1 as u32) * 16;
 
-        let offset_u = (2 * tex_x_base + (uv.0 as i32 / 2)) as u32;
-        let offset_v = (tex_y_base + uv.1 as i32) as u32;
+        let offset_u = tex_x_base + uv.0 as u32 / 4;
+        let offset_v = (tex_y_base + uv.1 as u32) as u32;
 
-        let texture_address = (offset_u + 2048 * offset_v) as usize;
+        let clut_index_address = 2 * (offset_u + offset_v * 1024);
 
-        let texture = unsafe { *(&self.vram[texture_address] as *const u8 as *const u16) };
+        let byte = self.vram[clut_index_address as usize];
+
+        let texel_index = if uv.0 & 1 == 1 { byte >> 4 } else { byte & 0xf };
+
+        let texture_address = 2 * (texel_index as u32 + polygon.clut.0 + polygon.clut.1 * 1024);
+
+        let texture = unsafe { *(&self.vram[texture_address as usize] as *const u8 as *const u16) };
 
         if texture == 0 {
             None
