@@ -5,10 +5,12 @@ use std::{
 
 use frontend::Frontend;
 use memmap2::Mmap;
+#[cfg(feature = "hardware_gpu")]
 use objc2_core_foundation::CGSize;
 use rsx_redux::cpu::CPU;
 
 pub mod frontend;
+#[cfg(feature = "hardware_gpu")]
 pub mod renderer;
 
 fn main() {

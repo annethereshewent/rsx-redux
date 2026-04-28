@@ -1,4 +1,6 @@
+#[cfg(feature = "hardware_gpu")]
 use objc2::rc::Retained;
+#[cfg(feature = "hardware_gpu")]
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -9,6 +11,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 #[cfg(feature = "software_gpu")]
 use sdl2::render::Canvas;
+#[cfg(feature = "hardware_gpu")]
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
