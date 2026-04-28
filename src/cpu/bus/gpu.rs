@@ -741,10 +741,10 @@ impl GPU {
         }
         #[cfg(feature = "software_gpu")]
         {
-            if vertices.len() > 3 {
+            if vertices.len() == 4 {
                 // split up into two triangles
-
                 let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
+
                 let mut polygon = Polygon {
                     vertices: vertices1,
                     is_line: false,

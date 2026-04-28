@@ -13,16 +13,6 @@ impl GPU {
     pub fn rasterize_triangle(&mut self, polygon: &mut Polygon) {
         polygon.vertices.sort_by(|a, b| a.y.cmp(&b.y));
 
-        println!(
-            "{},{} {},{} {},{}",
-            polygon.vertices[0].x,
-            polygon.vertices[0].y,
-            polygon.vertices[1].x,
-            polygon.vertices[1].y,
-            polygon.vertices[2].x,
-            polygon.vertices[2].y
-        );
-
         let cross_product = GPU::cross_product(&polygon.vertices);
 
         if cross_product == 0 {
@@ -317,7 +307,7 @@ impl Polygon {
             }
         } else {
             // determine what slope to use based on whether the current point is less than the y coordinate of the triangle vertices (vertex 0 vs vertex 1)
-            if curr_point.y <= self.vertices[0].y {
+            if curr_point.y <= self.vertices[1].y {
                 // Use p01_slope
                 if let Some(slope) = p01_slope {
                     Self::get_boundary_from_slope(&self.vertices[0], slope, curr_point)
