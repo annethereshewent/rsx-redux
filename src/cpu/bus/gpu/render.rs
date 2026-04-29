@@ -1,8 +1,7 @@
 use std::cmp;
 
 use crate::cpu::bus::gpu::{
-    Color, DisplayDepth, GPU, Polygon, TexturePageColors, VRAM_HEIGHT, VRAM_WIDTH, Vertex,
-    deltas::Deltas,
+    deltas::Deltas, Color, DisplayDepth, Polygon, Texpage, TexturePageColors, Vertex, GPU, VRAM_HEIGHT, VRAM_WIDTH
 };
 
 struct Coordinate2d {
@@ -129,20 +128,22 @@ impl GPU {
                     let mut output = curr_color;
 
                     if polygon.textured {
-                        let uv = polygon.interpolate_texture_coordinates(
-                            &curr_point,
-                            u_base,
-                            v_base,
-                            &d,
-                        );
+                        if let Some(texpage) = polygon.texpage {
+                            let uv = polygon.interpolate_texture_coordinates(
+                                &curr_point,
+                                u_base,
+                                v_base,
+                                &d,
+                            );
 
-                        let masked_uv = self.mask_texture_coordinates(uv);
+                            let masked_uv = self.mask_texture_coordinates(uv);
 
-                        if let Some(texture) = self.get_texture(&polygon, masked_uv) {
-                            output = texture;
-                        } else {
-                            curr_point.x += 1;
-                            continue;
+                            if let Some(texture) = self.get_texture(&polygon, texpage, masked_uv) {
+                                output = texture;
+                            } else {
+                                curr_point.x += 1;
+                                continue;
+                            }
                         }
                     }
 
@@ -191,21 +192,16 @@ impl GPU {
         color.b = (d.dbdx * curr_point.x as f32 + d.dbdy * curr_point.y as f32 + b_base) as u8;
     }
 
-    fn get_texture(&self, polygon: &Polygon, uv: (u8, u8)) -> Option<Color> {
-        match self.texpage.texture_page_colors {
-            TexturePageColors::Bit4 => self.read_4bit_clut(polygon, uv),
-            TexturePageColors::Bit8 => self.read_8bit_clut(uv),
-            TexturePageColors::Bit15 => self.read_15bit_clut(uv),
+    fn get_texture(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
+        match texpage.texture_page_colors {
+            TexturePageColors::Bit4 => self.read_4bit_clut(polygon, texpage, uv),
+            TexturePageColors::Bit8 => self.read_8bit_clut(polygon, texpage, uv),
+            TexturePageColors::Bit15 => self.read_15bit_clut(texpage, uv),
         }
     }
 
-    fn read_4bit_clut(&self, polygon: &Polygon, uv: (u8, u8)) -> Option<Color> {
-        let (tex_x_base, tex_y_base) = if let Some(texpage) = polygon.texpage {
-            (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16)
-        } else {
-            println!("[WARN]: Polygon is textured but has no texpage.");
-            (0, 0)
-        };
+    fn read_4bit_clut(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
+        let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
 
         let offset_u = 2 * tex_x_base + uv.0 as u32 / 2;
         let offset_v = (tex_y_base + uv.1 as u32) as u32;
@@ -227,12 +223,42 @@ impl GPU {
         }
     }
 
-    fn read_8bit_clut(&self, uv: (u8, u8)) -> Option<Color> {
-        None
+    fn read_8bit_clut(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
+        let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
+
+        let offset_u = 2 * tex_x_base + uv.0 as u32;
+        let offset_v = tex_y_base + uv.1 as u32;
+
+        let clut_index_address = offset_u + offset_v * 2048;
+
+        let texel_index = self.vram[clut_index_address as usize];
+
+        let texture_address = 2 * (texel_index as u32 + polygon.clut.0 + polygon.clut.1 * 1024);
+
+        let texture = unsafe { *(&self.vram[texture_address as usize] as *const u8 as *const u16) };
+
+        if texture == 0 {
+            None
+        } else {
+            Some(Color::translate15bit_to_24(texture))
+        }
     }
 
-    fn read_15bit_clut(&self, uv: (u8, u8)) -> Option<Color> {
-        None
+    fn read_15bit_clut(&self, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
+        let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
+
+        let offset_u = tex_x_base + uv.0 as u32;
+        let offset_v = tex_y_base + uv.1 as u32;
+
+        let texture_address = 2 * (offset_u + 1024 * offset_v);
+
+        let texture = unsafe { *(&self.vram[texture_address as usize] as *const u8 as *const u16) };
+
+        if texture == 0 {
+            None
+        } else {
+            Some(Color::translate15bit_to_24(texture))
+        }
     }
 
     fn mask_texture_coordinates(&self, uv: (u8, u8)) -> (u8, u8) {
