@@ -625,7 +625,7 @@ impl GPU {
     fn push_polygon(&mut self) {
         let mut command_index = 0;
 
-        let mut texpage = Some(self.texpage);
+        let mut texpage: Option<Texpage> = None;
 
         let mut vertices: Vec<Vertex> = Vec::new();
 

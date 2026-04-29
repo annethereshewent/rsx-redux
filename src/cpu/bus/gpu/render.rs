@@ -127,23 +127,21 @@ impl GPU {
                     }
                     let mut output = curr_color;
 
-                    if polygon.textured {
-                        if let Some(texpage) = polygon.texpage {
-                            let uv = polygon.interpolate_texture_coordinates(
-                                &curr_point,
-                                u_base,
-                                v_base,
-                                &d,
-                            );
+                    if let Some(texpage) = polygon.texpage {
+                        let uv = polygon.interpolate_texture_coordinates(
+                            &curr_point,
+                            u_base,
+                            v_base,
+                            &d,
+                        );
 
-                            let masked_uv = self.mask_texture_coordinates(uv);
+                        let masked_uv = self.mask_texture_coordinates(uv);
 
-                            if let Some(texture) = self.get_texture(&polygon, texpage, masked_uv) {
-                                output = texture;
-                            } else {
-                                curr_point.x += 1;
-                                continue;
-                            }
+                        if let Some(texture) = self.get_texture(&polygon, texpage, masked_uv) {
+                            output = texture;
+                        } else {
+                            curr_point.x += 1;
+                            continue;
                         }
                     }
 
