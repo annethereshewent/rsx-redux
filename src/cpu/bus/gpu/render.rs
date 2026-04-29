@@ -1,7 +1,8 @@
 use std::cmp;
 
 use crate::cpu::bus::gpu::{
-    Color, DisplayDepth, GPU, Polygon, TexturePageColors, Vertex, deltas::Deltas,
+    Color, DisplayDepth, GPU, Polygon, TexturePageColors, VRAM_HEIGHT, VRAM_WIDTH, Vertex,
+    deltas::Deltas,
 };
 
 struct Coordinate2d {
@@ -199,8 +200,12 @@ impl GPU {
     }
 
     fn read_4bit_clut(&self, polygon: &Polygon, uv: (u8, u8)) -> Option<Color> {
-        let tex_x_base = (self.texpage.x_base as u32) * 64;
-        let tex_y_base = (self.texpage.y_base1 as u32) * 16;
+        let (tex_x_base, tex_y_base) = if let Some(texpage) = polygon.texpage {
+            (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16)
+        } else {
+            println!("[WARN]: Polygon is textured but has no texpage.");
+            (0, 0)
+        };
 
         let offset_u = 2 * tex_x_base + uv.0 as u32 / 2;
         let offset_v = (tex_y_base + uv.1 as u32) as u32;
@@ -248,9 +253,7 @@ impl GPU {
     }
 
     pub fn update_picture(&mut self) {
-        let width = self.display_width;
-        let height = self.display_height;
-
+        let (width, height) = self.get_dimensions();
         let mut i = 0;
 
         for y in 0..height {

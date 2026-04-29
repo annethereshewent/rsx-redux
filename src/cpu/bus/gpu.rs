@@ -20,8 +20,8 @@ const HBLANK_END: usize = CYCLES_PER_SCANLINE - HBLANK_START;
 const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
 const VRAM_SIZE: usize = 2 * 1024 * 512;
-const VRAM_WIDTH: usize = 1024;
-const VRAM_HEIGHT: usize = 512;
+pub const VRAM_WIDTH: usize = 1024;
+pub const VRAM_HEIGHT: usize = 512;
 pub const FPS_INTERVAL: u128 = 1000 / 60;
 
 pub const SCREEN_WIDTH: usize = 640;

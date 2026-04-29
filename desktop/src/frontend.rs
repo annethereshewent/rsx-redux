@@ -3,7 +3,7 @@ use objc2::rc::Retained;
 #[cfg(feature = "hardware_gpu")]
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::CPU;
-use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
+use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_HEIGHT, VRAM_WIDTH};
 use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
@@ -17,9 +17,6 @@ use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
 use std::ops::DerefMut;
 use std::process::exit;
-
-pub const VRAM_WIDTH: usize = 1024;
-pub const VRAM_HEIGHT: usize = 512;
 
 #[cfg(feature = "hardware_gpu")]
 use crate::renderer::Renderer;
