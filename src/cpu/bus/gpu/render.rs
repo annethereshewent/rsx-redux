@@ -272,19 +272,15 @@ impl GPU {
         (masked_u as u8, masked_v as u8)
     }
 
-    pub fn get_dimensions(&self) -> (u32, u32) {
-        (self.display_width, self.display_height)
-    }
-
     pub fn update_picture(&mut self) {
         let (width, height) = self.get_dimensions();
         let mut i = 0;
 
-        // let display_start_x = self.display_start_x;
-        // let display_start_y = self.display_start_y;
+        let display_start_x = self.display_start_x;
+        let display_start_y = self.display_start_y;
 
-        for y in 0..height {
-            for x in 0..width {
+        for y in display_start_y..display_start_y + height {
+            for x in display_start_x..display_start_x + width {
                 match self.display_depth {
                     DisplayDepth::Bit15 => {
                         let vram_address = GPU::get_vram_address(x & 0x3ff, y & 0x1ff);

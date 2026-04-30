@@ -380,6 +380,24 @@ impl GPU {
         self.gpuread
     }
 
+    pub fn get_dimensions(&self) -> (u32, u32) {
+        let dotclock = self.get_dotclock() as u32;
+        let mut w = if self.display_range_x.0 <= self.display_range_x.1 {
+            self.display_range_x.1 - self.display_range_x.0
+        } else {
+            50
+        } as u32;
+
+        w = ((w / dotclock) + 2) & !0b11;
+        let mut h = (self.display_range_y.1 - self.display_range_y.0) as u32;
+
+        if self.interlaced {
+            h *= 2;
+        }
+
+        (w, h)
+    }
+
     #[cfg(feature = "software_gpu")]
     fn transfer_to_cpu(&mut self) -> u16 {
         let curr_x = self.cpu_transfer_x + self.read_x;
@@ -1461,9 +1479,9 @@ impl GPU {
         if self.previous_time != 0 {
             let diff = current_time - self.previous_time;
 
-            if self.debug_on {
-                println!("fps = {}", 1000 / diff);
-            }
+            // if self.debug_on {
+            //     println!("fps = {}", 1000 / diff);
+            // }
 
             if diff < FPS_INTERVAL {
                 sleep(Duration::from_millis((FPS_INTERVAL - diff) as u64));

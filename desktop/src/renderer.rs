@@ -917,17 +917,16 @@ impl Renderer {
                     draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
 
                     if gpu.resolution_changed {
-                        let width = gpu.display_width as f64;
-                        let height = gpu.display_height as f64;
+                        let (width, height) = gpu.get_dimensions();
 
                         gpu.resolution_changed = false;
 
                         self.metal_layer.setDrawableSize(CGSize::new(
-                            gpu.display_width as f64,
-                            gpu.display_height as f64,
+                            width as f64,
+                            height as f64,
                         ));
 
-                        self.vertices = Self::get_vertices(gpu.display_width, gpu.display_height);
+                        self.vertices = Self::get_vertices(width, height);
 
                         self.buffer = unsafe {
                             self.device.newBufferWithBytes_length_options(
@@ -938,22 +937,14 @@ impl Renderer {
                         }
                         .unwrap();
 
-                        let origin_x = if gpu.display_start_x >= gpu.display_width {
-                            0
-                        } else {
-                            gpu.display_start_x
-                        };
-                        let origin_y = if gpu.display_start_y >= gpu.display_height {
-                            0
-                        } else {
-                            gpu.display_start_y
-                        };
+                        let origin_x = gpu.display_start_x;
+                        let origin_y = gpu.display_start_y;
 
                         let vp = MTLViewport {
                             originX: origin_x as f64,
                             originY: origin_y as f64,
-                            width,
-                            height,
+                            width: width as f64,
+                            height: height as f64,
                             znear: 0.0,
                             zfar: 1.0,
                         };
