@@ -153,7 +153,7 @@ impl GPU {
         }
     }
 
-    fn render_pixel(&mut self, polygon: &Polygon, output: Color, curr_point: &Coordinate2d) {
+    fn render_pixel(&mut self, _polygon: &Polygon, output: Color, curr_point: &Coordinate2d) {
         let vram_address =
             Self::get_vram_address(curr_point.x as u32 & 0x3ff, curr_point.y as u32 & 0x1ff);
 

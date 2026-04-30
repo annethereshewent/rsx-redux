@@ -3,7 +3,7 @@ use objc2::rc::Retained;
 #[cfg(feature = "hardware_gpu")]
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::CPU;
-use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_HEIGHT, VRAM_WIDTH};
+use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
@@ -111,7 +111,7 @@ impl Frontend {
     pub fn push_samples(&mut self, samples: Vec<f32>) {
         self.device.lock().deref_mut().push_samples(samples);
     }
-
+    #[allow(unused_variables)]
     pub fn new(gpu: &GPU) -> Self {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
