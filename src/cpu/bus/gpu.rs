@@ -292,7 +292,7 @@ impl GPU {
     pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(
             EventType::HblankStart,
-            (CYCLES_PER_SCANLINE as f64 * (7.0 / 11.0)) as usize,
+            (CYCLES_PER_SCANLINE as f64 * (GPU_CYCLES_TO_CPU_CYCLES)) as usize,
         );
 
         Self {
@@ -430,7 +430,7 @@ impl GPU {
 
         scheduler.schedule(
             EventType::HblankEnd,
-            (HBLANK_END as f64 * (7.0 / 11.0)) as usize - cycles_left,
+            (HBLANK_END as f64 * (GPU_CYCLES_TO_CPU_CYCLES)) as usize - cycles_left,
         );
     }
 
@@ -492,7 +492,7 @@ impl GPU {
         if self.current_line < VBLANK_LINE_START {
             scheduler.schedule(
                 EventType::HblankStart,
-                (HBLANK_START as f64 * (7.0 / 11.0)) as usize - cycles_left,
+                (HBLANK_START as f64 * (GPU_CYCLES_TO_CPU_CYCLES)) as usize - cycles_left,
             );
         } else {
             timers[1].in_xblank = true;
@@ -502,7 +502,7 @@ impl GPU {
 
             scheduler.schedule(
                 EventType::Vblank,
-                (CYCLES_PER_SCANLINE as f64 * (7.0 / 11.0)) as usize - cycles_left,
+                (CYCLES_PER_SCANLINE as f64 * (GPU_CYCLES_TO_CPU_CYCLES)) as usize - cycles_left,
             );
         }
 
@@ -1507,12 +1507,12 @@ impl GPU {
             self.current_line = 0;
             scheduler.schedule(
                 EventType::HblankStart,
-                (HBLANK_START as f64 * (7.0 / 11.0)) as usize - cycles_left,
+                (HBLANK_START as f64 * (GPU_CYCLES_TO_CPU_CYCLES)) as usize - cycles_left,
             );
         } else {
             scheduler.schedule(
                 EventType::Vblank,
-                (CYCLES_PER_SCANLINE as f64 * (7.0 / 11.0)) as usize - cycles_left,
+                (CYCLES_PER_SCANLINE as f64 * (GPU_CYCLES_TO_CPU_CYCLES)) as usize - cycles_left,
             );
             self.current_line += 1;
         }
