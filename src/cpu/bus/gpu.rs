@@ -361,20 +361,10 @@ impl GPU {
     pub fn read_gpu(&mut self) -> u32 {
         if let Some(transfer_type) = self.transfer_type {
             if transfer_type == TransferType::FromVram {
-                #[cfg(feature = "hardware_gpu")]
-                {
-                    let lower = self.transfer_to_cpu();
-                    let upper = self.transfer_to_cpu();
+                let lower = self.transfer_to_cpu();
+                let upper = self.transfer_to_cpu();
 
-                    return lower as u32 | (upper as u32) << 16;
-                }
-                #[cfg(feature = "software_gpu")]
-                {
-                    let lower = self.transfer_to_cpu_software();
-                    let upper = self.transfer_to_cpu_software();
-
-                    return lower as u32 | (upper as u32) << 16;
-                }
+                return lower as u32 | (upper as u32) << 16;
             }
         }
 
@@ -382,7 +372,7 @@ impl GPU {
     }
 
     #[cfg(feature = "software_gpu")]
-    fn transfer_to_cpu_software(&mut self) -> u16 {
+    fn transfer_to_cpu(&mut self) -> u16 {
         let curr_x = self.cpu_transfer_x + self.read_x;
         let curr_y = self.cpu_transfer_y + self.read_y;
 
@@ -1141,10 +1131,6 @@ impl GPU {
         let command = word >> 24;
         let upper = word >> 29;
 
-        if self.debug_on {
-            println!("got word 0x{word:x}");
-        }
-
         match upper {
             1 => self.push_polygon(),
             2 => unreachable!("shouldn't happen"),
@@ -1222,8 +1208,7 @@ impl GPU {
         {
             let vram_address = GPU::get_vram_address(curr_x & 0x3ff, curr_y & 0x1ff);
 
-            self.vram[vram_address] = halfword as u8;
-            self.vram[vram_address + 1] = (halfword >> 8) as u8;
+            unsafe { *(&mut self.vram[vram_address] as *mut u8 as *mut u16) = halfword };
         }
     }
 
@@ -1362,12 +1347,6 @@ impl GPU {
     }
 
     pub fn process_gp0_commands(&mut self, word: u32) {
-        if self.debug_on {
-            println!(
-                "received word 0x{:x}, words remaining = {}",
-                word, self.words_left
-            );
-        }
         if let Some(transfer_type) = self.transfer_type {
             if transfer_type == TransferType::ToVram {
                 self.transfer_to_vram(word as u16);

@@ -52,12 +52,12 @@ fn main() {
         }
         cpu.bus.gpu.frame_finished = false;
 
+        cpu.bus.gpu.cap_fps();
+
         #[cfg(feature = "hardware_gpu")]
         frontend.renderer.present(&mut cpu.bus.gpu);
         #[cfg(feature = "software_gpu")]
         frontend.render(&mut cpu.bus.gpu);
-
-        cpu.bus.gpu.cap_fps();
 
         frontend.handle_events(&mut cpu);
         frontend.check_controller_status();
