@@ -3,9 +3,15 @@ use std::collections::VecDeque;
 use memmap2::Mmap;
 use registers::HntmaskRegister;
 
+#[cfg(feature = "old_spu")]
 use crate::cpu::bus::spu_legacy::{
     SPU,
     voices::{NEG_ADPCM_TABLE, POS_ADPCM_TABLE},
+};
+#[cfg(feature = "new_spu")]
+use crate::cpu::bus::spu::{
+    SPU,
+    voice::{POS_FILTER_TABLE, NEG_FILTER_TABLE}
 };
 
 use super::{
@@ -867,8 +873,15 @@ impl CDRom {
                 shift = 9;
             }
 
+            #[cfg(feature = "old_spu")]
             let f0 = POS_ADPCM_TABLE[filter as usize];
+            #[cfg(feature = "old_spu")]
             let f1 = NEG_ADPCM_TABLE[filter as usize];
+
+            #[cfg(feature = "new_spu")]
+            let f0 = POS_FILTER_TABLE[filter as usize] as i32;
+            #[cfg(feature = "new_spu")]
+            let f1 = NEG_FILTER_TABLE[filter as usize] as i32;
 
             let nibble = ((word >> (i * 4)) & 0xf) as i32;
 
