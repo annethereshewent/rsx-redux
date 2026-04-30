@@ -819,8 +819,14 @@ impl GPU {
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
-        let x = word as i16 as i32;
-        let y = (word >> 16) as i16 as i32;
+        let mut x = (word & 0xffff) as i32;
+        let mut y = (word >> 16) as i32;
+
+        x = (x << 21) >> 21;
+        y = (y << 21) >> 21;
+
+        x += self.x_offset;
+        y += self.y_offset;
 
         let mut u = 0;
         let mut v = 0;
@@ -881,26 +887,57 @@ impl GPU {
         let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
         let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
 
-        self.polygons.push(Polygon {
-            vertices: vertices1,
-            is_line: false,
-            texpage: Some(self.texpage),
-            clut: (self.clut_x as u32, self.clut_y as u32),
-            semitransparent: self.is_semitransparent,
-            transparent_mode: self.texpage.semi_transparency,
-            textured: self.is_textured,
-            is_shaded: self.is_shaded,
-        });
-        self.polygons.push(Polygon {
-            vertices: vertices2,
-            is_line: false,
-            texpage: Some(self.texpage),
-            clut: (self.clut_x as u32, self.clut_y as u32),
-            semitransparent: self.is_semitransparent,
-            transparent_mode: self.texpage.semi_transparency,
-            textured: self.is_textured,
-            is_shaded: self.is_shaded,
-        });
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.polygons.push(Polygon {
+                vertices: vertices1,
+                is_line: false,
+                texpage: Some(self.texpage),
+                clut: (self.clut_x as u32, self.clut_y as u32),
+                semitransparent: self.is_semitransparent,
+                transparent_mode: self.texpage.semi_transparency,
+                textured: self.is_textured,
+                is_shaded: self.is_shaded,
+            });
+            self.polygons.push(Polygon {
+                vertices: vertices2,
+                is_line: false,
+                texpage: Some(self.texpage),
+                clut: (self.clut_x as u32, self.clut_y as u32),
+                semitransparent: self.is_semitransparent,
+                transparent_mode: self.texpage.semi_transparency,
+                textured: self.is_textured,
+                is_shaded: self.is_shaded,
+            });
+        }
+        #[cfg(feature = "software_gpu")]
+        {
+            let mut polygon1 = Polygon {
+                vertices: vertices1,
+                is_line: false,
+                texpage: Some(self.texpage),
+                clut: (self.clut_x as u32, self.clut_y as u32),
+                semitransparent: self.is_semitransparent,
+                transparent_mode: self.texpage.semi_transparency,
+                textured: self.is_textured,
+                is_shaded: self.is_shaded,
+            };
+
+            self.rasterize_triangle(&mut polygon1);
+
+            let mut polygon2 = Polygon {
+                vertices: vertices2,
+                is_line: false,
+                texpage: Some(self.texpage),
+                clut: (self.clut_x as u32, self.clut_y as u32),
+                semitransparent: self.is_semitransparent,
+                transparent_mode: self.texpage.semi_transparency,
+                textured: self.is_textured,
+                is_shaded: self.is_shaded,
+            };
+
+            self.rasterize_triangle(&mut polygon2);
+        }
 
         self.num_vertices = 0;
     }

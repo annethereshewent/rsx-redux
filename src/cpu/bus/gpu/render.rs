@@ -1,7 +1,7 @@
 use std::cmp;
 
 use crate::cpu::bus::gpu::{
-    deltas::Deltas, Color, DisplayDepth, Polygon, Texpage, TexturePageColors, Vertex, GPU, VRAM_HEIGHT, VRAM_WIDTH
+    Color, DisplayDepth, GPU, Polygon, Texpage, TexturePageColors, Vertex, deltas::Deltas,
 };
 
 struct Coordinate2d {

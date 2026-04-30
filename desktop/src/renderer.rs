@@ -14,10 +14,10 @@ use objc2_metal::{
     MTLTextureUsage, MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
-use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors};
+use rsx_redux::cpu::bus::gpu::{
+    CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors, VRAM_HEIGHT, VRAM_WIDTH,
+};
 use std::cmp;
-
-use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
 
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
