@@ -36,6 +36,14 @@ pub const CPU_CYCLES_TO_GPU_CYCLES: f64 = GPU_FREQUENCY / CPU_FREQUENCY;
 // pub const GPU_CYCLES_TO_CPU_CYCLES: f64 = 7.0 / 11.0
 // pub const CPU_CYCLES_TO_GPU_CYCLES: f64 = 11.0 / 7.0
 
+// per https://psx-spx.consoledev.net/graphicsprocessingunitgpu/#24bit-rgb-to-15bit-rgb-dithering-enabled-in-texpage-attribute
+const DITHER_OFFSETS: [[i16; 4]; 4] = [
+    [-4, 0, -3, 1],
+    [2, -2, 3, -1],
+    [-3, 1, -4, 0],
+    [3, -1, 2, -2],
+];
+
 #[derive(Clone)]
 pub enum GPUCommand {
     CPUtoVram(VRamTransferParams),
@@ -100,6 +108,14 @@ pub enum DisplayDepth {
     Bit24 = 1,
 }
 
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum Semitransparency {
+    Half = 0,
+    Add = 1,
+    Subtract = 2,
+    Quarter = 3
+}
+
 #[derive(Copy, Clone, PartialEq)]
 enum RectangleSize {
     Variable,
@@ -129,6 +145,7 @@ pub struct Polygon {
     pub semitransparent: bool,
     pub textured: bool,
     pub texpage: Option<Texpage>,
+    pub modulate: bool,
     pub transparent_mode: u32,
     pub clut: (u32, u32),
 }
@@ -144,6 +161,7 @@ impl Polygon {
             texpage: None,
             clut: (0, 0),
             transparent_mode: 0,
+            modulate: false,
         }
     }
 }
@@ -194,7 +212,7 @@ pub struct Vertex {
 pub struct Texpage {
     pub x_base: u32,
     pub y_base1: u32,
-    pub semi_transparency: u32,
+    pub semi_transparency: Semitransparency,
     pub texture_page_colors: TexturePageColors,
     pub dither: bool,
     pub draw_to_display_area: bool,
@@ -209,7 +227,7 @@ impl Texpage {
         Self {
             x_base: 0,
             y_base1: 0,
-            semi_transparency: 0,
+            semi_transparency: Semitransparency::Half,
             texture_page_colors: TexturePageColors::Bit4,
             dither: false,
             draw_to_display_area: false,
@@ -281,6 +299,7 @@ pub struct GPU {
     display_range_x: (u32, u32),
     display_range_y: (u32, u32),
     display_on: bool,
+    dither_table: [[[u8; 0x200]; 4]; 4],
     pub debug_on: bool,
     pub gpu_commands: Vec<GPUCommand>,
     pub gpuread_fifo: VecDeque<u16>,
@@ -300,6 +319,25 @@ pub struct GPU {
 
 impl GPU {
     pub fn new(scheduler: &mut Scheduler) -> Self {
+        let mut dither_table = [[[0; 0x200]; 4]; 4];
+
+        for x in 0..4 {
+            for y in 0..4 {
+                for i in 0..0x200 {
+                    let out = i + DITHER_OFFSETS[x][y];
+
+                    let out = if out < 0 {
+                        0
+                    } else if out > 0xff {
+                        0xff
+                    } else {
+                        out as u8
+                    };
+
+                    dither_table[x][y][i as usize] = out;
+                }
+            }
+        }
         scheduler.schedule(
             EventType::HblankStart,
             (CYCLES_PER_SCANLINE as f64 * (GPU_CYCLES_TO_CPU_CYCLES)) as usize,
@@ -374,6 +412,7 @@ impl GPU {
             cpu_transfer_height: 0,
             #[cfg(feature = "software_gpu")]
             picture: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 3].into_boxed_slice(),
+            dither_table,
         }
     }
 
@@ -623,7 +662,13 @@ impl GPU {
 
         texpage.x_base = word & 0xf;
         texpage.y_base1 = word & 0x10;
-        texpage.semi_transparency = (word >> 5) & 0x3;
+        texpage.semi_transparency = match (word >> 5) & 0x3 {
+            0 => Semitransparency::Half,
+            1 => Semitransparency::Add,
+            2 => Semitransparency::Subtract,
+            3 => Semitransparency::Quarter,
+            _ => unreachable!()
+        };
         texpage.texture_page_colors = match (word >> 7) & 0x3 {
             0 => TexturePageColors::Bit4,
             1 => TexturePageColors::Bit8,
@@ -723,13 +768,14 @@ impl GPU {
                     textured: self.is_textured,
                     texpage,
                     transparent_mode: if let Some(texpage) = texpage {
-                        texpage.semi_transparency
+                        texpage.semi_transparency as u32
                     } else {
-                        self.texpage.semi_transparency
+                        self.texpage.semi_transparency as u32
                     },
                     clut: (self.clut_x as u32, self.clut_y as u32),
                     semitransparent: self.is_semitransparent,
                     is_shaded: self.is_shaded,
+                    modulate: self.modulate,
                 });
 
                 polygons.push(Polygon {
@@ -740,11 +786,12 @@ impl GPU {
                     semitransparent: self.is_semitransparent,
                     textured: self.is_textured,
                     transparent_mode: if let Some(texpage) = texpage {
-                        texpage.semi_transparency
+                        texpage.semi_transparency as u32
                     } else {
-                        self.texpage.semi_transparency
+                        self.texpage.semi_transparency as u32
                     },
                     is_shaded: self.is_shaded,
+                    modulate: self.modulate,
                 });
             } else {
                 polygons.push(Polygon {
@@ -755,11 +802,12 @@ impl GPU {
                     semitransparent: self.is_semitransparent,
                     textured: self.is_textured,
                     transparent_mode: if let Some(texpage) = texpage {
-                        texpage.semi_transparency
+                        texpage.semi_transparency as u32
                     } else {
-                        self.texpage.semi_transparency
+                        self.texpage.semi_transparency as u32
                     },
                     is_shaded: self.is_shaded,
+                    modulate: self.modulate,
                 });
             }
 
@@ -781,11 +829,12 @@ impl GPU {
                     semitransparent: self.is_semitransparent,
                     textured: self.is_textured,
                     transparent_mode: if let Some(texpage) = texpage {
-                        texpage.semi_transparency
+                        texpage.semi_transparency as u32
                     } else {
-                        self.texpage.semi_transparency
+                        self.texpage.semi_transparency as u32
                     },
                     is_shaded: self.is_shaded,
+                    modulate: self.modulate,
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -800,11 +849,12 @@ impl GPU {
                     semitransparent: self.is_semitransparent,
                     textured: self.is_textured,
                     transparent_mode: if let Some(texpage) = texpage {
-                        texpage.semi_transparency
+                        texpage.semi_transparency as u32
                     } else {
-                        self.texpage.semi_transparency
+                        self.texpage.semi_transparency as u32
                     },
                     is_shaded: self.is_shaded,
+                    modulate: self.modulate,
                 };
 
                 self.rasterize_triangle(&mut polygon2);
@@ -817,11 +867,12 @@ impl GPU {
                     semitransparent: self.is_semitransparent,
                     textured: self.is_textured,
                     transparent_mode: if let Some(texpage) = texpage {
-                        texpage.semi_transparency
+                        texpage.semi_transparency as u32
                     } else {
-                        self.texpage.semi_transparency
+                        self.texpage.semi_transparency as u32
                     },
                     is_shaded: self.is_shaded,
+                    modulate: self.modulate,
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -920,22 +971,24 @@ impl GPU {
             self.polygons.push(Polygon {
                 vertices: vertices1,
                 is_line: false,
-                texpage: Some(self.texpage),
+                texpage: if self.is_textured { Some(self.texpage) } else { None },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
-                transparent_mode: self.texpage.semi_transparency,
+                transparent_mode: self.texpage.semi_transparency as u32,
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
+                modulate: self.modulate,
             });
             self.polygons.push(Polygon {
                 vertices: vertices2,
                 is_line: false,
-                texpage: Some(self.texpage),
+                texpage: if self.is_textured { Some(self.texpage) } else { None },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
-                transparent_mode: self.texpage.semi_transparency,
+                transparent_mode: self.texpage.semi_transparency as u32,
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
+                modulate: self.modulate,
             });
         }
         #[cfg(feature = "software_gpu")]
@@ -950,9 +1003,10 @@ impl GPU {
                 },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
-                transparent_mode: self.texpage.semi_transparency,
+                transparent_mode: self.texpage.semi_transparency as u32,
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
+                modulate: self.modulate,
             };
 
             self.rasterize_triangle(&mut polygon1);
@@ -967,9 +1021,10 @@ impl GPU {
                 },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
-                transparent_mode: self.texpage.semi_transparency,
+                transparent_mode: self.texpage.semi_transparency as u32,
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
+                modulate: self.modulate,
             };
 
             self.rasterize_triangle(&mut polygon2);
@@ -1467,7 +1522,7 @@ impl GPU {
         self.even_flag << 31 |
             self.texpage.x_base |
             self.texpage.y_base1 << 4 |
-            self.texpage.semi_transparency << 5 |
+            (self.texpage.semi_transparency as u32) << 5 |
             (self.texpage.texture_page_colors as u32) << 7 |
             (self.texpage.dither as u32) << 9 |
             (self.texpage.draw_to_display_area as u32) << 10 |

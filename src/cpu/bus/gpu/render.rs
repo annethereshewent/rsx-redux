@@ -1,8 +1,7 @@
 use std::cmp;
 
 use crate::cpu::bus::gpu::{
-    Color, DisplayDepth, GPU, Polygon, Texpage, TexturePageColors, VRAM_WIDTH, Vertex,
-    deltas::Deltas,
+    deltas::Deltas, Color, DisplayDepth, Polygon, Semitransparency, Texpage, TexturePageColors, Vertex, GPU, VRAM_WIDTH
 };
 
 struct Coordinate2d {
@@ -125,6 +124,10 @@ impl GPU {
                             b_base,
                             &d,
                         );
+
+                        if self.texpage.dither {
+                            self.dither(&curr_point, &mut curr_color);
+                        }
                     }
                     let mut output = curr_color;
 
@@ -138,7 +141,13 @@ impl GPU {
 
                         let masked_uv = self.mask_texture_coordinates(uv);
 
-                        if let Some(texture) = self.get_texture(&polygon, texpage, masked_uv) {
+                        if let Some(mut texture) = self.get_texture(&polygon, texpage, masked_uv) {
+                            if polygon.modulate {
+                                Self::modulate_texture(&curr_color, &mut texture);
+                                if texpage.dither {
+                                    self.dither(&curr_point, &mut curr_color);
+                                }
+                            }
                             output = texture;
                         } else {
                             curr_point.x += 1;
@@ -146,7 +155,7 @@ impl GPU {
                         }
                     }
 
-                    self.render_pixel(&polygon, output, &curr_point);
+                    self.render_pixel(&polygon, &mut output, &curr_point);
                 }
                 curr_point.x += 1;
             }
@@ -154,7 +163,13 @@ impl GPU {
         }
     }
 
-    fn render_pixel(&mut self, _polygon: &Polygon, output: Color, curr_point: &Coordinate2d) {
+    fn modulate_texture(curr_color: &Color, texture: &mut Color) {
+        texture.r = cmp::min(255, ((curr_color.r as u32) * (texture.r as u32)) >> 7) as u8;
+        texture.g = cmp::min(255, ((curr_color.g as u32) * (texture.g as u32)) >> 7) as u8;
+        texture.b = cmp::min(255, ((curr_color.b as u32) * (texture.b as u32)) >> 7) as u8;
+    }
+
+    fn render_pixel(&mut self, polygon: &Polygon, output: &mut Color, curr_point: &Coordinate2d) {
         let vram_address =
             Self::get_vram_address(curr_point.x as u32 & 0x3ff, curr_point.y as u32 & 0x1ff);
 
@@ -169,6 +184,21 @@ impl GPU {
             return;
         }
 
+        let texpage = if let Some(texpage) = polygon.texpage {
+            texpage
+        } else {
+            self.texpage
+        };
+
+        if (!polygon.textured || output.a == 1) && polygon.semitransparent {
+            match texpage.semi_transparency {
+                Semitransparency::Half => Self::semitransparent_half(output, &previous_color),
+                Semitransparency::Add => Self::semitransparent_add(output, &previous_color),
+                Semitransparency::Subtract => Self::semitransparent_subtract(output, &previous_color),
+                Semitransparency::Quarter => Self::semitransparent_quarter(output, &previous_color),
+            }
+        }
+
         let r = output.r >> 3;
         let g = output.g >> 3;
         let b = output.b >> 3;
@@ -180,6 +210,30 @@ impl GPU {
         }
 
         unsafe { *(&mut self.vram[vram_address] as *mut u8 as *mut u16) = output };
+    }
+
+    fn semitransparent_half(output: &mut Color, previous_color: &Color) {
+        output.r = 255.min((output.r as u32 + previous_color.r as u32) / 2) as u8;
+        output.g = 255.min((output.g as u32 + previous_color.g as u32) / 2) as u8;
+        output.b = 255.min((output.b as u32 + previous_color.b as u32) / 2) as u8;
+    }
+
+    fn semitransparent_add(output: &mut Color, previous_color: &Color) {
+        output.r = 255.min(output.r as u32 + previous_color.r as u32) as u8;
+        output.g = 255.min(output.g as u32 + previous_color.g as u32) as u8;
+        output.b = 255.min(output.b as u32 + previous_color.b as u32) as u8;
+    }
+
+    fn semitransparent_subtract(output: &mut Color, previous_color: &Color) {
+        output.r = 255.min(output.r as u32 - previous_color.r as u32) as u8;
+        output.g = 255.min(output.g as u32 - previous_color.g as u32) as u8;
+        output.b = 255.min(output.b as u32 - previous_color.b as u32) as u8;
+    }
+
+    fn semitransparent_quarter(output: &mut Color, previous_color: &Color) {
+        output.r = 255.min(output.r as u32 / 4 + previous_color.r as u32) as u8;
+        output.g = 255.min(output.g as u32 / 4 + previous_color.g as u32) as u8;
+        output.b = 255.min(output.b as u32 / 4 + previous_color.b as u32) as u8;
     }
 
     fn interpolate_color(
@@ -201,6 +255,15 @@ impl GPU {
             TexturePageColors::Bit8 => self.read_8bit_clut(polygon, texpage, uv),
             TexturePageColors::Bit15 => self.read_15bit_clut(texpage, uv),
         }
+    }
+
+    fn dither(&mut self, position: &Coordinate2d, pixel: &mut Color) {
+        let x = (position.x & 3) as usize;
+        let y = (position.y & 3) as usize;
+
+        pixel.r = self.dither_table[x][y][pixel.r as usize];
+        pixel.g = self.dither_table[x][y][pixel.g as usize];
+        pixel.b = self.dither_table[x][y][pixel.b as usize];
     }
 
     fn read_4bit_clut(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
@@ -301,15 +364,6 @@ impl GPU {
                     }
                     DisplayDepth::Bit24 => {
                         let vram_address = GPU::get_vram_address_24(x & 0x3ff, y & 0x1ff);
-
-                        if self.debug_on && (0..VRAM_WIDTH * 15).contains(&i) {
-                            self.picture[i] = 0;
-                            self.picture[i + 1] = 0;
-                            self.picture[i + 2] = 0;
-
-                            i += 3;
-                            continue;
-                        }
 
                         self.picture[i] = self.vram[vram_address];
                         self.picture[i + 1] = self.vram[vram_address + 1];
