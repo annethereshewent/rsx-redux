@@ -1,1 +1,1 @@
-cargo run --release $1
+cargo run --release "$1"
