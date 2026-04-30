@@ -1,6 +1,14 @@
 #include <metal_stdlib>
 using namespace metal;
 
+struct FbParams {
+    uint displayStartX;
+    uint displayStartY;
+    uint displayWidth;
+    uint displayHeight;
+    uint displayDepth;
+};
+
 struct VertexFbIn {
     float2 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
@@ -48,14 +56,19 @@ fragment float4 fragment_fb(
     VertexFbOut in [[stage_in]],
     texture2d<float> tex [[texture(0)]],
     texture2d<ushort, access::read> vram [[texture(1)]],
-    constant uint& displayDepth [[buffer(0)]]
+    constant FbParams& params [[buffer(0)]]
 ) {
-    if (displayDepth == 0) {
-        constexpr sampler s(address::clamp_to_edge, filter::nearest);
-        return tex.sample(s, in.uv);
+    uint srcX = params.displayStartX + uint(in.uv.x * float(params.displayWidth));
+    uint srcY = params.displayStartY + uint(in.uv.y * float(params.displayHeight));
+
+    srcX = min(srcX, 1023u);
+    srcY = min(srcY, 511u);
+
+    if (params.displayDepth == 0) {
+        return tex.read(uint2(srcX, srcY));
     } else {
         uint x = uint(in.uv.x * 1024.0);
         uint y = uint(in.uv.y * 512.0);
-        return readPixel24bit(vram, x, y);
+        return readPixel24bit(vram, srcX, srcY);
     }
 };
