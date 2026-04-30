@@ -169,6 +169,16 @@ impl Color {
 
         Self { r, g, b, a }
     }
+    pub fn color_to_u16(color: Color) -> u16 {
+        let mut pixel = 0;
+
+        pixel |= ((color.r as u16) & 0xf8) >> 3;
+        pixel |= ((color.g as u16) & 0xf8) << 2;
+        pixel |= ((color.b as u16) & 0xf8) << 7;
+        pixel |= (color.a as u16) << 15;
+
+        pixel
+    }
 }
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -493,7 +503,8 @@ impl GPU {
 
         let dotclock = self.get_dotclock();
 
-        let elapsed = CYCLES_PER_SCANLINE + (cycles_left as f64 * (CPU_CYCLES_TO_GPU_CYCLES)) as usize;
+        let elapsed =
+            CYCLES_PER_SCANLINE + (cycles_left as f64 * (CPU_CYCLES_TO_GPU_CYCLES)) as usize;
 
         self.dotclock_cycles += elapsed;
 
@@ -636,7 +647,7 @@ impl GPU {
         let g = (word >> 8) as u8;
         let b = (word >> 16) as u8;
 
-        Color { r, g, b, a: 0xff }
+        Color { r, g, b, a: 0 }
     }
 
     fn push_polygon(&mut self) {
@@ -932,7 +943,11 @@ impl GPU {
             let mut polygon1 = Polygon {
                 vertices: vertices1,
                 is_line: false,
-                texpage: Some(self.texpage),
+                texpage: if self.is_textured {
+                    Some(self.texpage)
+                } else {
+                    None
+                },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 transparent_mode: self.texpage.semi_transparency,
@@ -945,7 +960,11 @@ impl GPU {
             let mut polygon2 = Polygon {
                 vertices: vertices2,
                 is_line: false,
-                texpage: Some(self.texpage),
+                texpage: if self.is_textured {
+                    Some(self.texpage)
+                } else {
+                    None
+                },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 transparent_mode: self.texpage.semi_transparency,

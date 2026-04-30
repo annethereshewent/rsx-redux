@@ -88,9 +88,7 @@ pub struct SPU {
 }
 
 impl SPU {
-    pub fn new(
-        scheduler: &mut Scheduler,
-    ) -> Self {
+    pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
         Self {
             main_volume_left: 0,
@@ -285,9 +283,7 @@ impl SPU {
             0x1f801db2 => self.cd_volume.1 = value,
             0x1f801db4 => self.external_volume.0 = value,
             0x1f801db6 => self.external_volume.1 = value,
-            0x1f801dc0..=0x1f801dfe | 0x1f801da2 => {
-                self.reverb.write16(address, value)
-            }
+            0x1f801dc0..=0x1f801dfe | 0x1f801da2 => self.reverb.write16(address, value),
             _ => panic!(
                 "invalid address given to control spu control registers: 0x{:x}",
                 address
@@ -380,7 +376,8 @@ impl SPU {
             right_total += self.reverb.right_out;
 
             if self.reverb.calculate_left {
-                self.reverb.calculate_left_reverb(&mut self.sound_ram, reverb_left);
+                self.reverb
+                    .calculate_left_reverb(&mut self.sound_ram, reverb_left);
             } else {
                 self.reverb
                     .calculate_right_reverb(&mut self.sound_ram, reverb_right);

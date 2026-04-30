@@ -1,7 +1,8 @@
 use std::cmp;
 
 use crate::cpu::bus::gpu::{
-    Color, DisplayDepth, GPU, Polygon, Texpage, TexturePageColors, Vertex, deltas::Deltas,
+    Color, DisplayDepth, GPU, Polygon, Texpage, TexturePageColors, VRAM_WIDTH, Vertex,
+    deltas::Deltas,
 };
 
 struct Coordinate2d {
@@ -157,24 +158,28 @@ impl GPU {
         let vram_address =
             Self::get_vram_address(curr_point.x as u32 & 0x3ff, curr_point.y as u32 & 0x1ff);
 
+        let previous_color = Color::translate15bit_to_24(unsafe {
+            *(&self.vram[Self::get_vram_address(
+                (curr_point.x as u32) & 0x3ff,
+                (curr_point.y as u32) & 0x1ff,
+            )] as *const u8 as *const u16)
+        });
+
+        if previous_color.a != 0 && self.preserve_masked_pixels {
+            return;
+        }
+
         let r = output.r >> 3;
         let g = output.g >> 3;
         let b = output.b >> 3;
 
-        let output = r as u16 | (g as u16) << 5 | (b as u16) << 10 | (output.a as u16) << 15;
+        let mut output = r as u16 | (g as u16) << 5 | (b as u16) << 10 | (output.a as u16) << 15;
+
+        if self.force_mask_bit {
+            output |= 1 << 15;
+        }
 
         unsafe { *(&mut self.vram[vram_address] as *mut u8 as *mut u16) = output };
-    }
-
-    pub fn color_to_u16(color: Color) -> u16 {
-        let mut pixel = 0;
-
-        pixel |= ((color.r as u16) & 0xf8) >> 3;
-        pixel |= ((color.g as u16) & 0xf8) << 2;
-        pixel |= ((color.b as u16) & 0xf8) << 7;
-        pixel |= (color.a as u16) << 15;
-
-        pixel
     }
 
     fn interpolate_color(
@@ -296,6 +301,15 @@ impl GPU {
                     }
                     DisplayDepth::Bit24 => {
                         let vram_address = GPU::get_vram_address_24(x & 0x3ff, y & 0x1ff);
+
+                        if self.debug_on && (0..VRAM_WIDTH * 15).contains(&i) {
+                            self.picture[i] = 0;
+                            self.picture[i + 1] = 0;
+                            self.picture[i + 2] = 0;
+
+                            i += 3;
+                            continue;
+                        }
 
                         self.picture[i] = self.vram[vram_address];
                         self.picture[i + 1] = self.vram[vram_address + 1];

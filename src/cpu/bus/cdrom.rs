@@ -3,15 +3,15 @@ use std::collections::VecDeque;
 use memmap2::Mmap;
 use registers::HntmaskRegister;
 
+#[cfg(feature = "new_spu")]
+use crate::cpu::bus::spu::{
+    SPU,
+    voice::{NEG_FILTER_TABLE, POS_FILTER_TABLE},
+};
 #[cfg(feature = "old_spu")]
 use crate::cpu::bus::spu_legacy::{
     SPU,
     voices::{NEG_ADPCM_TABLE, POS_ADPCM_TABLE},
-};
-#[cfg(feature = "new_spu")]
-use crate::cpu::bus::spu::{
-    SPU,
-    voice::{POS_FILTER_TABLE, NEG_FILTER_TABLE}
 };
 
 use super::{
@@ -883,7 +883,7 @@ impl CDRom {
             #[cfg(feature = "new_spu")]
             let f1 = NEG_FILTER_TABLE[filter as usize] as i32;
 
-            let nibble = ((word >> (i * 4)) & 0xf) as i32;
+            let nibble = ((word >> ((i & 1) * 4)) & 0xf) as i32;
 
             let mut sample = (((nibble << 12) as i16) >> shift) as i32;
 

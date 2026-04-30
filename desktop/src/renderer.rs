@@ -925,10 +925,7 @@ impl Renderer {
                     draw_encoder.setCullMode(MTLCullMode::None);
                     draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
 
-                    self.metal_layer.setDrawableSize(CGSize::new(
-                        640.0,
-                        480.0
-                    ));
+                    self.metal_layer.setDrawableSize(CGSize::new(640.0, 480.0));
 
                     self.vertices = Self::get_vertices();
 
@@ -1002,14 +999,11 @@ impl Renderer {
             },
             FbVertex {
                 position: [-1.0, -1.0],
-                uv: [0.0,  1.0],
+                uv: [0.0, 1.0],
             },
             FbVertex {
                 position: [1.0, -1.0],
-                uv: [
-                    1.0,
-                    1.0,
-                ],
+                uv: [1.0, 1.0],
             },
         ]
     }
