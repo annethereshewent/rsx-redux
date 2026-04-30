@@ -113,7 +113,7 @@ pub enum Semitransparency {
     Half = 0,
     Add = 1,
     Subtract = 2,
-    Quarter = 3
+    Quarter = 3,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -591,7 +591,7 @@ impl GPU {
             let is_textured = (word >> 26) & 1 == 1;
             let is_semitransparent = (word >> 25) & 1 == 1;
             let is_shaded = (word >> 28) & 1 == 1;
-            let modulate = (word >> 24) & 1 == 1;
+            let modulate = (word >> 24) & 1 == 0;
 
             let num_vertices = if (word >> 27) & 1 == 1 { 4 } else { 3 };
 
@@ -667,7 +667,7 @@ impl GPU {
             1 => Semitransparency::Add,
             2 => Semitransparency::Subtract,
             3 => Semitransparency::Quarter,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
         texpage.texture_page_colors = match (word >> 7) & 0x3 {
             0 => TexturePageColors::Bit4,
@@ -971,7 +971,11 @@ impl GPU {
             self.polygons.push(Polygon {
                 vertices: vertices1,
                 is_line: false,
-                texpage: if self.is_textured { Some(self.texpage) } else { None },
+                texpage: if self.is_textured {
+                    Some(self.texpage)
+                } else {
+                    None
+                },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 transparent_mode: self.texpage.semi_transparency as u32,
@@ -982,7 +986,11 @@ impl GPU {
             self.polygons.push(Polygon {
                 vertices: vertices2,
                 is_line: false,
-                texpage: if self.is_textured { Some(self.texpage) } else { None },
+                texpage: if self.is_textured {
+                    Some(self.texpage)
+                } else {
+                    None
+                },
                 clut: (self.clut_x as u32, self.clut_y as u32),
                 semitransparent: self.is_semitransparent,
                 transparent_mode: self.texpage.semi_transparency as u32,

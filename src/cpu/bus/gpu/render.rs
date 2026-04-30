@@ -1,7 +1,8 @@
 use std::cmp;
 
 use crate::cpu::bus::gpu::{
-    deltas::Deltas, Color, DisplayDepth, Polygon, Semitransparency, Texpage, TexturePageColors, Vertex, GPU, VRAM_WIDTH
+    Color, DisplayDepth, GPU, Polygon, Semitransparency, Texpage, TexturePageColors, Vertex,
+    deltas::Deltas,
 };
 
 struct Coordinate2d {
@@ -143,9 +144,9 @@ impl GPU {
 
                         if let Some(mut texture) = self.get_texture(&polygon, texpage, masked_uv) {
                             if polygon.modulate {
-                                Self::modulate_texture(&curr_color, &mut texture);
+                                self.modulate_texture(&output, &mut texture);
                                 if texpage.dither {
-                                    self.dither(&curr_point, &mut curr_color);
+                                    self.dither(&curr_point, &mut texture);
                                 }
                             }
                             output = texture;
@@ -163,7 +164,7 @@ impl GPU {
         }
     }
 
-    fn modulate_texture(curr_color: &Color, texture: &mut Color) {
+    fn modulate_texture(&self, curr_color: &Color, texture: &mut Color) {
         texture.r = cmp::min(255, ((curr_color.r as u32) * (texture.r as u32)) >> 7) as u8;
         texture.g = cmp::min(255, ((curr_color.g as u32) * (texture.g as u32)) >> 7) as u8;
         texture.b = cmp::min(255, ((curr_color.b as u32) * (texture.b as u32)) >> 7) as u8;
@@ -194,7 +195,9 @@ impl GPU {
             match texpage.semi_transparency {
                 Semitransparency::Half => Self::semitransparent_half(output, &previous_color),
                 Semitransparency::Add => Self::semitransparent_add(output, &previous_color),
-                Semitransparency::Subtract => Self::semitransparent_subtract(output, &previous_color),
+                Semitransparency::Subtract => {
+                    Self::semitransparent_subtract(output, &previous_color)
+                }
                 Semitransparency::Quarter => Self::semitransparent_quarter(output, &previous_color),
             }
         }
@@ -225,9 +228,9 @@ impl GPU {
     }
 
     fn semitransparent_subtract(output: &mut Color, previous_color: &Color) {
-        output.r = 255.min(output.r as u32 - previous_color.r as u32) as u8;
-        output.g = 255.min(output.g as u32 - previous_color.g as u32) as u8;
-        output.b = 255.min(output.b as u32 - previous_color.b as u32) as u8;
+        output.r = (previous_color.r as i32 - output.r as i32).clamp(0, 255) as u8;
+        output.g = (previous_color.g as i32 - output.g as i32).clamp(0, 255) as u8;
+        output.b = (previous_color.b as i32 - output.b as i32).clamp(0, 255) as u8;
     }
 
     fn semitransparent_quarter(output: &mut Color, previous_color: &Color) {
