@@ -621,7 +621,7 @@ impl GPU {
             let mut num_words = 2;
             self.is_textured = (word >> 26) & 1 == 1;
             self.is_semitransparent = (word >> 25) & 1 == 1;
-            self.modulate = (word >> 24) & 1 == 1;
+            self.modulate = (word >> 24) & 1 == 0;
 
             self.rectangle_size = match (word >> 27) & 0x3 {
                 0 => RectangleSize::Variable,

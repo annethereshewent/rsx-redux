@@ -144,7 +144,7 @@ impl GPU {
 
                         if let Some(mut texture) = self.get_texture(&polygon, texpage, masked_uv) {
                             if polygon.modulate {
-                                self.modulate_texture(&output, &mut texture);
+                                Self::modulate_texture(&output, &mut texture);
                                 if texpage.dither {
                                     self.dither(&curr_point, &mut texture);
                                 }
@@ -164,7 +164,7 @@ impl GPU {
         }
     }
 
-    fn modulate_texture(&self, curr_color: &Color, texture: &mut Color) {
+    fn modulate_texture(&curr_color: &Color, texture: &mut Color) {
         texture.r = cmp::min(255, ((curr_color.r as u32) * (texture.r as u32)) >> 7) as u8;
         texture.g = cmp::min(255, ((curr_color.g as u32) * (texture.g as u32)) >> 7) as u8;
         texture.b = cmp::min(255, ((curr_color.b as u32) * (texture.b as u32)) >> 7) as u8;
