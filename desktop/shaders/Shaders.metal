@@ -4,6 +4,7 @@ using namespace metal;
 struct FragmentUniforms {
     bool hasTexture;
     bool semitransparent;
+    bool modulate;
     uint textureMaskX;
     uint textureMaskY;
     uint textureOffsetX;
@@ -151,6 +152,15 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
             discard_fragment();
         }
 
+        if (uniforms.modulate) {
+            uint4 texColorUint = uint4(texColor * 255.0);
+            uint4 vertColorUint = uint4(in.color * 255.0);
+
+            texColorUint = min((texColorUint * vertColorUint) >> 7, 0xff);
+
+            texColor = float4(texColorUint) / 255.0;
+        }
+
         finalColor = texColor;
     } else {
         finalColor = float4(in.color);
@@ -182,6 +192,10 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     }
 
     finalColor[3] = 1.0;
+
+    // if (uniforms.displayDepth == 1) {
+    //     finalColor[3] = 0.0;
+    // }
 
     return finalColor;
 }

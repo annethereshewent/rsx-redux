@@ -35,6 +35,7 @@ struct FbParams {
 struct FragmentUniform {
     has_texture: bool,
     semitransparent: bool,
+    modulate: bool,
     texture_mask_x: u32,
     texture_mask_y: u32,
     texture_offset_x: u32,
@@ -382,6 +383,7 @@ impl Renderer {
             texture_offset_x: gpu.texture_window_offset_x,
             texture_offset_y: gpu.texture_window_offset_y,
             semitransparent: polygon.semitransparent,
+            modulate: polygon.modulate,
             depth,
             transparent_mode: polygon.transparent_mode,
             pass: 1,
