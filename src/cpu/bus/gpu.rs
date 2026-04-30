@@ -4,6 +4,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use crate::cpu::CPU_FREQUENCY;
+
 use super::{
     registers::interrupt_register::InterruptRegister,
     scheduler::{EventType, Scheduler},
@@ -26,6 +28,13 @@ pub const FPS_INTERVAL: u128 = 1000 / 60;
 
 pub const SCREEN_WIDTH: usize = 640;
 pub const SCREEN_HEIGHT: usize = 480;
+
+pub const GPU_FREQUENCY: f64 = 53_693_181.818;
+pub const GPU_CYCLES_TO_CPU_CYCLES: f64 = CPU_FREQUENCY / GPU_FREQUENCY;
+pub const CPU_CYCLES_TO_GPU_CYCLES: f64 = GPU_FREQUENCY / CPU_FREQUENCY;
+// these are the old cycle conversions, uncomment if new one causes issues
+// pub const GPU_CYCLES_TO_CPU_CYCLES: f64 = 7.0 / 11.0
+// pub const CPU_CYCLES_TO_GPU_CYCLES: f64 = 11.0 / 7.0
 
 #[derive(Clone)]
 pub enum GPUCommand {
@@ -283,7 +292,7 @@ impl GPU {
     pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(
             EventType::HblankStart,
-            (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize,
+            (CYCLES_PER_SCANLINE as f64 * (7.0 / 11.0)) as usize,
         );
 
         Self {
@@ -421,7 +430,7 @@ impl GPU {
 
         scheduler.schedule(
             EventType::HblankEnd,
-            (HBLANK_END as f32 * (7.0 / 11.0)) as usize - cycles_left,
+            (HBLANK_END as f64 * (7.0 / 11.0)) as usize - cycles_left,
         );
     }
 
@@ -466,7 +475,7 @@ impl GPU {
 
         let dotclock = self.get_dotclock();
 
-        let elapsed = CYCLES_PER_SCANLINE + (cycles_left as f32 * (11.0 / 7.0)) as usize;
+        let elapsed = CYCLES_PER_SCANLINE + (cycles_left as f64 * (CPU_CYCLES_TO_GPU_CYCLES)) as usize;
 
         self.dotclock_cycles += elapsed;
 
@@ -483,7 +492,7 @@ impl GPU {
         if self.current_line < VBLANK_LINE_START {
             scheduler.schedule(
                 EventType::HblankStart,
-                (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left,
+                (HBLANK_START as f64 * (7.0 / 11.0)) as usize - cycles_left,
             );
         } else {
             timers[1].in_xblank = true;
@@ -493,7 +502,7 @@ impl GPU {
 
             scheduler.schedule(
                 EventType::Vblank,
-                (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left,
+                (CYCLES_PER_SCANLINE as f64 * (7.0 / 11.0)) as usize - cycles_left,
             );
         }
 
@@ -1452,7 +1461,9 @@ impl GPU {
         if self.previous_time != 0 {
             let diff = current_time - self.previous_time;
 
-            // println!("fps = {}", 1000 / diff);
+            if self.debug_on {
+                println!("fps = {}", 1000 / diff);
+            }
 
             if diff < FPS_INTERVAL {
                 sleep(Duration::from_millis((FPS_INTERVAL - diff) as u64));
@@ -1496,12 +1507,12 @@ impl GPU {
             self.current_line = 0;
             scheduler.schedule(
                 EventType::HblankStart,
-                (HBLANK_START as f32 * (7.0 / 11.0)) as usize - cycles_left,
+                (HBLANK_START as f64 * (7.0 / 11.0)) as usize - cycles_left,
             );
         } else {
             scheduler.schedule(
                 EventType::Vblank,
-                (CYCLES_PER_SCANLINE as f32 * (7.0 / 11.0)) as usize - cycles_left,
+                (CYCLES_PER_SCANLINE as f64 * (7.0 / 11.0)) as usize - cycles_left,
             );
             self.current_line += 1;
         }

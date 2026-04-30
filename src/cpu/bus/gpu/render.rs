@@ -280,6 +280,9 @@ impl GPU {
         let (width, height) = self.get_dimensions();
         let mut i = 0;
 
+        // let display_start_x = self.display_start_x;
+        // let display_start_y = self.display_start_y;
+
         for y in 0..height {
             for x in 0..width {
                 match self.display_depth {

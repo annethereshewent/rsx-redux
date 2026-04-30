@@ -50,6 +50,9 @@ fn main() {
             #[cfg(feature = "hardware_gpu")]
             frontend.renderer.process(&mut cpu.bus.gpu);
         }
+        if cpu.bus.gpu.debug_on {
+            println!("frame finished");
+        }
         cpu.bus.gpu.frame_finished = false;
 
         #[cfg(feature = "software_gpu")]
