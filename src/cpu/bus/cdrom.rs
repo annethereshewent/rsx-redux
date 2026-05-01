@@ -780,7 +780,7 @@ impl CDRom {
             }
 
             if self.subheader.coding_info.sample_rate == 37800 {
-                self.resample_37800_sample( spu);
+                self.resample_37800_sample(spu);
             } else {
                 self.resample_18900_sample(spu);
             }
@@ -792,11 +792,7 @@ impl CDRom {
 
         let is_stereo = self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo;
 
-        let channels = if is_stereo {
-            2
-        } else {
-            1
-        };
+        let channels = if is_stereo { 2 } else { 1 };
 
         for channel in 0..channels {
             for p in 0..self.sample_buffer[channel].len() {
@@ -852,11 +848,12 @@ impl CDRom {
             let header = section[4 + block];
             for i in 0..28 {
                 let nibble = section[block_start + block / 2 + i * 4];
-                let channel_index = if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
-                    block & 1
-                } else {
-                    0
-                };
+                let channel_index =
+                    if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
+                        block & 1
+                    } else {
+                        0
+                    };
                 self.decode_nibble(header, nibble as i16, channel_index);
             }
         }
@@ -893,7 +890,6 @@ impl CDRom {
 
         self.older_samples[channel_index] = self.old_samples[channel_index];
         self.old_samples[channel_index] = sample as i16;
-
     }
 
     fn read_data(&mut self, interrupt_register: &mut InterruptRegister) {

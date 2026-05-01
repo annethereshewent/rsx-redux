@@ -193,10 +193,6 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 
     finalColor[3] = 1.0;
 
-    // if (uniforms.displayDepth == 1) {
-    //     finalColor[3] = 0.0;
-    // }
-
     return finalColor;
 }
 
