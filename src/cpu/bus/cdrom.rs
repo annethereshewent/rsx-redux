@@ -779,41 +779,45 @@ impl CDRom {
                 self.decode_section(section);
             }
 
-            if self.subheader.coding_info.sample_rate == 37800 {
-                self.resample_37800_sample(spu);
-            } else {
-                self.resample_18900_sample(spu);
-            }
+            self.resample(spu);
         }
     }
 
-    fn resample_37800_sample(&mut self, spu: &mut SPU) {
+    fn resample(&mut self, spu: &mut SPU) {
         let mut sixstep = self.sixstep;
 
         let is_stereo = self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo;
 
+        let repeat = if self.subheader.coding_info.sample_rate == 37800 {
+            1
+        } else {
+            2
+        };
+
         let channels = if is_stereo { 2 } else { 1 };
 
-        for channel in 0..channels {
-            for p in 0..self.sample_buffer[channel].len() {
-                self.ringbuffer[channel][p & 0x1f] = self.sample_buffer[channel][p];
+        for _ in 0..repeat {
+            for channel in 0..channels {
+                for p in 0..self.sample_buffer[channel].len() {
+                    self.ringbuffer[channel][p & 0x1f] = self.sample_buffer[channel][p];
 
-                sixstep -= 1;
+                    sixstep -= 1;
 
-                if sixstep == 0 {
-                    sixstep = 6;
+                    if sixstep == 0 {
+                        sixstep = 6;
 
-                    for i in 0..7 {
-                        let sample = self.zigzag_interpolate(p, i, self.ringbuffer[channel]);
+                        for i in 0..7 {
+                            let sample = self.zigzag_interpolate(p, i, self.ringbuffer[channel]);
 
-                        if channels == 1 {
-                            spu.cd_left_samples.push_back(sample);
-                            spu.cd_right_samples.push_back(sample);
-                        } else {
-                            if channel == 0 {
-                                spu.cd_left_samples.push_back(sample)
-                            } else {
+                            if channels == 1 {
+                                spu.cd_left_samples.push_back(sample);
                                 spu.cd_right_samples.push_back(sample);
+                            } else {
+                                if channel == 0 {
+                                    spu.cd_left_samples.push_back(sample)
+                                } else {
+                                    spu.cd_right_samples.push_back(sample);
+                                }
                             }
                         }
                     }
@@ -835,10 +839,6 @@ impl CDRom {
         }
 
         sum.clamp(-0x8000, 0x7fff) as i16
-    }
-
-    fn resample_18900_sample(&mut self, _spu: &mut SPU) {
-        todo!("0x18900 resample");
     }
 
     fn decode_section(&mut self, section: &[u8]) {
