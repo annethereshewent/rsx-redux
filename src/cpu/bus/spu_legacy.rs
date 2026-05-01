@@ -100,8 +100,6 @@ pub struct SPU {
     endx: u32,
     noise_level: i16,
     noise_timer: isize,
-    pub cd_left_buffer: VecDeque<i16>,
-    pub cd_right_buffer: VecDeque<i16>,
     capture_index: u32,
     writing_to_capture_half: bool,
     pub audio_buffer: Vec<f32>,
@@ -140,8 +138,6 @@ impl SPU {
             previous_value: 0,
             noise_level: 1,
             noise_timer: 0,
-            cd_left_buffer: VecDeque::new(),
-            cd_right_buffer: VecDeque::new(),
             capture_index: 0,
             writing_to_capture_half: false,
             audio_buffer: Vec::with_capacity(NUM_SAMPLES),
@@ -239,12 +235,12 @@ impl SPU {
         self.update_voices();
         self.tick_noise();
 
-        if !self.cd_left_buffer.is_empty() {
-            cd_left = SPU::to_f32(self.cd_left_buffer.pop_front().unwrap());
+        if !self.cd_left_samples.is_empty() {
+            cd_left = SPU::to_f32(self.cd_left_samples.pop_front().unwrap());
         }
 
-        if !self.cd_right_buffer.is_empty() {
-            cd_right = SPU::to_f32(self.cd_right_buffer.pop_front().unwrap());
+        if !self.cd_right_samples.is_empty() {
+            cd_right = SPU::to_f32(self.cd_right_samples.pop_front().unwrap());
         }
 
         for i in 0..self.voices.len() {

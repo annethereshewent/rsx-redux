@@ -3,6 +3,12 @@ use std::collections::VecDeque;
 use memmap2::Mmap;
 use registers::HntmaskRegister;
 
+#[cfg(feature = "new_spu")]
+use crate::cpu::bus::spu::{
+    SPU,
+    voice::{NEG_FILTER_TABLE, POS_FILTER_TABLE},
+};
+#[cfg(feature = "old_spu")]
 use crate::cpu::bus::spu_legacy::{
     SPU,
     voices::{NEG_ADPCM_TABLE, POS_ADPCM_TABLE},
@@ -291,11 +297,11 @@ pub struct CDRom {
     buffer_index: usize,
     pre_seek: bool,
     pending_stat: Option<u8>,
-    sample_buffer: Vec<i16>,
+    sample_buffer: [Vec<i16>; 2],
+    ringbuffer: [[i16; 32]; 2],
     old_samples: [i16; 2],
     older_samples: [i16; 2],
     sixstep: usize,
-    p: usize,
     filter_file: u8,
     filter_channel: u8,
     drive_cycles: usize,
@@ -339,16 +345,16 @@ impl CDRom {
             output_buffer: [0; 0x930],
             pre_seek: false,
             pending_stat: None,
-            sample_buffer: Vec::new(),
+            sample_buffer: [Vec::new(), Vec::new()],
             old_samples: [0; 2],
             older_samples: [0; 2],
             sixstep: 6,
-            p: 0,
             filter_file: 0,
             filter_channel: 0,
             drive_cycles: 1,
             controller_cycles: 1,
             subresponse_cycles: 1,
+            ringbuffer: [[0; 32]; 2],
         }
     }
 
@@ -773,59 +779,59 @@ impl CDRom {
                 self.decode_section(section);
             }
 
-            let samples: Vec<i16> = self.sample_buffer.drain(..).collect();
-
-            if self.subheader.coding_info.sample_rate == 37800 {
-                self.resample_37800_sample(&samples, spu);
-            } else {
-                self.resample_18900_sample(&samples, spu);
-            }
+            self.resample(spu);
         }
     }
 
-    fn resample_37800_sample(&mut self, samples: &[i16], spu: &mut SPU) {
+    fn resample(&mut self, spu: &mut SPU) {
         let mut sixstep = self.sixstep;
-        let mut p = self.p;
 
         let is_stereo = self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo;
 
-        let mut ringbuffer = [vec![0; samples.len()], vec![0; samples.len()]];
+        let repeat = if self.subheader.coding_info.sample_rate == 37800 {
+            1
+        } else {
+            2
+        };
 
-        let mut sample_index = 0;
+        let channels = if is_stereo { 2 } else { 1 };
 
-        while sample_index < samples.len() {
-            ringbuffer[0][p] = samples[sample_index];
-            sample_index += 1;
-            if is_stereo {
-                ringbuffer[1][p] = samples[sample_index];
-                sample_index += 1;
-            }
+        for _ in 0..repeat {
+            for channel in 0..channels {
+                for p in 0..self.sample_buffer[channel].len() {
+                    self.ringbuffer[channel][p & 0x1f] = self.sample_buffer[channel][p];
 
-            sixstep -= 1;
-            p = (p + 1) & 0x1f;
+                    sixstep -= 1;
 
-            if sixstep == 0 {
-                sixstep = 6;
+                    if sixstep == 0 {
+                        sixstep = 6;
 
-                for i in 0..7 {
-                    let left = self.zigzag_interpolate(p, i, &ringbuffer[0]);
-                    let right = if is_stereo {
-                        self.zigzag_interpolate(p, i, &ringbuffer[1])
-                    } else {
-                        left
-                    };
+                        for i in 0..7 {
+                            let sample = self.zigzag_interpolate(p, i, self.ringbuffer[channel]);
 
-                    spu.cd_left_samples.push_back(left);
-                    spu.cd_right_samples.push_back(right);
+                            if channels == 1 {
+                                spu.cd_left_samples.push_back(sample);
+                                spu.cd_right_samples.push_back(sample);
+                            } else {
+                                if channel == 0 {
+                                    spu.cd_left_samples.push_back(sample)
+                                } else {
+                                    spu.cd_right_samples.push_back(sample);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
+        self.sample_buffer[0].clear();
+        self.sample_buffer[1].clear();
+
         self.sixstep = sixstep;
-        self.p = p;
     }
 
-    fn zigzag_interpolate(&mut self, p: usize, table: usize, ringbuffer: &[i16]) -> i16 {
+    fn zigzag_interpolate(&mut self, p: usize, table: usize, ringbuffer: [i16; 32]) -> i16 {
         let mut sum: i32 = 0;
 
         for i in 0..29 {
@@ -835,57 +841,55 @@ impl CDRom {
         sum.clamp(-0x8000, 0x7fff) as i16
     }
 
-    fn resample_18900_sample(&mut self, _samples: &[i16], _spu: &mut SPU) {
-        todo!("0x18900 resample");
-    }
-
     fn decode_section(&mut self, section: &[u8]) {
-        let headers = &section[4..12];
-
         let block_start = 16;
-        for i in 0..28 {
-            let index = block_start + i * 4;
-            let word = unsafe { *(&section[index] as *const u8 as *const u32) };
 
-            self.decode_xa_word(word, headers);
+        for block in 0..8 {
+            let header = section[4 + block];
+            for i in 0..28 {
+                let nibble = section[block_start + block / 2 + i * 4];
+                let channel_index =
+                    if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
+                        block & 1
+                    } else {
+                        0
+                    };
+                self.decode_nibble(header, nibble as i16, channel_index);
+            }
         }
     }
 
-    fn decode_xa_word(&mut self, word: u32, headers: &[u8]) {
-        for (i, header) in headers.iter().enumerate().take(8) {
-            let channel_index =
-                if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
-                    i & 1
-                } else {
-                    0
-                };
+    fn decode_nibble(&mut self, header: u8, nibble: i16, channel_index: usize) {
+        let mut shift = header & 0xf;
+        let filter = (header >> 4) & 0x3;
 
-            let mut shift = header & 0xf;
-            let filter = (header >> 4) & 0x3;
-
-            if shift > 12 {
-                shift = 9;
-            }
-
-            let f0 = POS_ADPCM_TABLE[filter as usize];
-            let f1 = NEG_ADPCM_TABLE[filter as usize];
-
-            let nibble = ((word >> (i * 4)) & 0xf) as i32;
-
-            let mut sample = (((nibble << 12) as i16) >> shift) as i32;
-
-            sample += (self.old_samples[channel_index] as i32 * f0
-                + self.older_samples[channel_index] as i32 * f1
-                + 32)
-                / 64;
-
-            sample = sample.clamp(-0x8000, 0x7fff);
-
-            self.sample_buffer.push(sample as i16);
-
-            self.older_samples[channel_index] = self.old_samples[channel_index];
-            self.old_samples[channel_index] = sample as i16;
+        if shift > 12 {
+            shift = 9;
         }
+
+        #[cfg(feature = "old_spu")]
+        let f0 = POS_ADPCM_TABLE[filter as usize];
+        #[cfg(feature = "old_spu")]
+        let f1 = NEG_ADPCM_TABLE[filter as usize];
+
+        #[cfg(feature = "new_spu")]
+        let f0 = POS_FILTER_TABLE[filter as usize] as i32;
+        #[cfg(feature = "new_spu")]
+        let f1 = NEG_FILTER_TABLE[filter as usize] as i32;
+
+        let mut sample = ((nibble << 12) >> shift) as i32;
+
+        sample += (self.old_samples[channel_index] as i32 * f0
+            + self.older_samples[channel_index] as i32 * f1
+            + 32)
+            / 64;
+
+        sample = sample.clamp(-0x8000, 0x7fff);
+
+        self.sample_buffer[channel_index].push(sample as i16);
+
+        self.older_samples[channel_index] = self.old_samples[channel_index];
+        self.old_samples[channel_index] = sample as i16;
     }
 
     fn read_data(&mut self, interrupt_register: &mut InterruptRegister) {

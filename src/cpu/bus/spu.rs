@@ -1,6 +1,5 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use ringbuf::{SharedRb, storage::Heap, traits::Producer, wrap::caching::Caching};
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
 use voice::Voice;
 
@@ -72,6 +71,7 @@ pub struct SPU {
     noise_enable: u32,
     echo_on: u32,
     cd_volume: (u16, u16),
+    reverb_volume: (u16, u16),
     current_volume: (u16, u16),
     external_volume: (u16, u16),
     sound_ram_transfer_type: u16,
@@ -81,15 +81,14 @@ pub struct SPU {
     voices: [Voice; 24],
     sample_fifo: VecDeque<u16>,
     sound_ram: SoundRam,
-    producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>,
+    pub audio_buffer: Vec<f32>,
     endx: u32,
+    pub cd_left_samples: VecDeque<i16>,
+    pub cd_right_samples: VecDeque<i16>,
 }
 
 impl SPU {
-    pub fn new(
-        producer: Caching<Arc<SharedRb<Heap<f32>>>, true, false>,
-        scheduler: &mut Scheduler,
-    ) -> Self {
+    pub fn new(scheduler: &mut Scheduler) -> Self {
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
         Self {
             main_volume_left: 0,
@@ -110,9 +109,12 @@ impl SPU {
             keyon: 0,
             sample_fifo: VecDeque::new(),
             sound_ram: SoundRam::new(),
-            producer,
             endx: 0,
             reverb: Reverb::new(),
+            audio_buffer: Vec::with_capacity(NUM_SAMPLES),
+            cd_left_samples: VecDeque::new(),
+            cd_right_samples: VecDeque::new(),
+            reverb_volume: (0, 0),
         }
     }
 
@@ -186,13 +188,30 @@ impl SPU {
         self.voices[voice as usize].read(channel)
     }
 
+    pub fn dma_write(&mut self, value: u32) {
+        self.sound_ram
+            .write16(self.current_ram_address as usize, value as u16);
+        self.sound_ram
+            .write16(self.current_ram_address as usize + 2, (value >> 16) as u16);
+
+        self.current_ram_address = (self.current_ram_address + 4) & 0x7_ffff;
+    }
+
     pub fn read16(&self, address: usize) -> u16 {
         match address {
             0x1f801c00..=0x1f801d7f => self.read_voices(address),
+            0x1f80_1d84 => self.reverb_volume.0,
+            0x1f80_1d86 => self.reverb_volume.1,
             0x1f801d88 => self.keyon as u16,
             0x1f801d8a => (self.keyon >> 16) as u16,
             0x1f801d8c => self.keyoff as u16,
             0x1f801d8e => (self.keyoff >> 16) as u16,
+            0x1f80_1d90 => self.sound_modulation as u16,
+            0x1f80_1d92 => (self.sound_modulation >> 16) as u16,
+            0x1f80_1d94 => self.noise_enable as u16,
+            0x1f80_1d96 => (self.noise_enable >> 16) as u16,
+            0x1f80_1d98 => self.echo_on as u16,
+            0x1f80_1d9a => (self.echo_on >> 16) as u16,
             0x1f801da6 => (self.sound_ram_address / 8) as u16,
             0x1f801daa => self.spucnt.bits(),
             0x1f801dac => self.sound_ram_transfer_type,
@@ -213,6 +232,8 @@ impl SPU {
             0x1f801c00..=0x1f801d7f => self.write_voices(address, value),
             0x1f801d80 => self.main_volume_left = value,
             0x1f801d82 => self.main_volume_right = value,
+            0x1f80_1d84 => self.reverb_volume.0 = value,
+            0x1f80_1d86 => self.reverb_volume.1 = value,
             0x1f801d88 => self.keyon = (self.keyon & 0xffff0000) | value as u32,
             0x1f801d8a => self.keyon = (self.keyon & 0xffff) | (value as u32) << 16,
             0x1f801d8c => self.keyoff = (self.keyoff & 0xffff0000) | value as u32,
@@ -262,9 +283,7 @@ impl SPU {
             0x1f801db2 => self.cd_volume.1 = value,
             0x1f801db4 => self.external_volume.0 = value,
             0x1f801db6 => self.external_volume.1 = value,
-            0x1f801dc0..=0x1f801dfe | 0x1f801d84..=0x1f801d86 | 0x1f801da2 => {
-                self.reverb.write16(address, value)
-            }
+            0x1f801dc0..=0x1f801dfe | 0x1f801da2 => self.reverb.write16(address, value),
             _ => panic!(
                 "invalid address given to control spu control registers: 0x{:x}",
                 address
@@ -296,6 +315,17 @@ impl SPU {
 
         let mut reverb_left: f32 = 0.0;
         let mut reverb_right: f32 = 0.0;
+
+        let mut cd_left = 0.0;
+        let mut cd_right = 0.0;
+
+        if !self.cd_left_samples.is_empty() {
+            cd_left = SPU::to_f32(self.cd_left_samples.pop_front().unwrap());
+        }
+
+        if !self.cd_right_samples.is_empty() {
+            cd_right = SPU::to_f32(self.cd_right_samples.pop_front().unwrap());
+        }
 
         for i in 0..self.voices.len() {
             let previous_out = if i > 0 {
@@ -333,21 +363,27 @@ impl SPU {
             }
         }
 
+        if self.spucnt.contains(SpuControlRegister::CD_AUDIO_ENABLE) {
+            left_total += cd_left * SPU::to_f32(self.cd_volume.0 as i16);
+            right_total += cd_right * SPU::to_f32(self.cd_volume.1 as i16);
+        }
+
         if self
             .spucnt
             .contains(SpuControlRegister::REVERB_MASTER_ENABLE)
         {
-            left_total += self.reverb.reverb_out_left;
-            right_total += self.reverb.reverb_out_right;
+            left_total += self.reverb.left_out;
+            right_total += self.reverb.right_out;
 
-            if self.reverb.is_left {
-                self.reverb.calculate_left(reverb_left, &mut self.sound_ram);
+            if self.reverb.calculate_left {
+                self.reverb
+                    .calculate_left_reverb(&mut self.sound_ram, reverb_left);
             } else {
                 self.reverb
-                    .calculate_right(reverb_right, &mut self.sound_ram);
+                    .calculate_right_reverb(&mut self.sound_ram, reverb_right);
             }
 
-            self.reverb.is_left = !self.reverb.is_left;
+            self.reverb.calculate_left = !self.reverb.calculate_left;
         }
 
         self.write_to_capture(
@@ -359,16 +395,18 @@ impl SPU {
             self.voices[3].last_volume as u16,
         );
 
-        self.producer
-            .try_push(SPU::clampf32(left_total))
-            .unwrap_or(());
-        self.producer
-            .try_push(SPU::clampf32(right_total))
-            .unwrap_or(());
+        self.push_sample(left_total);
+        self.push_sample(right_total);
 
         self.update_keystatus();
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
+    }
+
+    fn push_sample(&mut self, sample: f32) {
+        if self.audio_buffer.len() < NUM_SAMPLES {
+            self.audio_buffer.push(sample);
+        }
     }
 
     fn write_to_capture(&mut self, capture_index: usize, volume: u16) {

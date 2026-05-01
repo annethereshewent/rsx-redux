@@ -1,19 +1,24 @@
+#[cfg(feature = "hardware_gpu")]
 use objc2::rc::Retained;
+#[cfg(feature = "hardware_gpu")]
 use objc2_quartz_core::CAMetalLayer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
+use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
+use sdl2::pixels::PixelFormatEnum;
+#[cfg(feature = "software_gpu")]
+use sdl2::render::Canvas;
+#[cfg(feature = "hardware_gpu")]
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
 use std::ops::DerefMut;
 use std::process::exit;
 
-pub const VRAM_WIDTH: usize = 1024;
-pub const VRAM_HEIGHT: usize = 512;
-
+#[cfg(feature = "hardware_gpu")]
 use crate::renderer::Renderer;
 
 pub struct PsxAudioCallback {
@@ -61,20 +66,52 @@ impl PsxAudioCallback {
 }
 
 pub struct Frontend {
+    #[cfg(feature = "hardware_gpu")]
     _window: Window,
     event_pump: EventPump,
-    _controller: Option<GameController>,
+    controller: Option<GameController>,
+    game_controller_subsystem: GameControllerSubsystem,
+    controller_id: Option<u32>,
+    retry_attempts: usize,
+    #[cfg(feature = "hardware_gpu")]
     pub renderer: Renderer,
+    #[cfg(feature = "software_gpu")]
+    canvas: Canvas<Window>,
     device: AudioDevice<PsxAudioCallback>,
     button_map: HashMap<Button, usize>,
     button_map2: HashMap<Axis, usize>,
 }
 
 impl Frontend {
+    fn reconnect_controller(&mut self, controller_id: u32) -> Option<GameController> {
+        if self.retry_attempts < 5 {
+            match self.game_controller_subsystem.open(controller_id) {
+                Ok(c) => Some(c),
+                Err(_) => {
+                    self.retry_attempts += 1;
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn check_controller_status(&mut self) {
+        if let Some(controller_id) = self.controller_id {
+            self.controller = self.reconnect_controller(controller_id);
+
+            if self.controller.is_some() || self.retry_attempts >= 5 {
+                self.controller_id = None;
+                self.retry_attempts = 0;
+            }
+        }
+    }
+
     pub fn push_samples(&mut self, samples: Vec<f32>) {
         self.device.lock().deref_mut().push_samples(samples);
     }
-
+    #[allow(unused_variables)]
     pub fn new(gpu: &GPU) -> Self {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
@@ -97,9 +134,18 @@ impl Frontend {
             .build()
             .unwrap();
 
+        #[cfg(feature = "software_gpu")]
+        let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+
+        #[cfg(feature = "software_gpu")]
+        canvas.set_scale(3.0, 3.0).unwrap();
+
+        #[cfg(feature = "hardware_gpu")]
         let metal_view = unsafe { SDL_Metal_CreateView(window.raw()) };
+        #[cfg(feature = "hardware_gpu")]
         let metal_layer_ptr = unsafe { SDL_Metal_GetLayer(metal_view) };
 
+        #[cfg(feature = "hardware_gpu")]
         let metal_layer: Retained<CAMetalLayer> = unsafe {
             Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer)
                 .expect("Couldn't cast pointer to CAMetalLayer!")
@@ -141,13 +187,20 @@ impl Frontend {
         let button_map2 = HashMap::from([(Axis::TriggerLeft, 8), (Axis::TriggerRight, 9)]);
 
         Self {
+            #[cfg(feature = "hardware_gpu")]
             _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
-            _controller: controller,
+            controller,
+            game_controller_subsystem,
+            #[cfg(feature = "hardware_gpu")]
             renderer: Renderer::new(metal_layer, gpu),
+            #[cfg(feature = "software_gpu")]
+            canvas,
             device,
             button_map,
             button_map2,
+            controller_id: None,
+            retry_attempts: 0,
         }
     }
 
@@ -185,8 +238,38 @@ impl Frontend {
                             .update_input(*index, value >= 0x3fff);
                     }
                 }
+                Event::JoyDeviceAdded { which, .. } => {
+                    self.controller = match self.game_controller_subsystem.open(which) {
+                        Ok(c) => Some(c),
+                        Err(_) => {
+                            self.controller_id = Some(which);
+                            self.retry_attempts = 0;
+                            None
+                        }
+                    }
+                }
                 _ => (),
             }
         }
+    }
+
+    #[cfg(feature = "software_gpu")]
+    pub fn render(&mut self, gpu: &mut GPU) {
+        gpu.update_picture();
+
+        let (width, height) = gpu.get_dimensions();
+
+        let creator = self.canvas.texture_creator();
+        let mut texture = creator
+            .create_texture_target(PixelFormatEnum::RGB24, width, height)
+            .unwrap();
+
+        texture
+            .update(None, &gpu.picture, width as usize * 3)
+            .unwrap();
+
+        self.canvas.copy(&texture, None, None).unwrap();
+
+        self.canvas.present();
     }
 }

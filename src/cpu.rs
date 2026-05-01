@@ -17,6 +17,8 @@ pub mod instructions;
 
 pub const RA_REGISTER: usize = 31;
 
+pub const CPU_FREQUENCY: f64 = 33_868_800.0;
+
 #[derive(Copy, Clone)]
 pub struct Registers([u32; 32]);
 

@@ -14,18 +14,28 @@ use objc2_metal::{
     MTLTextureUsage, MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
-use rsx_redux::cpu::bus::gpu::{CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors};
+use rsx_redux::cpu::bus::gpu::{
+    CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors, VRAM_HEIGHT, VRAM_WIDTH,
+};
 use std::cmp;
 
-use crate::frontend::{VRAM_HEIGHT, VRAM_WIDTH};
-
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
+
+#[repr(C)]
+struct FbParams {
+    display_start_x: u32,
+    display_start_y: u32,
+    display_width: u32,
+    display_height: u32,
+    display_depth: u32,
+}
 
 #[repr(C)]
 #[derive(Debug)]
 struct FragmentUniform {
     has_texture: bool,
     semitransparent: bool,
+    modulate: bool,
     texture_mask_x: u32,
     texture_mask_y: u32,
     texture_offset_x: u32,
@@ -235,7 +245,7 @@ impl Renderer {
 
         let command_queue = device.newCommandQueue().unwrap();
 
-        let vertices = Renderer::get_vertices(gpu.display_width, gpu.display_height);
+        let vertices = Renderer::get_vertices();
 
         let byte_len = vertices.len() * std::mem::size_of::<FbVertex>();
 
@@ -373,6 +383,7 @@ impl Renderer {
             texture_offset_x: gpu.texture_window_offset_x,
             texture_offset_y: gpu.texture_window_offset_y,
             semitransparent: polygon.semitransparent,
+            modulate: polygon.modulate,
             depth,
             transparent_mode: polygon.transparent_mode,
             pass: 1,
@@ -916,50 +927,29 @@ impl Renderer {
                     draw_encoder.setCullMode(MTLCullMode::None);
                     draw_encoder.setFrontFacingWinding(MTLWinding::Clockwise);
 
-                    if gpu.resolution_changed {
-                        let width = gpu.display_width as f64;
-                        let height = gpu.display_height as f64;
+                    self.metal_layer.setDrawableSize(CGSize::new(640.0, 480.0));
 
-                        gpu.resolution_changed = false;
+                    self.vertices = Self::get_vertices();
 
-                        self.metal_layer.setDrawableSize(CGSize::new(
-                            gpu.display_width as f64,
-                            gpu.display_height as f64,
-                        ));
-
-                        self.vertices = Self::get_vertices(gpu.display_width, gpu.display_height);
-
-                        self.buffer = unsafe {
-                            self.device.newBufferWithBytes_length_options(
-                                NonNull::new(self.vertices.as_ptr() as *mut c_void).unwrap(),
-                                BYTE_LEN,
-                                MTLResourceOptions::empty(),
-                            )
-                        }
-                        .unwrap();
-
-                        let origin_x = if gpu.display_start_x >= gpu.display_width {
-                            0
-                        } else {
-                            gpu.display_start_x
-                        };
-                        let origin_y = if gpu.display_start_y >= gpu.display_height {
-                            0
-                        } else {
-                            gpu.display_start_y
-                        };
-
-                        let vp = MTLViewport {
-                            originX: origin_x as f64,
-                            originY: origin_y as f64,
-                            width,
-                            height,
-                            znear: 0.0,
-                            zfar: 1.0,
-                        };
-
-                        draw_encoder.setViewport(vp);
+                    self.buffer = unsafe {
+                        self.device.newBufferWithBytes_length_options(
+                            NonNull::new(self.vertices.as_ptr() as *mut c_void).unwrap(),
+                            BYTE_LEN,
+                            MTLResourceOptions::empty(),
+                        )
                     }
+                    .unwrap();
+
+                    let vp = MTLViewport {
+                        originX: 0.0,
+                        originY: 0.0,
+                        width: 640.0,
+                        height: 480.0,
+                        znear: 0.0,
+                        zfar: 1.0,
+                    };
+
+                    draw_encoder.setViewport(vp);
 
                     draw_encoder.setRenderPipelineState(&self.fb_pipeline_state);
 
@@ -969,9 +959,18 @@ impl Renderer {
                         draw_encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 1);
 
                         let display_depth = gpu.display_depth as u32;
+                        let (width, height) = gpu.get_dimensions();
+
+                        let fb_params = FbParams {
+                            display_depth,
+                            display_height: height,
+                            display_width: width,
+                            display_start_x: gpu.display_start_x,
+                            display_start_y: gpu.display_start_y,
+                        };
                         draw_encoder.setFragmentBytes_length_atIndex(
-                            NonNull::new(&display_depth as *const u32 as *mut c_void).unwrap(),
-                            std::mem::size_of::<u32>(),
+                            NonNull::new(&fb_params as *const FbParams as *mut c_void).unwrap(),
+                            std::mem::size_of::<FbParams>(),
                             0,
                         );
 
@@ -990,7 +989,7 @@ impl Renderer {
         }
     }
 
-    pub fn get_vertices(display_width: u32, display_height: u32) -> [FbVertex; 4] {
+    pub fn get_vertices() -> [FbVertex; 4] {
         [
             FbVertex {
                 position: [-1.0, 1.0],
@@ -998,18 +997,15 @@ impl Renderer {
             },
             FbVertex {
                 position: [1.0, 1.0],
-                uv: [display_width as f32 / VRAM_WIDTH as f32, 0.0],
+                uv: [1.0, 0.0],
             },
             FbVertex {
                 position: [-1.0, -1.0],
-                uv: [0.0, display_height as f32 / VRAM_HEIGHT as f32],
+                uv: [0.0, 1.0],
             },
             FbVertex {
                 position: [1.0, -1.0],
-                uv: [
-                    display_width as f32 / VRAM_WIDTH as f32,
-                    display_height as f32 / VRAM_HEIGHT as f32,
-                ],
+                uv: [1.0, 1.0],
             },
         ]
     }

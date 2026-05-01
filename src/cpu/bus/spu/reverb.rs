@@ -1,311 +1,239 @@
 use std::cmp;
 
-use crate::cpu::bus::spu::{SPU, SoundRam};
+use super::{SPU, SoundRam};
 
+#[derive(Default)]
 pub struct Reverb {
-    m_base: u32,
-    d_apf1: u32,
-    d_apf2: u32,
-    v_iir: i16,
-    v_comb1: i16,
-    v_comb2: i16,
-    v_comb3: i16,
-    v_comb4: i16,
-    v_wall: i16,
-    v_apf1: i16,
-    v_apf2: i16,
-    ml_same: u32,
-    mr_same: u32,
-    m_l_comb1: u32,
-    m_r_comb1: u32,
-    m_l_comb2: u32,
-    m_r_comb2: u32,
-    d_l_same: u32,
-    d_r_same: u32,
-    m_l_diff: u32,
-    m_r_diff: u32,
-    m_l_comb3: u32,
-    m_r_comb3: u32,
-    m_l_comb4: u32,
-    m_r_comb4: u32,
-    d_l_diff: u32,
-    d_r_diff: u32,
-    m_lapf1: u32,
-    m_rapf1: u32,
-    m_lapf2: u32,
-    m_rapf2: u32,
-    v_lin: i16,
-    v_rin: i16,
-    v_l_out: i16,
-    v_r_out: i16,
-    buffer_address: u32,
-    pub reverb_out_left: f32,
-    pub reverb_out_right: f32,
-    pub is_left: bool,
+    pub mbase: u32,
+    dapf1: u32,
+    dapf2: u32,
+    viir: i16,
+    vcomb1: i16,
+    vcomb2: i16,
+    vcomb3: i16,
+    vcomb4: i16,
+    vwall: i16,
+    vapf1: i16,
+    vapf2: i16,
+    vlin: i16,
+    vrin: i16,
+    mlsame: u32,
+    mrsame: u32,
+    mldiff: u32,
+    mrdiff: u32,
+    mlcomb1: u32,
+    mlcomb2: u32,
+    mlcomb3: u32,
+    mlcomb4: u32,
+    mrcomb1: u32,
+    mrcomb2: u32,
+    mrcomb3: u32,
+    mrcomb4: u32,
+    dldiff: u32,
+    drdiff: u32,
+    dlsame: u32,
+    drsame: u32,
+    mlapf1: u32,
+    mlapf2: u32,
+    mrapf1: u32,
+    mrapf2: u32,
+    pub calculate_left: bool,
+    pub left_out: f32,
+    pub right_out: f32,
+    pub buffer_address: u32,
 }
 
 impl Reverb {
     pub fn new() -> Self {
         Self {
-            m_base: 0,
-            d_apf1: 0,
-            d_apf2: 0,
-            v_iir: 0,
-            v_comb1: 0,
-            v_comb2: 0,
-            v_comb3: 0,
-            v_comb4: 0,
-            v_wall: 0,
-            v_apf1: 0,
-            v_apf2: 0,
-            ml_same: 0,
-            mr_same: 0,
-            m_l_comb1: 0,
-            m_r_comb1: 0,
-            m_l_comb2: 0,
-            m_r_comb2: 0,
-            d_l_same: 0,
-            d_r_same: 0,
-            m_l_diff: 0,
-            m_r_diff: 0,
-            m_l_comb3: 0,
-            m_r_comb3: 0,
-            m_l_comb4: 0,
-            m_r_comb4: 0,
-            d_l_diff: 0,
-            d_r_diff: 0,
-            m_lapf1: 0,
-            m_rapf1: 0,
-            m_lapf2: 0,
-            m_rapf2: 0,
-            v_lin: 0,
-            v_rin: 0,
-            v_l_out: 0,
-            v_r_out: 0,
+            mbase: 0,
+            dapf1: 0,
+            dapf2: 0,
+            viir: 0,
+            vcomb1: 0,
+            vcomb2: 0,
+            vcomb3: 0,
+            vcomb4: 0,
+            vwall: 0,
+            vapf1: 0,
+            vapf2: 0,
+            vlin: 0,
+            vrin: 0,
+            mlsame: 0,
+            mrsame: 0,
+            mlcomb1: 0,
+            mlcomb2: 0,
+            mlcomb3: 0,
+            mlcomb4: 0,
+            mrcomb1: 0,
+            mrcomb2: 0,
+            mrcomb3: 0,
+            mrcomb4: 0,
+            dldiff: 0,
+            drdiff: 0,
+            dlsame: 0,
+            drsame: 0,
+            mlapf1: 0,
+            mlapf2: 0,
+            mrapf1: 0,
+            mrapf2: 0,
+            mldiff: 0,
+            mrdiff: 0,
+            left_out: 0.0,
+            right_out: 0.0,
+            calculate_left: false,
             buffer_address: 0,
-            reverb_out_left: 0.0,
-            reverb_out_right: 0.0,
-            is_left: true,
         }
     }
-    /*
-    ___Input from Mixer (Input volume multiplied with incoming data)_____________
-    Lin = vLIN * LeftInput    ;from any channels that have Reverb enabled
-    Rin = vRIN * RightInput   ;from any channels that have Reverb enabled
-    ____Same Side Reflection (left-to-left and right-to-right)___________________
-    [mLSAME] = (Lin + [dLSAME]*vWALL - [mLSAME-2])*vIIR + [mLSAME-2]  ;L-to-L
-    [mRSAME] = (Rin + [dRSAME]*vWALL - [mRSAME-2])*vIIR + [mRSAME-2]  ;R-to-R
-    ___Different Side Reflection (left-to-right and right-to-left)_______________
-    [mLDIFF] = (Lin + [dRDIFF]*vWALL - [mLDIFF-2])*vIIR + [mLDIFF-2]  ;R-to-L
-    [mRDIFF] = (Rin + [dLDIFF]*vWALL - [mRDIFF-2])*vIIR + [mRDIFF-2]  ;L-to-R
-    ___Early Echo (Comb Filter, with input from buffer)__________________________
-    Lout=vCOMB1*[mLCOMB1]+vCOMB2*[mLCOMB2]+vCOMB3*[mLCOMB3]+vCOMB4*[mLCOMB4]
-    Rout=vCOMB1*[mRCOMB1]+vCOMB2*[mRCOMB2]+vCOMB3*[mRCOMB3]+vCOMB4*[mRCOMB4]
-    ___Late Reverb APF1 (All Pass Filter 1, with input from COMB)________________
-    Lout=Lout-vAPF1*[mLAPF1-dAPF1], [mLAPF1]=Lout, Lout=Lout*vAPF1+[mLAPF1-dAPF1]
-    Rout=Rout-vAPF1*[mRAPF1-dAPF1], [mRAPF1]=Rout, Rout=Rout*vAPF1+[mRAPF1-dAPF1]
-    ___Late Reverb APF2 (All Pass Filter 2, with input from APF1)________________
-    Lout=Lout-vAPF2*[mLAPF2-dAPF2], [mLAPF2]=Lout, Lout=Lout*vAPF2+[mLAPF2-dAPF2]
-    Rout=Rout-vAPF2*[mRAPF2-dAPF2], [mRAPF2]=Rout, Rout=Rout*vAPF2+[mRAPF2-dAPF2]
-    ___Output to Mixer (Output volume multiplied with input from APF2)___________
-    LeftOutput  = Lout*vLOUT
-    RightOutput = Rout*vROUT
-    ___Finally, before repeating the above steps_________________________________
-    BufferAddress = MAX(mBASE, (BufferAddress+2) AND 7FFFEh)
-    Wait one 22050Hz cycle, then repeat the above stuff
+
+    /* per https://psx-spx.consoledev.net/soundprocessingunitspu/#spu-reverb-formula
+    * ___Input from Mixer (Input volume multiplied with incoming data)_____________
+      Lin = vLIN * LeftInput    ;from any channels that have Reverb enabled
+      Rin = vRIN * RightInput   ;from any channels that have Reverb enabled
+      ____Same Side Reflection (left-to-left and right-to-right)___________________
+      [mLSAME] = (Lin + [dLSAME]*vWALL - [mLSAME-2])*vIIR + [mLSAME-2]  ;L-to-L
+      [mRSAME] = (Rin + [dRSAME]*vWALL - [mRSAME-2])*vIIR + [mRSAME-2]  ;R-to-R
+      [mLDIFF] = (Lin + [dRDIFF]*vWALL - [mLDIFF-2])*vIIR + [mLDIFF-2]  ;R-to-L
+      [mRDIFF] = (Rin + [dLDIFF]*vWALL - [mRDIFF-2])*vIIR + [mRDIFF-2]  ;L-to-R
+      ___Early Echo (Comb Filter, with input from buffer)__________________________
+      Lout=vCOMB1*[mLCOMB1]+vCOMB2*[mLCOMB2]+vCOMB3*[mLCOMB3]+vCOMB4*[mLCOMB4]
+      Rout=vCOMB1*[mRCOMB1]+vCOMB2*[mRCOMB2]+vCOMB3*[mRCOMB3]+vCOMB4*[mRCOMB4]
+      ___Late Reverb APF1 (All Pass Filter 1, with input from COMB)________________
+      Lout=Lout-vAPF1*[mLAPF1-dAPF1], [mLAPF1]=Lout, Lout=Lout*vAPF1+[mLAPF1-dAPF1]
+      Rout=Rout-vAPF1*[mRAPF1-dAPF1], [mRAPF1]=Rout, Rout=Rout*vAPF1+[mRAPF1-dAPF1]
+      ___Late Reverb APF2 (All Pass Filter 2, with input from APF1)________________
+      Lout=Lout-vAPF2*[mLAPF2-dAPF2], [mLAPF2]=Lout, Lout=Lout*vAPF2+[mLAPF2-dAPF2]
+      Rout=Rout-vAPF2*[mRAPF2-dAPF2], [mRAPF2]=Rout, Rout=Rout*vAPF2+[mRAPF2-dAPF2]
+      ___Output to Mixer (Output volume multiplied with input from APF2)___________
+      LeftOutput  = Lout*vLOUT
+      RightOutput = Rout*vROUT
+      ___Finally, before repeating the above steps_________________________________
+      BufferAddress = MAX(mBASE, (BufferAddress+2) AND 7FFFEh)
     */
-    pub fn calculate_right(&mut self, reverb_right: f32, sound_ram: &mut SoundRam) {
-        let rin = SPU::apply_volume(reverb_right, self.v_rin);
+    pub fn calculate_right_reverb(&mut self, ram: &mut SoundRam, right_input: f32) {
+        let rin = SPU::to_f32(self.vrin) * right_input;
 
-        let d_r_same = sound_ram.readf32(self.calculate_address(self.d_r_same as usize));
-        let mr_same2 = sound_ram.readf32(self.calculate_address(self.mr_same as usize - 2));
+        let temp = self.get_from_ram(ram, self.mrsame - 2);
+        let mrsame = rin + self.get_from_ram(ram, self.drsame) * SPU::to_f32(self.vwall)
+            - temp * SPU::to_f32(self.viir)
+            + temp;
+        self.write_to_ram(ram, self.mrsame, mrsame);
 
-        let mr_same_val = rin + SPU::apply_volume(d_r_same, self.v_wall)
-            - SPU::apply_volume(mr_same2, self.v_iir)
-            + mr_same2;
+        let temp = self.get_from_ram(ram, self.mrdiff - 2);
+        let mrdiff = rin + self.get_from_ram(ram, self.dldiff) * SPU::to_f32(self.vwall)
+            - temp * SPU::to_f32(self.viir)
+            + temp;
+        self.write_to_ram(ram, self.mrdiff, mrdiff);
 
-        sound_ram.writef32(self.calculate_address(self.mr_same as usize), mr_same_val);
+        let mut rout = SPU::to_f32(self.vcomb1) * self.get_from_ram(ram, self.mrcomb1);
+        rout += SPU::to_f32(self.vcomb2) * self.get_from_ram(ram, self.mrcomb2);
+        rout += SPU::to_f32(self.vcomb3) * self.get_from_ram(ram, self.mrcomb3);
+        rout += SPU::to_f32(self.vcomb4) * self.get_from_ram(ram, self.mrcomb4);
 
-        let dl_diff = sound_ram.readf32(self.calculate_address(self.d_l_diff as usize));
-        let mr_diff2 = sound_ram.readf32(self.calculate_address(self.m_r_diff as usize - 2));
+        rout -= SPU::to_f32(self.vapf1) * self.get_from_ram(ram, self.mrapf1 - self.dapf1);
+        self.write_to_ram(ram, self.mrapf1, rout);
+        rout = rout * SPU::to_f32(self.vapf1) + self.get_from_ram(ram, self.mrapf1 - self.dapf1);
 
-        let dl_diff_volume = SPU::apply_volume(dl_diff, self.v_wall);
+        rout -= SPU::to_f32(self.vapf2) * self.get_from_ram(ram, self.mrapf2 - self.dapf2);
+        self.write_to_ram(ram, self.mrapf2, rout);
+        rout = rout * SPU::to_f32(self.vapf2) + self.get_from_ram(ram, self.mrapf2 - self.dapf2);
 
-        let mr_diff_val = SPU::apply_volume(rin + dl_diff_volume - mr_diff2, self.v_iir) + mr_diff2;
+        self.right_out = rout;
 
-        sound_ram.writef32(self.calculate_address(self.m_r_diff as usize), mr_diff_val);
+        // once we have finished calculating both lin and rout, we can update the buffer address to the next address.
+        self.buffer_address = cmp::max((self.buffer_address + 2) & 0x7fffe, self.mbase);
+    }
+    pub fn calculate_left_reverb(&mut self, ram: &mut SoundRam, left_input: f32) {
+        let lin = SPU::to_f32(self.vlin) * left_input;
 
-        let mr_comb1 = sound_ram.readf32(self.calculate_address(self.m_r_comb1 as usize));
-        let mr_comb2 = sound_ram.readf32(self.calculate_address(self.m_r_comb2 as usize));
-        let mr_comb3 = sound_ram.readf32(self.calculate_address(self.m_r_comb3 as usize));
-        let mr_comb4 = sound_ram.readf32(self.calculate_address(self.m_r_comb4 as usize));
+        let temp = self.get_from_ram(ram, self.mlsame - 2);
+        let mlsame = lin + self.get_from_ram(ram, self.dlsame) * SPU::to_f32(self.vwall)
+            - temp * SPU::to_f32(self.viir)
+            + temp;
+        self.write_to_ram(ram, self.mlsame, mlsame);
 
-        let mut rout = SPU::apply_volume(mr_comb1, self.v_comb1)
-            + SPU::apply_volume(mr_comb2, self.v_comb2)
-            + SPU::apply_volume(mr_comb3, self.v_comb3)
-            + SPU::apply_volume(mr_comb4, self.v_comb4);
+        let temp = self.get_from_ram(ram, self.mldiff - 2);
+        let mldiff = lin + self.get_from_ram(ram, self.drdiff) * SPU::to_f32(self.vwall)
+            - temp * SPU::to_f32(self.viir)
+            + temp;
+        self.write_to_ram(ram, self.mldiff, mldiff);
 
-        let rapf1 =
-            sound_ram.readf32(self.calculate_address(self.m_rapf1 as usize - self.d_apf1 as usize));
+        let mut lout = SPU::to_f32(self.vcomb1) * self.get_from_ram(ram, self.mlcomb1);
+        lout += SPU::to_f32(self.vcomb2) * self.get_from_ram(ram, self.mlcomb2);
+        lout += SPU::to_f32(self.vcomb3) * self.get_from_ram(ram, self.mlcomb3);
+        lout += SPU::to_f32(self.vcomb4) * self.get_from_ram(ram, self.mlcomb4);
 
-        rout = rout - SPU::apply_volume(rapf1, self.v_apf1);
+        lout -= SPU::to_f32(self.vapf1) * self.get_from_ram(ram, self.mlapf1 - self.dapf1);
+        self.write_to_ram(ram, self.mlapf1, lout);
+        lout = lout * SPU::to_f32(self.vapf1) + self.get_from_ram(ram, self.mlapf1 - self.dapf1);
 
-        sound_ram.writef32(self.calculate_address(self.m_rapf1 as usize), rout);
+        lout -= SPU::to_f32(self.vapf2) * self.get_from_ram(ram, self.mlapf2 - self.dapf2);
+        self.write_to_ram(ram, self.mlapf2, lout);
+        lout = lout * SPU::to_f32(self.vapf2) + self.get_from_ram(ram, self.mlapf2 - self.dapf2);
 
-        rout = SPU::apply_volume(rout, self.v_apf1) + rapf1;
-
-        let rapf2 =
-            sound_ram.readf32(self.calculate_address(self.m_rapf2 as usize - self.d_apf2 as usize));
-
-        rout = rout - SPU::apply_volume(rapf2, self.v_apf2);
-
-        sound_ram.writef32(self.calculate_address(self.m_rapf2 as usize), rout);
-
-        rout = SPU::apply_volume(rout, self.v_apf2) + rapf2;
-
-        let right_output = SPU::apply_volume(rout, self.v_r_out);
-
-        self.reverb_out_right = right_output;
-
-        self.buffer_address = cmp::max(self.m_base, (self.buffer_address + 2) & 0x7_fffe);
+        self.left_out = lout;
     }
 
-    pub fn calculate_left(&mut self, reverb_left: f32, sound_ram: &mut SoundRam) {
-        let lin = SPU::apply_volume(reverb_left, self.v_lin);
-
-        let d_l_same = sound_ram.readf32(self.calculate_address(self.d_l_same as usize));
-        let ml_same2 = sound_ram.readf32(self.calculate_address(self.ml_same as usize - 2));
-
-        let ml_same_val = lin + SPU::apply_volume(d_l_same, self.v_wall)
-            - SPU::apply_volume(ml_same2, self.v_iir)
-            + ml_same2;
-
-        sound_ram.writef32(self.calculate_address(self.ml_same as usize), ml_same_val);
-
-        let dr_diff = sound_ram.readf32(self.calculate_address(self.d_r_diff as usize));
-        let ml_diff2 = sound_ram.readf32(self.calculate_address(self.m_l_diff as usize - 2));
-
-        let dr_diff_volume = SPU::apply_volume(dr_diff, self.v_wall);
-
-        let ml_diff_val = SPU::apply_volume(lin + dr_diff_volume - ml_diff2, self.v_iir) + ml_diff2;
-
-        sound_ram.writef32(self.calculate_address(self.m_l_diff as usize), ml_diff_val);
-
-        let ml_comb1 = sound_ram.readf32(self.calculate_address(self.m_l_comb1 as usize));
-        let ml_comb2 = sound_ram.readf32(self.calculate_address(self.m_l_comb2 as usize));
-        let ml_comb3 = sound_ram.readf32(self.calculate_address(self.m_l_comb3 as usize));
-        let ml_comb4 = sound_ram.readf32(self.calculate_address(self.m_l_comb4 as usize));
-
-        let mut lout = SPU::apply_volume(ml_comb1, self.v_comb1)
-            + SPU::apply_volume(ml_comb2, self.v_comb2)
-            + SPU::apply_volume(ml_comb3, self.v_comb3)
-            + SPU::apply_volume(ml_comb4, self.v_comb4);
-
-        let lapf1 =
-            sound_ram.readf32(self.calculate_address(self.m_lapf1 as usize - self.d_apf1 as usize));
-
-        lout = lout - SPU::apply_volume(lapf1, self.v_apf1);
-
-        sound_ram.writef32(self.calculate_address(self.m_lapf1 as usize), lout);
-
-        lout = SPU::apply_volume(lout, self.v_apf1) + lapf1;
-
-        let lapf2 =
-            sound_ram.readf32(self.calculate_address(self.m_lapf2 as usize - self.d_apf2 as usize));
-
-        lout = lout - SPU::apply_volume(lapf2, self.v_apf2);
-
-        sound_ram.writef32(self.calculate_address(self.m_lapf2 as usize), lout);
-
-        lout = SPU::apply_volume(lout, self.v_apf2) + lapf2;
-
-        let left_output = SPU::apply_volume(lout, self.v_l_out);
-
-        self.reverb_out_left = left_output;
+    fn get_from_ram(&self, ram: &mut SoundRam, address: u32) -> f32 {
+        let value = ram.read16(self.calculate_address(address) as usize) as i16;
+        SPU::to_f32(value)
     }
 
-    /*
-    1f801DA2h spu   mBASE   base    Reverb Work Area Start Address in Sound RAM
-    1f801DC0h rev00 dAPF1   disp    Reverb APF Offset 1
-    1f801DC2h rev01 dAPF2   disp    Reverb APF Offset 2
-    1f801DC4h rev02 vIIR    volume  Reverb Reflection Volume 1
-    1f801DC6h rev03 vCOMB1  volume  Reverb Comb Volume 1
-    1f801DC8h rev04 vCOMB2  volume  Reverb Comb Volume 2
-    1f801DCAh rev05 vCOMB3  volume  Reverb Comb Volume 3
-    1f801DCCh rev06 vCOMB4  volume  Reverb Comb Volume 4
-    1f801DCEh rev07 vWALL   volume  Reverb Reflection Volume 2
-    1f801DD0h rev08 vAPF1   volume  Reverb APF Volume 1
-    1f801DD2h rev09 vAPF2   volume  Reverb APF Volume 2
-    1f801DD4h rev0A mLSAME  src/dst Reverb Same Side Reflection Address 1 Left
-    1f801DD6h rev0B mRSAME  src/dst Reverb Same Side Reflection Address 1 Right
-    1f801DD8h rev0C mLCOMB1 src     Reverb Comb Address 1 Left
-    1f801DDAh rev0D mRCOMB1 src     Reverb Comb Address 1 Right
-    1f801DDCh rev0E mLCOMB2 src     Reverb Comb Address 2 Left
-    1f801DDEh rev0F mRCOMB2 src     Reverb Comb Address 2 Right
-    1f801DE0h rev10 dLSAME  src     Reverb Same Side Reflection Address 2 Left
-    1f801DE2h rev11 dRSAME  src     Reverb Same Side Reflection Address 2 Right
-    1f801DE4h rev12 mLDIFF  src/dst Reverb Different Side Reflect Address 1 Left
-    1f801DE6h rev13 mRDIFF  src/dst Reverb Different Side Reflect Address 1 Right
-    1f801DE8h rev14 mLCOMB3 src     Reverb Comb Address 3 Left
-    1f801DEAh rev15 mRCOMB3 src     Reverb Comb Address 3 Right
-    1f801DECh rev16 mLCOMB4 src     Reverb Comb Address 4 Left
-    1f801DEEh rev17 mRCOMB4 src     Reverb Comb Address 4 Right
-    1f801DF0h rev18 dLDIFF  src     Reverb Different Side Reflect Address 2 Left
-    1f801DF2h rev19 dRDIFF  src     Reverb Different Side Reflect Address 2 Right
-    1f801DF4h rev1A mLAPF1  src/dst Reverb APF Address 1 Left
-    1f801DF6h rev1B mRAPF1  src/dst Reverb APF Address 1 Right
-    1f801DF8h rev1C mLAPF2  src/dst Reverb APF Address 2 Left
-    1f801DFAh rev1D mRAPF2  src/dst Reverb APF Address 2 Right
-    1f801DFCh rev1E vLIN    volume  Reverb Input Volume Left
-    1f801DFEh rev1F vRIN    volume  Reverb Input Volume Right
-    */
-    pub fn write16(&mut self, address: usize, value: u16) {
+    fn write_to_ram(&self, ram: &mut SoundRam, address: u32, val: f32) {
+        let address = self.calculate_address(address);
+        let result = SPU::to_i16(val) as u16;
+
+        ram.write16(address as usize, result);
+    }
+
+    fn calculate_address(&self, address: u32) -> u32 {
+        let mut offset = self.buffer_address + address - self.mbase;
+        offset %= 0x80000 - self.mbase;
+
+        (self.mbase + offset) & 0x7fffe
+    }
+
+    pub fn write16(&mut self, address: usize, val: u16) {
         match address {
-            0x1f801d84 => self.v_l_out = value as i16,
-            0x1f801d86 => self.v_r_out = value as i16,
-            0x1f801da2 => {
-                self.m_base = value as u32 * 8;
-                self.buffer_address = self.m_base;
-            }
-            0x1f801dc0 => self.d_apf1 = value as u32 * 8,
-            0x1f801dc2 => self.d_apf2 = value as u32 * 8,
-            0x1f801dc4 => self.v_iir = value as i16,
-            0x1f801dc6 => self.v_comb1 = value as i16,
-            0x1f801dc8 => self.v_comb2 = value as i16,
-            0x1f801dca => self.v_comb3 = value as i16,
-            0x1f801dcc => self.v_comb4 = value as i16,
-            0x1f801dce => self.v_wall = value as i16,
-            0x1f801dd0 => self.v_apf1 = value as i16,
-            0x1f801dd2 => self.v_apf2 = value as i16,
-            0x1f801dd4 => self.ml_same = value as u32 * 8,
-            0x1f801dd6 => self.mr_same = value as u32 * 8,
-            0x1f801dd8 => self.m_l_comb1 = value as u32 * 8,
-            0x1f801dda => self.m_r_comb1 = value as u32 * 8,
-            0x1f801ddc => self.m_l_comb2 = value as u32 * 8,
-            0x1f801dde => self.m_r_comb2 = value as u32 * 8,
-            0x1f801de0 => self.d_l_same = value as u32 * 8,
-            0x1f801de2 => self.d_r_same = value as u32 * 8,
-            0x1f801de4 => self.m_l_diff = value as u32 * 8,
-            0x1f801de6 => self.m_r_diff = value as u32 * 8,
-            0x1f801de8 => self.m_l_comb3 = value as u32 * 8,
-            0x1f801dea => self.m_r_comb3 = value as u32 * 8,
-            0x1f801dec => self.m_l_comb4 = value as u32 * 8,
-            0x1f801dee => self.m_r_comb4 = value as u32 * 8,
-            0x1f801df0 => self.d_l_diff = value as u32 * 8,
-            0x1f801df2 => self.d_r_diff = value as u32 * 8,
-            0x1f801df4 => self.m_lapf1 = value as u32 * 8,
-            0x1f801df6 => self.m_rapf1 = value as u32 * 8,
-            0x1f801df8 => self.m_lapf2 = value as u32 * 8,
-            0x1f801dfa => self.m_rapf2 = value as u32 * 8,
-            0x1f801dfc => self.v_lin = value as i16,
-            0x1f801dfe => self.v_rin = value as i16,
-            _ => panic!("invalid address given to reverb: 0x{:x}", address),
+            0x1f80_1da2 => self.write_mbase(val),
+            0x1f80_1dc0 => self.dapf1 = (val as u32) * 8,
+            0x1f80_1dc2 => self.dapf2 = (val as u32) * 8,
+            0x1f80_1dc4 => self.viir = val as i16,
+            0x1f80_1dc6 => self.vcomb1 = val as i16,
+            0x1f80_1dc8 => self.vcomb2 = val as i16,
+            0x1f80_1dca => self.vcomb3 = val as i16,
+            0x1f80_1dcc => self.vcomb4 = val as i16,
+            0x1f80_1dce => self.vwall = val as i16,
+            0x1f80_1dd0 => self.vapf1 = val as i16,
+            0x1f80_1dd2 => self.vapf2 = val as i16,
+            0x1f80_1dd4 => self.mlsame = (val as u32) * 8,
+            0x1f80_1dd6 => self.mrsame = (val as u32) * 8,
+            0x1f80_1dd8 => self.mlcomb1 = (val as u32) * 8,
+            0x1f80_1dda => self.mrcomb1 = (val as u32) * 8,
+            0x1f80_1ddc => self.mlcomb2 = (val as u32) * 8,
+            0x1f80_1dde => self.mrcomb2 = (val as u32) * 8,
+            0x1f80_1de0 => self.dlsame = (val as u32) * 8,
+            0x1f80_1de2 => self.drsame = (val as u32) * 8,
+            0x1f80_1de4 => self.mldiff = (val as u32) * 8,
+            0x1f80_1de6 => self.mrdiff = (val as u32) * 8,
+            0x1f80_1de8 => self.mlcomb3 = (val as u32) * 8,
+            0x1f80_1dea => self.mrcomb3 = (val as u32) * 8,
+            0x1f80_1dec => self.mlcomb4 = (val as u32) * 8,
+            0x1f80_1dee => self.mrcomb4 = (val as u32) * 8,
+            0x1f80_1df0 => self.dldiff = (val as u32) * 8,
+            0x1f80_1df2 => self.drdiff = (val as u32) * 8,
+            0x1f80_1df4 => self.mlapf1 = (val as u32) * 8,
+            0x1f80_1df6 => self.mrapf1 = (val as u32) * 8,
+            0x1f80_1df8 => self.mlapf2 = (val as u32) * 8,
+            0x1f80_1dfa => self.mrapf2 = (val as u32) * 8,
+            0x1f80_1dfc => self.vlin = val as i16,
+            0x1f80_1dfe => self.vrin = val as i16,
+            _ => panic!("write to unhandled SPU address: {address:X}"),
         }
     }
 
-    fn calculate_address(&self, offset: usize) -> usize {
-        let address = (self.buffer_address as usize + offset) & 0x7_fffe;
-
-        cmp::max(self.m_base as usize, address)
+    pub fn write_mbase(&mut self, val: u16) {
+        self.mbase = (val as u32) * 8;
+        self.buffer_address = self.mbase;
     }
 }

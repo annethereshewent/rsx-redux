@@ -8,8 +8,8 @@ use crate::cpu::bus::{
 pub const VOLUME_MIN: i32 = -0x8000;
 pub const VOLUME_MAX: i32 = 0x7fff;
 
-const POS_FILTER_TABLE: [i8; 16] = [0, 60, 115, 98, 122, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-const NEG_FILTER_TABLE: [i8; 16] = [0, 0, -52, -55, -60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+pub const POS_FILTER_TABLE: [i8; 16] = [0, 60, 115, 98, 122, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+pub const NEG_FILTER_TABLE: [i8; 16] = [0, 0, -52, -55, -60, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 const NUM_BLOCK_SAMPLES: usize = 28;
 
