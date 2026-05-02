@@ -211,7 +211,7 @@ impl Frontend {
     fn get_quick_state_path(cpu: &CPU) -> PathBuf {
         let filename = "quick_save.state";
 
-        let game_path = cpu.game_path.replace(".sav", "");
+        let game_path = cpu.game_path.replace(".bin", "");
 
         let mut split: Vec<&str> = game_path.split('/').collect();
 
