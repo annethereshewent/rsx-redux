@@ -315,6 +315,8 @@ pub struct GPU {
     pub vram: Box<[u8]>,
     #[cfg(feature = "hardware_gpu")]
     pub vram_read_tex: Box<[u8]>,
+    #[cfg(feature = "hardware_gpu")]
+    pub vram_write_tex: Box<[u8]>,
     dotclock_cycles: usize,
     cpu_transfer_x: u32,
     cpu_transfer_y: u32,
@@ -424,6 +426,8 @@ impl GPU {
             dither_table,
             #[cfg(feature = "hardware_gpu")]
             vram_read_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2].into_boxed_slice(),
+            #[cfg(feature = "hardware_gpu")]
+            vram_write_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 4].into_boxed_slice(),
         }
     }
 
