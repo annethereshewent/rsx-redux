@@ -260,12 +260,14 @@ impl Frontend {
 
     #[cfg(feature = "hardware_gpu")]
     fn load_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
-        Self::load_quick_state_inner(cpu, |cpu| renderer.set_vram_read_tex(&cpu.bus.gpu.vram_read_tex));
+        Self::load_quick_state_inner(cpu, |cpu| {
+            renderer.set_vram_read_tex(&cpu.bus.gpu.vram_read_tex)
+        });
     }
 
     #[cfg(feature = "software_gpu")]
     fn load_quick_state(cpu: &mut CPU) {
-        Self::load_quick_state_inner(cpu, |_| { });
+        Self::load_quick_state_inner(cpu, |_| {});
     }
 
     fn create_quick_state_inner(cpu: &mut CPU, before_save: impl Fn(&mut CPU)) {
@@ -289,7 +291,9 @@ impl Frontend {
 
     #[cfg(feature = "hardware_gpu")]
     fn create_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
-        Self::create_quick_state_inner(cpu, |cpu| cpu.bus.gpu.vram_read_tex = renderer.get_vram_read_bytes().into_boxed_slice());
+        Self::create_quick_state_inner(cpu, |cpu| {
+            cpu.bus.gpu.vram_read_tex = renderer.get_vram_read_bytes().into_boxed_slice()
+        });
     }
 
     pub fn handle_events(&mut self, cpu: &mut CPU) {

@@ -1018,8 +1018,8 @@ impl Renderer {
             size: MTLSize {
                 width: VRAM_WIDTH,
                 height: VRAM_HEIGHT,
-                depth: 1
-            }
+                depth: 1,
+            },
         };
 
         if let Some(texture) = &self.vram_read {
@@ -1038,11 +1038,7 @@ impl Renderer {
 
     pub fn set_vram_read_tex(&mut self, bytes: &[u8]) {
         let region = MTLRegion {
-            origin: MTLOrigin {
-                x: 0,
-                y: 0,
-                z: 0,
-            },
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
             size: MTLSize {
                 width: VRAM_WIDTH,
                 height: VRAM_HEIGHT,
@@ -1056,7 +1052,7 @@ impl Renderer {
                     region,
                     0,
                     NonNull::new(bytes.as_ptr() as *mut c_void).unwrap(),
-                    2 * VRAM_WIDTH
+                    2 * VRAM_WIDTH,
                 )
             }
         }
