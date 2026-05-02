@@ -1,8 +1,11 @@
 use std::{
+    array::from_fn,
     collections::VecDeque,
     thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use serde::{Deserialize, Serialize};
 
 use crate::cpu::CPU_FREQUENCY;
 
@@ -44,7 +47,7 @@ const DITHER_OFFSETS: [[i16; 4]; 4] = [
     [3, -1, 2, -2],
 ];
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum GPUCommand {
     CPUtoVram(VRamTransferParams),
     VRAMtoCPU(CPUTransferParams),
@@ -52,7 +55,7 @@ pub enum GPUCommand {
     VramToVram(VramToVramTransferParams),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct VramToVramTransferParams {
     pub source_start_x: u32,
     pub source_start_y: u32,
@@ -62,7 +65,7 @@ pub struct VramToVramTransferParams {
     pub height: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct VRamTransferParams {
     pub halfwords: Vec<u16>,
     pub start_x: u32,
@@ -71,7 +74,7 @@ pub struct VRamTransferParams {
     pub height: u32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct CPUTransferParams {
     pub start_x: u32,
     pub start_y: u32,
@@ -79,7 +82,7 @@ pub struct CPUTransferParams {
     pub height: u32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct FillVramParams {
     pub start_x: u32,
     pub start_y: u32,
@@ -88,7 +91,7 @@ pub struct FillVramParams {
     pub pixel: u16,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum DmaDirection {
     Off,
     Fifo,
@@ -96,19 +99,19 @@ enum DmaDirection {
     ToCPU,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum DisplayMode {
     Ntsc = 0,
     Pal = 1,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum DisplayDepth {
     Bit15 = 0,
     Bit24 = 1,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Semitransparency {
     Half = 0,
     Add = 1,
@@ -116,7 +119,7 @@ pub enum Semitransparency {
     Quarter = 3,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum RectangleSize {
     Variable,
     Single,
@@ -124,20 +127,20 @@ enum RectangleSize {
     SixteenxSixteen,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum TransferType {
     FromVram,
     ToVram,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum TexturePageColors {
     Bit4 = 0,
     Bit8 = 1,
     Bit15 = 2,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,
@@ -166,7 +169,7 @@ impl Polygon {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
 pub struct Color {
     pub r: u8,
     pub g: u8,
@@ -199,7 +202,7 @@ impl Color {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
 pub struct Vertex {
     pub x: i32,
     pub y: i32,
@@ -208,7 +211,7 @@ pub struct Vertex {
     pub color: Color,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Texpage {
     pub x_base: u32,
     pub y_base1: u32,
@@ -244,7 +247,7 @@ impl Default for Texpage {
         Self::new()
     }
 }
-
+#[derive(Serialize, Deserialize)]
 pub struct GPU {
     pub frame_finished: bool,
     pub current_line: usize,
@@ -267,7 +270,9 @@ pub struct GPU {
     pub texture_window_offset_y: u32,
     pub force_mask_bit: bool,
     pub preserve_masked_pixels: bool,
+    #[cfg(feature = "hardware_gpu")]
     pub polygons: Vec<Polygon>,
+    #[cfg(feature = "hardware_gpu")]
     pub commands_ready: bool,
     num_vertices: usize,
     is_shaded: bool,
@@ -299,7 +304,7 @@ pub struct GPU {
     display_range_x: (u32, u32),
     display_range_y: (u32, u32),
     display_on: bool,
-    dither_table: [[[u8; 0x200]; 4]; 4],
+    dither_table: [[Box<[u8]>; 4]; 4],
     pub debug_on: bool,
     pub gpu_commands: Vec<GPUCommand>,
     pub gpuread_fifo: VecDeque<u16>,
@@ -308,6 +313,10 @@ pub struct GPU {
     pub resolution_changed: bool,
     #[cfg(feature = "software_gpu")]
     pub vram: Box<[u8]>,
+    #[cfg(feature = "hardware_gpu")]
+    pub vram_read_tex: Box<[u8]>,
+    #[cfg(feature = "hardware_gpu")]
+    pub vram_write_tex: Box<[u8]>,
     dotclock_cycles: usize,
     cpu_transfer_x: u32,
     cpu_transfer_y: u32,
@@ -319,7 +328,7 @@ pub struct GPU {
 
 impl GPU {
     pub fn new(scheduler: &mut Scheduler) -> Self {
-        let mut dither_table = [[[0; 0x200]; 4]; 4];
+        let mut dither_table = from_fn(|_| from_fn(|_| vec![0; 0x200].into_boxed_slice()));
 
         for x in 0..4 {
             for y in 0..4 {
@@ -365,7 +374,9 @@ impl GPU {
             texture_window_offset_y: 0,
             force_mask_bit: false,
             preserve_masked_pixels: false,
+            #[cfg(feature = "hardware_gpu")]
             commands_ready: false,
+            #[cfg(feature = "hardware_gpu")]
             polygons: Vec::new(),
             num_vertices: 0,
             is_shaded: false,
@@ -413,6 +424,10 @@ impl GPU {
             #[cfg(feature = "software_gpu")]
             picture: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 3].into_boxed_slice(),
             dither_table,
+            #[cfg(feature = "hardware_gpu")]
+            vram_read_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2].into_boxed_slice(),
+            #[cfg(feature = "hardware_gpu")]
+            vram_write_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 4].into_boxed_slice(),
         }
     }
 
@@ -890,7 +905,10 @@ impl GPU {
     }
 
     fn push_rectangle(&mut self) {
-        self.commands_ready = true;
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.commands_ready = true;
+        }
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
@@ -1267,13 +1285,17 @@ impl GPU {
     }
 
     fn draw_line(&mut self) {
-        self.commands_ready = true;
-        todo!("draw line");
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.commands_ready = true;
+        }
     }
 
     fn draw_polyline(&mut self) {
-        self.commands_ready = true;
-        todo!("draw polyline");
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.commands_ready = true;
+        }
     }
 
     fn transfer_to_vram(&mut self, halfword: u16) {

@@ -1,5 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::cpu::bus::gpu::{GPU, Polygon, Vertex};
 
+#[derive(Serialize, Deserialize)]
 pub struct Deltas {
     pub drdx: f32,
     pub drdy: f32,

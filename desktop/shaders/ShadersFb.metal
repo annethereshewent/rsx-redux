@@ -34,12 +34,17 @@ uchar readByte(texture2d<ushort, access::read> vram, uint byteOffset, uint y) {
 }
 
 // For reading display pixels in 24-bit mode
-float4 readPixel24bit(texture2d<ushort, access::read> vram, uint x, uint y) {
-    uint byteOffset = x * 3;  // 3 bytes per pixel in 24-bit mode
+float4 readPixel24bit(
+    texture2d<ushort, access::read> vram,
+    uint displayStartX,
+    uint displayPixelX,
+    uint y
+) {
+    uint byteOffset = displayStartX * 2u + displayPixelX * 3u;
 
-    uchar r = readByte(vram, byteOffset, y);
-    uchar g = readByte(vram, byteOffset + 1, y);
-    uchar b = readByte(vram, byteOffset + 2, y);
+    uchar r = readByte(vram, byteOffset + 0u, y);
+    uchar g = readByte(vram, byteOffset + 1u, y);
+    uchar b = readByte(vram, byteOffset + 2u, y);
 
     return float4(float(r) / 255.0, float(g) / 255.0, float(b) / 255.0, 1.0);
 }
@@ -67,8 +72,16 @@ fragment float4 fragment_fb(
     if (params.displayDepth == 0) {
         return tex.read(uint2(srcX, srcY));
     } else {
-        uint x = uint(in.uv.x * 1024.0);
-        uint y = uint(in.uv.y * 512.0);
-        return readPixel24bit(vram, srcX, srcY);
+        uint displayX = min(
+            uint(in.uv.x * float(params.displayWidth)),
+            params.displayWidth - 1u
+        );
+
+        return readPixel24bit(
+            vram,
+            params.displayStartX,
+            displayX,
+            srcY
+        );
     }
 };

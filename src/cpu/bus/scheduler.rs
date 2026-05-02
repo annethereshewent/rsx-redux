@@ -1,8 +1,9 @@
-use std::cmp::Reverse;
+use std::{cmp::Reverse, collections::HashMap};
 
 use priority_queue::PriorityQueue;
+use serde::{Deserialize, Serialize};
 
-#[derive(Hash, Eq, PartialEq, Debug)]
+#[derive(Hash, Eq, PartialEq, Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum EventType {
     Vblank,
     HblankStart,
@@ -13,9 +14,13 @@ pub enum EventType {
     ControllerByteTransfer,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Scheduler {
     pub cycles: usize,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
     pub queue: PriorityQueue<EventType, Reverse<usize>>,
+    pub queue_serialized: HashMap<EventType, usize>,
 }
 
 impl Default for Scheduler {
@@ -29,6 +34,7 @@ impl Scheduler {
         Self {
             cycles: 0,
             queue: PriorityQueue::new(),
+            queue_serialized: HashMap::new(),
         }
     }
 
@@ -81,6 +87,18 @@ impl Scheduler {
             *cycles
         } else {
             0
+        }
+    }
+
+    pub fn serialize_scheduler(&mut self) {
+        for (event_type, Reverse(cycles)) in self.queue.iter() {
+            self.queue_serialized.insert(*event_type, *cycles);
+        }
+    }
+
+    pub fn deserialize_scheduler(&mut self) {
+        for (event_type, cycles) in self.queue_serialized.iter() {
+            self.queue.push(*event_type, Reverse(*cycles));
         }
     }
 }

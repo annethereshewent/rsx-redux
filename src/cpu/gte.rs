@@ -1,5 +1,7 @@
 use std::{cmp, collections::HashMap};
 
+use serde::{Deserialize, Serialize};
+
 use super::Instruction;
 
 // see https://psx-spx.consoledev.net/geometrytransformationenginegte/#gte-division-inaccuracy
@@ -23,7 +25,7 @@ const UNR_TABLE: [u8; 0x101] = [
     0x00,
 ];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct Rgb {
     r: u8,
     g: u8,
@@ -31,6 +33,7 @@ struct Rgb {
     c: u8,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Gte {
     pub debug_on: bool,
     executed_commands: HashMap<u32, bool>,

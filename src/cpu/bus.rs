@@ -4,6 +4,7 @@ use gpu::GPU;
 use mdec::Mdec;
 use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};
 use scheduler::Scheduler;
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "new_spu")]
 use spu::SPU;
 #[cfg(feature = "old_spu")]
@@ -33,6 +34,7 @@ pub mod spu;
 pub mod spu_legacy;
 pub mod timer;
 
+#[derive(Serialize, Deserialize)]
 pub struct Bus {
     bios: Vec<u8>,
     bios_delay: DelayRegister,

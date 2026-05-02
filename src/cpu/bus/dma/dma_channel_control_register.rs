@@ -1,6 +1,7 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SyncMode {
     Burst = 0,
     Slice = 1,
@@ -8,7 +9,7 @@ pub enum SyncMode {
 }
 
 bitflags! {
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Serialize, Deserialize)]
     pub struct DmaChannelControlRegister: u32 {
         const TRANSFER_DIR = 1;
         const DECREMENT = 1 << 1;

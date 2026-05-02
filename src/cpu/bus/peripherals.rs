@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use serde::{Deserialize, Serialize};
+
 use crate::cpu::bus::{
     peripherals::{controller::Controller, sio_control::SIOControl, sio_mode::SIOMode},
     registers::interrupt_register::InterruptRegister,
@@ -12,20 +14,21 @@ pub mod sio_mode;
 
 const CONTROLLER_CYCLES: usize = 338;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum SelectedPeripheral {
     None,
     MemoryCard,
     Controller,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum PeripheralState {
     Idle,
     Transferring,
     Acknowledge,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Peripherals {
     ctrl: SIOControl,
     baudrate_timer: u16,

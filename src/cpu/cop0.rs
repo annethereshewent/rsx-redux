@@ -1,6 +1,8 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct CauseRegister: u32 {
         const BT = 1 << 30;
         const BD = 1 << 31;
@@ -33,6 +35,7 @@ impl CauseRegister {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct COP0 {
     pub sr: StatusRegister,
     pub dcic: u32,
@@ -53,6 +56,7 @@ impl Default for COP0 {
 }
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct StatusRegister: u32 {
         const IEC = 1 << 0;
         const KUC = 1 << 1;

@@ -1,10 +1,11 @@
 use counter_mode_register::CounterModeRegister;
+use serde::{Deserialize, Serialize};
 
 use super::registers::interrupt_register::InterruptRegister;
 
 pub mod counter_mode_register;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Timer {
     pub counter_register: CounterModeRegister,
     pub counter_target: u16,
@@ -18,7 +19,7 @@ pub struct Timer {
     one_shot_fired: bool,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ClockSource {
     SystemClock,
     DotClock,

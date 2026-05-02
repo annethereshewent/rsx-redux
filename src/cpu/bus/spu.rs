@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, sync::Arc};
 
+use serde::{Deserialize, Serialize};
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
 use voice::Voice;
 
@@ -21,6 +22,7 @@ const SPU_CYCLES: usize = 768;
 
 const CAPTURE_SIZE: usize = 0x400;
 
+#[derive(Serialize, Deserialize)]
 pub struct SoundRam {
     ram: Box<[u8]>,
 }
@@ -53,6 +55,7 @@ impl SoundRam {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 enum CaptureIndexes {
     _CdLeft = 0,
     _CdRight = 1,
@@ -60,6 +63,7 @@ enum CaptureIndexes {
     Voice3 = 3,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct SPU {
     reverb: Reverb,
     main_volume_left: u16,

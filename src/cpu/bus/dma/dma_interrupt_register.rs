@@ -1,6 +1,8 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct DmaInterruptRegister: u32 {
         const BUS_ERROR = 1 << 15;
         const MASTER_CHANNEL_INTERRUPT = 1 << 23;

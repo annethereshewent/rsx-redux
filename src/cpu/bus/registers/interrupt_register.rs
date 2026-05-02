@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 /*
   0     IRQ0 VBLANK (PAL=50Hz, NTSC=60Hz)
   1     IRQ1 GPU   Can be requested via GP0(1Fh) command (rarely used)
@@ -13,6 +14,7 @@ use bitflags::bitflags;
   10    IRQ10 Controller - Lightpen Interrupt. Also shared by PIO and DTL cards.
 */
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct InterruptRegister: u32 {
         const VBLANK = 1 << 0;
         const GPU = 1 << 1;

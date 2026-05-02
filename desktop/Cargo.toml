@@ -14,7 +14,8 @@ objc2-quartz-core = { version = "0.3.1", features = ["CAMetalLayer"] }
 objc2-core-foundation = "0.3.1"
 memmap2 = "0.9.7"
 ringbuf="0.4.8"
-
+dirs-next = "2.0.0"
+zstd = "0.13"
 
 [features]
 default = ["old_spu", "software_gpu"]

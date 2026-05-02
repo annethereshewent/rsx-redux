@@ -1010,6 +1010,77 @@ impl Renderer {
         ]
     }
 
+    pub fn get_vram_textures(&self) -> (Vec<u8>, Vec<u8>) {
+        let mut data16 = vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2];
+        let mut data32 = vec![0; VRAM_WIDTH * VRAM_HEIGHT * 4];
+
+        let region = MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize {
+                width: VRAM_WIDTH,
+                height: VRAM_HEIGHT,
+                depth: 1,
+            },
+        };
+
+        if let Some(texture) = &self.vram_read {
+            unsafe {
+                texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(data16.as_mut_ptr() as *mut c_void).unwrap(),
+                    VRAM_WIDTH * 2,
+                    region,
+                    0,
+                );
+            }
+        }
+
+        if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(data32.as_mut_ptr() as *mut c_void).unwrap(),
+                    VRAM_WIDTH * 4,
+                    region,
+                    0,
+                );
+            }
+        }
+
+        (data16, data32)
+    }
+
+    pub fn set_vram_textures(&mut self, bytes16: &[u8], bytes32: &[u8]) {
+        let region = MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize {
+                width: VRAM_WIDTH,
+                height: VRAM_HEIGHT,
+                depth: 1,
+            },
+        };
+
+        if let Some(texture) = &self.vram_read {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(bytes16.as_ptr() as *mut c_void).unwrap(),
+                    2 * VRAM_WIDTH,
+                )
+            }
+        }
+
+        if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(bytes32.as_ptr() as *mut c_void).unwrap(),
+                    4 * VRAM_WIDTH,
+                )
+            }
+        }
+    }
+
     fn create_texture(
         device: &Retained<ProtocolObject<dyn MTLDevice>>,
         is_read: bool,

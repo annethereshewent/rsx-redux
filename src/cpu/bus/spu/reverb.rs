@@ -1,8 +1,10 @@
 use std::cmp;
 
+use serde::{Deserialize, Serialize};
+
 use super::{SPU, SoundRam};
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct Reverb {
     pub mbase: u32,
     dapf1: u32,

@@ -1,13 +1,15 @@
+use serde::{Deserialize, Serialize};
+
 pub const DECAY_STEP: i32 = -8;
 pub const RELEASE_STEP: i32 = -8;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 pub enum AdsrMode {
     Linear,
     Exponential,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AdsrState {
     Disabled,
     Attack,
@@ -16,13 +18,13 @@ pub enum AdsrState {
     Release,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AdsrDirection {
     Increasing,
     Decreasing,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Adsr {
     pub value: u32,
     pub current_volume: i16,
