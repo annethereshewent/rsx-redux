@@ -240,9 +240,10 @@ impl Frontend {
 
         if let Ok(compressed) = fs::read(quick_save_path) {
             if let Ok(bytes) = zstd::decode_all(&*compressed) {
+                let game_path = cpu.game_path.clone();
                 cpu.load_save_state(&bytes);
 
-                let game_file = File::open(&cpu.game_path).unwrap();
+                let game_file = File::open(&game_path).unwrap();
 
                 let game_data = unsafe { Mmap::map(&game_file).unwrap() };
 

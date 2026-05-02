@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    fs::{self, File},
+    fs,
     ops::{Index, IndexMut},
 };
 

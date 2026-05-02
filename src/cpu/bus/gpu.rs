@@ -270,7 +270,9 @@ pub struct GPU {
     pub texture_window_offset_y: u32,
     pub force_mask_bit: bool,
     pub preserve_masked_pixels: bool,
+    #[cfg(feature = "hardware_gpu")]
     pub polygons: Vec<Polygon>,
+    #[cfg(feature = "hardware_gpu")]
     pub commands_ready: bool,
     num_vertices: usize,
     is_shaded: bool,
@@ -368,7 +370,9 @@ impl GPU {
             texture_window_offset_y: 0,
             force_mask_bit: false,
             preserve_masked_pixels: false,
+            #[cfg(feature = "hardware_gpu")]
             commands_ready: false,
+            #[cfg(feature = "hardware_gpu")]
             polygons: Vec::new(),
             num_vertices: 0,
             is_shaded: false,
@@ -893,7 +897,10 @@ impl GPU {
     }
 
     fn push_rectangle(&mut self) {
-        self.commands_ready = true;
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.commands_ready = true;
+        }
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
@@ -1270,11 +1277,17 @@ impl GPU {
     }
 
     fn draw_line(&mut self) {
-        self.commands_ready = true;
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.commands_ready = true;
+        }
     }
 
     fn draw_polyline(&mut self) {
-        self.commands_ready = true;
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.commands_ready = true;
+        }
     }
 
     fn transfer_to_vram(&mut self, halfword: u16) {
