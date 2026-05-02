@@ -209,7 +209,10 @@ impl Frontend {
     }
 
     fn get_quick_state_path(cpu: &CPU) -> PathBuf {
-        let filename = "quick_save.state";
+        #[cfg(feature = "software_gpu")]
+        let filename = "quick_save_sw.state";
+        #[cfg(feature = "hardware_gpu")]
+        let filename = "quick_save_hw.state";
 
         let game_path = Path::new(&cpu.game_path);
 
