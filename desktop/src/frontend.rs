@@ -238,7 +238,7 @@ impl Frontend {
         dir
     }
 
-    pub fn load_quick_state(cpu: &mut CPU) {
+    fn load_quick_state_inner(cpu: &mut CPU, after_load: impl FnOnce(&mut CPU)) {
         let quick_save_path = Self::get_quick_state_path(cpu);
 
         if let Ok(compressed) = fs::read(quick_save_path) {
@@ -253,12 +253,24 @@ impl Frontend {
                 cpu.bus.cdrom.load_game_desktop(game_data);
                 cpu.reload_instructions();
                 cpu.bus.scheduler.deserialize_scheduler();
+                after_load(cpu);
             }
         }
     }
 
-    pub fn create_quick_state(cpu: &mut CPU) {
+    #[cfg(feature = "hardware_gpu")]
+    fn load_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
+        Self::load_quick_state_inner(cpu, |cpu| renderer.set_vram_read_tex(&cpu.bus.gpu.vram_read_tex));
+    }
+
+    #[cfg(feature = "software_gpu")]
+    fn load_quick_state(cpu: &mut CPU) {
+        Self::load_quick_state_inner(cpu, |_| { });
+    }
+
+    fn create_quick_state_inner(cpu: &mut CPU, before_save: impl Fn(&mut CPU)) {
         cpu.bus.scheduler.serialize_scheduler();
+        before_save(cpu);
         let (data, _) = cpu.create_save_state();
 
         let compressed = zstd::encode_all(&*data, 9).unwrap_or_default();
@@ -268,6 +280,16 @@ impl Frontend {
 
             fs::write(quick_save_path, compressed).unwrap();
         }
+    }
+
+    #[cfg(feature = "software_gpu")]
+    fn create_quick_state(cpu: &mut CPU) {
+        Self::create_quick_state_inner(cpu, |_| {});
+    }
+
+    #[cfg(feature = "hardware_gpu")]
+    fn create_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
+        Self::create_quick_state_inner(cpu, |cpu| cpu.bus.gpu.vram_read_tex = renderer.get_vram_read_bytes().into_boxed_slice());
     }
 
     pub fn handle_events(&mut self, cpu: &mut CPU) {
@@ -286,8 +308,18 @@ impl Frontend {
                         }
 
                         match keycode {
-                            Keycode::F5 => Self::create_quick_state(cpu),
-                            Keycode::F7 => Self::load_quick_state(cpu),
+                            Keycode::F5 => {
+                                #[cfg(feature = "software_gpu")]
+                                Self::create_quick_state(cpu);
+                                #[cfg(feature = "hardware_gpu")]
+                                Self::create_quick_state(&mut self.renderer, cpu);
+                            }
+                            Keycode::F7 => {
+                                #[cfg(feature = "software_gpu")]
+                                Self::load_quick_state(cpu);
+                                #[cfg(feature = "hardware_gpu")]
+                                Self::load_quick_state(&mut self.renderer, cpu);
+                            }
                             _ => (),
                         }
                     }

@@ -313,6 +313,8 @@ pub struct GPU {
     pub resolution_changed: bool,
     #[cfg(feature = "software_gpu")]
     pub vram: Box<[u8]>,
+    #[cfg(feature = "hardware_gpu")]
+    pub vram_read_tex: Box<[u8]>,
     dotclock_cycles: usize,
     cpu_transfer_x: u32,
     cpu_transfer_y: u32,
@@ -420,6 +422,8 @@ impl GPU {
             #[cfg(feature = "software_gpu")]
             picture: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 3].into_boxed_slice(),
             dither_table,
+            #[cfg(feature = "hardware_gpu")]
+            vram_read_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2].into_boxed_slice(),
         }
     }
 

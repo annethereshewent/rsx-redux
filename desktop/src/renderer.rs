@@ -1010,6 +1010,58 @@ impl Renderer {
         ]
     }
 
+    pub fn get_vram_read_bytes(&self) -> Vec<u8> {
+        let mut data = vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2];
+
+        let region = MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize {
+                width: VRAM_WIDTH,
+                height: VRAM_HEIGHT,
+                depth: 1
+            }
+        };
+
+        if let Some(texture) = &self.vram_read {
+            unsafe {
+                texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
+                    VRAM_WIDTH * 2,
+                    region,
+                    0,
+                );
+            }
+        }
+
+        data
+    }
+
+    pub fn set_vram_read_tex(&mut self, bytes: &[u8]) {
+        let region = MTLRegion {
+            origin: MTLOrigin {
+                x: 0,
+                y: 0,
+                z: 0,
+            },
+            size: MTLSize {
+                width: VRAM_WIDTH,
+                height: VRAM_HEIGHT,
+                depth: 1,
+            },
+        };
+
+        if let Some(texture) = &self.vram_read {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(bytes.as_ptr() as *mut c_void).unwrap(),
+                    2 * VRAM_WIDTH
+                )
+            }
+        }
+    }
+
     fn create_texture(
         device: &Retained<ProtocolObject<dyn MTLDevice>>,
         is_read: bool,
