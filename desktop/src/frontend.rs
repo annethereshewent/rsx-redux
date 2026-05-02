@@ -19,7 +19,7 @@ use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File};
 use std::ops::DerefMut;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::exit;
 
 #[cfg(feature = "hardware_gpu")]
@@ -211,9 +211,15 @@ impl Frontend {
     fn get_quick_state_path(cpu: &CPU) -> PathBuf {
         let filename = "quick_save.state";
 
-        let game_path = cpu.game_path.replace(".bin", "");
+        let game_path = Path::new(&cpu.game_path);
 
-        let mut split: Vec<&str> = game_path.split('/').collect();
+        let game_path_str = game_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or_default();
+
+        let mut split: Vec<&str> = game_path_str.split('/').collect();
 
         let game_name = split.pop().unwrap();
 
