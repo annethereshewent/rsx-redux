@@ -3,12 +3,15 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::cpu::bus::{
-    peripherals::{controller::Controller, sio_control::SIOControl, sio_mode::SIOMode},
+    peripherals::{
+        controller::Controller, memory_card::MemoryCard, sio_control::SIOControl, sio_mode::SIOMode,
+    },
     registers::interrupt_register::InterruptRegister,
     scheduler::{EventType, Scheduler},
 };
 
 pub mod controller;
+pub mod memory_card;
 pub mod sio_control;
 pub mod sio_mode;
 
@@ -40,6 +43,9 @@ pub struct Peripherals {
     state: PeripheralState,
     selected_peripheral: SelectedPeripheral,
     pub controller: Controller,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    pub memory_card: MemoryCard,
 }
 
 impl Default for Peripherals {
@@ -61,6 +67,7 @@ impl Peripherals {
             state: PeripheralState::Idle,
             selected_peripheral: SelectedPeripheral::None,
             controller: Controller::new(),
+            memory_card: MemoryCard::new(),
         }
     }
 
@@ -75,7 +82,7 @@ impl Peripherals {
             self.selected_peripheral = SelectedPeripheral::None;
             self.state = PeripheralState::Idle;
             self.controller.reset();
-            // TODO: Reset memory card state
+            self.memory_card.reset();
         }
 
         if self.ctrl.contains(SIOControl::RESET) {
@@ -127,12 +134,17 @@ impl Peripherals {
             }
         }
 
-        let reply = match self.selected_peripheral {
-            SelectedPeripheral::Controller => self.controller.reply(command),
-            _ => 0xff,
+        let (reply, in_ack) = match self.selected_peripheral {
+            SelectedPeripheral::Controller => {
+                (self.controller.reply(command), self.controller.in_ack())
+            }
+            SelectedPeripheral::MemoryCard => {
+                (self.memory_card.reply(command), self.memory_card.in_ack())
+            }
+            _ => (0xff, false),
         };
 
-        if self.controller.in_ack() {
+        if in_ack {
             self.state = PeripheralState::Acknowledge;
             scheduler.schedule(EventType::ControllerByteTransfer, CONTROLLER_CYCLES);
         } else {
