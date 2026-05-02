@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use serde::{Deserialize, Serialize};
+
 use self::{
     reverb::Reverb,
     spu_control::{RamTransferMode, SpuControlRegister},
@@ -22,7 +24,7 @@ pub const NUM_SAMPLES: usize = 32768;
 
 const SPU_CYCLES: usize = 768;
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct SoundRam {
     data: Box<[u8]>,
     pub irq_address: u32,
@@ -56,6 +58,7 @@ impl SoundRam {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct DataTransfer {
     control: u16,
     transfer_address: u32,
@@ -74,6 +77,7 @@ impl DataTransfer {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct SPU {
     pub previous_value: i16,
     voices: [Voice; 24],

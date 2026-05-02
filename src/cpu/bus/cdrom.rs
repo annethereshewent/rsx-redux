@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use memmap2::Mmap;
 use registers::HntmaskRegister;
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "new_spu")]
 use crate::cpu::bus::spu::{
@@ -65,7 +66,7 @@ const ZIGZAG_TABLE: [[i32; 29]; 7] = [
     ],
 ];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 enum CDMode {
     None,
     Mode1,
@@ -82,30 +83,32 @@ impl CDMode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 enum CDReadMode {
     Video,
     Audio,
     Data,
 }
 
+#[derive(Serialize, Deserialize)]
 enum Mode2Form {
     Form1,
     Form2,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 enum SpeakerOutput {
     Mono,
     Stereo,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 enum BitsPerSample {
     FourBits,
     EightBits,
 }
 
+#[derive(Serialize, Deserialize)]
 struct CodingInfo {
     speaker_output: SpeakerOutput,
     sample_rate: usize,
@@ -136,6 +139,7 @@ impl CodingInfo {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct CDSubheader {
     file_num: u8,
     channel_num: u8,
@@ -190,7 +194,7 @@ impl CDSubheader {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct CDHeader {
     mm: u8,
     ss: u8,
@@ -217,7 +221,7 @@ impl CDHeader {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Msf {
     pub ass: u8,
     pub asect: u8,
@@ -234,7 +238,7 @@ impl Msf {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum ControllerMode {
     Idle,
     ExecuteCommand,
@@ -245,7 +249,7 @@ enum ControllerMode {
     TransferResponse,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum DriveMode {
     Idle,
     Seek,
@@ -257,13 +261,14 @@ enum DriveMode {
     Read,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum SubresponseMode {
     Disabled,
     GetId,
     GetStat,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct CDRom {
     hntmask: HntmaskRegister,
     bank: usize,
@@ -290,10 +295,12 @@ pub struct CDRom {
     report_interrupts: bool,
     xa_filter: bool,
     #[cfg(not(target_arch = "wasm32"))]
-    game_data: Option<Mmap>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    pub game_data: Option<Mmap>,
     current_header: CDHeader,
     subheader: CDSubheader,
-    output_buffer: [u8; 0x930],
+    output_buffer: Box<[u8]>,
     buffer_index: usize,
     pre_seek: bool,
     pending_stat: Option<u8>,
@@ -342,7 +349,7 @@ impl CDRom {
             current_header: CDHeader::new(),
             subheader: CDSubheader::new(),
             buffer_index: 0,
-            output_buffer: [0; 0x930],
+            output_buffer: vec![0; 0x930].into_boxed_slice(),
             pre_seek: false,
             pending_stat: None,
             sample_buffer: [Vec::new(), Vec::new()],
@@ -714,8 +721,9 @@ impl CDRom {
                 panic!("mismatch between header and current msf");
             }
 
-            if self.subheader.read_mode == CDReadMode::Audio
-                && (!self.send_to_spu || !self.subheader.realtime)
+            if (self.subheader.read_mode == CDReadMode::Audio
+                && (!self.send_to_spu || !self.subheader.realtime))
+                || self.subheader.read_mode == CDReadMode::Video
             {
                 self.subheader.read_mode = CDReadMode::Data;
             }

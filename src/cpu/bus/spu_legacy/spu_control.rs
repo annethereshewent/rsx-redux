@@ -1,4 +1,6 @@
-#[derive(PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(PartialEq, Serialize, Deserialize)]
 pub enum RamTransferMode {
     Stop,
     ManualWrite,
@@ -6,7 +8,7 @@ pub enum RamTransferMode {
     DmaRead,
 }
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct SpuControlRegister {
     val: u16,
 }

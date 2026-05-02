@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 /*
   0     Synchronization Enable (0=Free Run, 1=Synchronize via Bit1-2)
@@ -27,7 +28,7 @@ use bitflags::bitflags;
   12    Reached FFFFh Value     (0=No, 1=Yes) (Reset after Reading)        (R)
 */
 bitflags! {
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
     pub struct CounterModeRegister: u16 {
         const SYNC_ENABLE = 1;
         const RESET_COUNTER = 1 << 3;

@@ -1,6 +1,7 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Serialize, Deserialize)]
 pub enum SoundRamTransferMode {
     Stop = 0,
     ManualWrite = 1,
@@ -22,6 +23,7 @@ pub enum SoundRamTransferMode {
   0     CD Audio Enable         (0=Off, 1=On) (for CD-DA and XA-ADPCM)
 */
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct SpuControlRegister: u16 {
         const CD_AUDIO_ENABLE = 1 << 0;
         const EXTERNAL_AUDIO_ENABLE = 1 << 1;

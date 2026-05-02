@@ -32,7 +32,7 @@ fn main() {
 
     let bios = fs::read("SCPH1001.bin").unwrap();
 
-    let mut cpu = CPU::new(exe_file);
+    let mut cpu = CPU::new(exe_file, args[1].to_string());
     cpu.bus.load_bios(bios);
     cpu.bus.cdrom.load_game_desktop(game_data);
 

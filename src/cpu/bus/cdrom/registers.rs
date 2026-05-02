@@ -1,6 +1,8 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct HntmaskRegister: u8 {
         const ENBFEMPT = 1 << 3;
         const ENBFWRDY = 1 << 4;

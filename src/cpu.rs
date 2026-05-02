@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    fs,
+    fs::{self, File},
     ops::{Index, IndexMut},
 };
 
@@ -8,6 +8,7 @@ use bus::{Bus, scheduler::EventType};
 use cop0::{COP0, CauseRegister, StatusRegister};
 use gte::Gte;
 use instructions::Instruction;
+use serde::{Deserialize, Serialize};
 
 pub mod bus;
 pub mod cop0;
@@ -19,7 +20,7 @@ pub const RA_REGISTER: usize = 31;
 
 pub const CPU_FREQUENCY: f64 = 33_868_800.0;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Registers([u32; 32]);
 
 impl Index<usize> for Registers {
@@ -41,7 +42,7 @@ impl IndexMut<usize> for Registers {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum ExceptionType {
     Interrupt = 0x0,
     LoadAddressError = 0x4,
@@ -51,6 +52,7 @@ pub enum ExceptionType {
     Overflow = 0xc,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct CPU {
     r: Registers,
     delayed_load: Option<(usize, u32)>,
@@ -60,7 +62,11 @@ pub struct CPU {
     hi: u32,
     lo: u32,
     pub bus: Bus,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing, default = "build_instructions")]
     instructions: [fn(&mut CPU, Instruction) -> usize; 0x40],
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing, default = "build_special_instructions")]
     special_instructions: [fn(&mut CPU, Instruction) -> usize; 0x40],
     cop0: COP0,
     gte: Gte,
@@ -70,165 +76,175 @@ pub struct CPU {
     branch_taken: bool,
     in_delay_slot: bool,
     output: String,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
     exe_file: Option<String>,
     should_transfer_load: bool,
+    pub game_path: String,
+}
+
+fn build_instructions() -> [fn(&mut CPU, Instruction) -> usize; 0x40] {
+    /*
+    00h=SPECIAL 08h=ADDI  10h=COP0 18h=N/A   20h=LB   28h=SB   30h=LWC0 38h=SWC0
+    01h=BcondZ  09h=ADDIU 11h=COP1 19h=N/A   21h=LH   29h=SH   31h=LWC1 39h=SWC1
+    02h=J       0Ah=SLTI  12h=COP2 1Ah=N/A   22h=LWL  2Ah=SWL  32h=LWC2 3Ah=SWC2
+    03h=JAL     0Bh=SLTIU 13h=COP3 1Bh=N/A   23h=LW   2Bh=SW   33h=LWC3 3Bh=SWC3
+    04h=BEQ     0Ch=ANDI  14h=N/A  1Ch=N/A   24h=LBU  2Ch=N/A  34h=N/A  3Ch=N/A
+    05h=BNE     0Dh=ORI   15h=N/A  1Dh=N/A   25h=LHU  2Dh=N/A  35h=N/A  3Dh=N/A
+    06h=BLEZ    0Eh=XORI  16h=N/A  1Eh=N/A   26h=LWR  2Eh=SWR  36h=N/A  3Eh=N/A
+    07h=BGTZ    0Fh=LUI   17h=N/A  1Fh=N/A   27h=N/A  2Fh=N/A  37h=N/A  3Fh=N/A
+    */
+    [
+        CPU::reserved, // 0
+        CPU::bcondz,   // 1
+        CPU::j,        // 2
+        CPU::jal,      // 3
+        CPU::beq,      // 4
+        CPU::bne,      // 5
+        CPU::blez,     // 6
+        CPU::bgtz,     // 7
+        CPU::addi,     // 8
+        CPU::addiu,    // 9
+        CPU::slti,     // a
+        CPU::sltiu,    // b
+        CPU::andi,     // c
+        CPU::ori,      // d
+        CPU::xori,     // e
+        CPU::lui,      // f
+        CPU::cop0,     // 10
+        CPU::cop1,     // 11
+        CPU::cop2,     // 12
+        CPU::cop3,     // 13
+        CPU::reserved, // 14
+        CPU::reserved, // 15
+        CPU::reserved, // 16
+        CPU::reserved, // 17
+        CPU::reserved, // 18
+        CPU::reserved, // 19
+        CPU::reserved, // 1a
+        CPU::reserved, // 1b
+        CPU::reserved, // 1c
+        CPU::reserved, // 1d
+        CPU::reserved, // 1e
+        CPU::reserved, // 1f
+        CPU::lb,       // 20
+        CPU::lh,       // 21,
+        CPU::lwl,      // 22
+        CPU::lw,       // 23
+        CPU::lbu,      // 24
+        CPU::lhu,      // 25
+        CPU::lwr,      // 26
+        CPU::reserved, // 27
+        CPU::sb,       // 28
+        CPU::sh,       // 29
+        CPU::swl,      // 2a
+        CPU::sw,       // 2b
+        CPU::reserved, // 2c
+        CPU::reserved, // 2d
+        CPU::swr,      // 2e
+        CPU::reserved, // 2f
+        CPU::lwc0,     // 30
+        CPU::lwc1,     // 31
+        CPU::lwc2,     // 32
+        CPU::lwc3,     // 33
+        CPU::reserved, // 34
+        CPU::reserved, // 35
+        CPU::reserved, // 36
+        CPU::reserved, // 37
+        CPU::swc0,     // 38
+        CPU::swc1,     // 39
+        CPU::swc2,     // 3a
+        CPU::swc3,     // 3b
+        CPU::reserved, // 3c
+        CPU::reserved, // 3d
+        CPU::reserved, // 3e
+        CPU::reserved, // 3f
+    ]
+}
+
+fn build_special_instructions() -> [fn(&mut CPU, Instruction) -> usize; 0x40] {
+    /*
+    00h=SLL   08h=JR      10h=MFHI 18h=MULT  20h=ADD  28h=N/A  30h=N/A  38h=N/A
+    01h=N/A   09h=JALR    11h=MTHI 19h=MULTU 21h=ADDU 29h=N/A  31h=N/A  39h=N/A
+    02h=SRL   0Ah=N/A     12h=MFLO 1Ah=DIV   22h=SUB  2Ah=SLT  32h=N/A  3Ah=N/A
+    03h=SRA   0Bh=N/A     13h=MTLO 1Bh=DIVU  23h=SUBU 2Bh=SLTU 33h=N/A  3Bh=N/A
+    04h=SLLV  0Ch=SYSCALL 14h=N/A  1Ch=N/A   24h=AND  2Ch=N/A  34h=N/A  3Ch=N/A
+    05h=N/A   0Dh=BREAK   15h=N/A  1Dh=N/A   25h=OR   2Dh=N/A  35h=N/A  3Dh=N/A
+    06h=SRLV  0Eh=N/A     16h=N/A  1Eh=N/A   26h=XOR  2Eh=N/A  36h=N/A  3Eh=N/A
+    07h=SRAV  0Fh=N/A     17h=N/A  1Fh=N/A   27h=NOR  2Fh=N/A  37h=N/A  3Fh=N/A
+    */
+    [
+        CPU::sll,      // 0
+        CPU::reserved, // 1
+        CPU::srl,      // 2
+        CPU::sra,      // 3
+        CPU::sllv,     // 4
+        CPU::reserved, // 5
+        CPU::srlv,     // 6
+        CPU::srav,     // 7
+        CPU::jr,       // 8
+        CPU::jalr,     // 9
+        CPU::reserved, // a
+        CPU::reserved, // b
+        CPU::syscall,  // c
+        CPU::break_,   // d
+        CPU::reserved, // e
+        CPU::reserved, // f
+        CPU::mfhi,     // 10
+        CPU::mthi,     // 11
+        CPU::mflo,     // 12
+        CPU::mtlo,     // 13
+        CPU::reserved, // 14
+        CPU::reserved, // 15
+        CPU::reserved, // 16
+        CPU::reserved, // 17
+        CPU::mult,     // 18
+        CPU::multu,    // 19
+        CPU::div,      // 1a
+        CPU::divu,     // 1b
+        CPU::reserved, // 1c
+        CPU::reserved, // 1d,
+        CPU::reserved, // 1e,
+        CPU::reserved, // 1f
+        CPU::add,      // 20
+        CPU::addu,     // 21
+        CPU::sub,      // 22
+        CPU::subu,     // 23
+        CPU::and,      // 24
+        CPU::or,       // 25
+        CPU::xor,      // 26
+        CPU::nor,      // 27
+        CPU::reserved, // 28
+        CPU::reserved, // 29
+        CPU::slt,      // 2a
+        CPU::sltu,     // 2b
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+        CPU::reserved,
+    ]
 }
 
 impl CPU {
-    pub fn new(exe_file: Option<String>) -> Self {
-        /*
-        00h=SPECIAL 08h=ADDI  10h=COP0 18h=N/A   20h=LB   28h=SB   30h=LWC0 38h=SWC0
-        01h=BcondZ  09h=ADDIU 11h=COP1 19h=N/A   21h=LH   29h=SH   31h=LWC1 39h=SWC1
-        02h=J       0Ah=SLTI  12h=COP2 1Ah=N/A   22h=LWL  2Ah=SWL  32h=LWC2 3Ah=SWC2
-        03h=JAL     0Bh=SLTIU 13h=COP3 1Bh=N/A   23h=LW   2Bh=SW   33h=LWC3 3Bh=SWC3
-        04h=BEQ     0Ch=ANDI  14h=N/A  1Ch=N/A   24h=LBU  2Ch=N/A  34h=N/A  3Ch=N/A
-        05h=BNE     0Dh=ORI   15h=N/A  1Dh=N/A   25h=LHU  2Dh=N/A  35h=N/A  3Dh=N/A
-        06h=BLEZ    0Eh=XORI  16h=N/A  1Eh=N/A   26h=LWR  2Eh=SWR  36h=N/A  3Eh=N/A
-        07h=BGTZ    0Fh=LUI   17h=N/A  1Fh=N/A   27h=N/A  2Fh=N/A  37h=N/A  3Fh=N/A
-        */
-        let instructions = [
-            CPU::reserved, // 0
-            CPU::bcondz,   // 1
-            CPU::j,        // 2
-            CPU::jal,      // 3
-            CPU::beq,      // 4
-            CPU::bne,      // 5
-            CPU::blez,     // 6
-            CPU::bgtz,     // 7
-            CPU::addi,     // 8
-            CPU::addiu,    // 9
-            CPU::slti,     // a
-            CPU::sltiu,    // b
-            CPU::andi,     // c
-            CPU::ori,      // d
-            CPU::xori,     // e
-            CPU::lui,      // f
-            CPU::cop0,     // 10
-            CPU::cop1,     // 11
-            CPU::cop2,     // 12
-            CPU::cop3,     // 13
-            CPU::reserved, // 14
-            CPU::reserved, // 15
-            CPU::reserved, // 16
-            CPU::reserved, // 17
-            CPU::reserved, // 18
-            CPU::reserved, // 19
-            CPU::reserved, // 1a
-            CPU::reserved, // 1b
-            CPU::reserved, // 1c
-            CPU::reserved, // 1d
-            CPU::reserved, // 1e
-            CPU::reserved, // 1f
-            CPU::lb,       // 20
-            CPU::lh,       // 21,
-            CPU::lwl,      // 22
-            CPU::lw,       // 23
-            CPU::lbu,      // 24
-            CPU::lhu,      // 25
-            CPU::lwr,      // 26
-            CPU::reserved, // 27
-            CPU::sb,       // 28
-            CPU::sh,       // 29
-            CPU::swl,      // 2a
-            CPU::sw,       // 2b
-            CPU::reserved, // 2c
-            CPU::reserved, // 2d
-            CPU::swr,      // 2e
-            CPU::reserved, // 2f
-            CPU::lwc0,     // 30
-            CPU::lwc1,     // 31
-            CPU::lwc2,     // 32
-            CPU::lwc3,     // 33
-            CPU::reserved, // 34
-            CPU::reserved, // 35
-            CPU::reserved, // 36
-            CPU::reserved, // 37
-            CPU::swc0,     // 38
-            CPU::swc1,     // 39
-            CPU::swc2,     // 3a
-            CPU::swc3,     // 3b
-            CPU::reserved, // 3c
-            CPU::reserved, // 3d
-            CPU::reserved, // 3e
-            CPU::reserved, // 3f
-        ];
-
-        /*
-        00h=SLL   08h=JR      10h=MFHI 18h=MULT  20h=ADD  28h=N/A  30h=N/A  38h=N/A
-        01h=N/A   09h=JALR    11h=MTHI 19h=MULTU 21h=ADDU 29h=N/A  31h=N/A  39h=N/A
-        02h=SRL   0Ah=N/A     12h=MFLO 1Ah=DIV   22h=SUB  2Ah=SLT  32h=N/A  3Ah=N/A
-        03h=SRA   0Bh=N/A     13h=MTLO 1Bh=DIVU  23h=SUBU 2Bh=SLTU 33h=N/A  3Bh=N/A
-        04h=SLLV  0Ch=SYSCALL 14h=N/A  1Ch=N/A   24h=AND  2Ch=N/A  34h=N/A  3Ch=N/A
-        05h=N/A   0Dh=BREAK   15h=N/A  1Dh=N/A   25h=OR   2Dh=N/A  35h=N/A  3Dh=N/A
-        06h=SRLV  0Eh=N/A     16h=N/A  1Eh=N/A   26h=XOR  2Eh=N/A  36h=N/A  3Eh=N/A
-        07h=SRAV  0Fh=N/A     17h=N/A  1Fh=N/A   27h=NOR  2Fh=N/A  37h=N/A  3Fh=N/A
-        */
-        let special_instructions = [
-            CPU::sll,      // 0
-            CPU::reserved, // 1
-            CPU::srl,      // 2
-            CPU::sra,      // 3
-            CPU::sllv,     // 4
-            CPU::reserved, // 5
-            CPU::srlv,     // 6
-            CPU::srav,     // 7
-            CPU::jr,       // 8
-            CPU::jalr,     // 9
-            CPU::reserved, // a
-            CPU::reserved, // b
-            CPU::syscall,  // c
-            CPU::break_,   // d
-            CPU::reserved, // e
-            CPU::reserved, // f
-            CPU::mfhi,     // 10
-            CPU::mthi,     // 11
-            CPU::mflo,     // 12
-            CPU::mtlo,     // 13
-            CPU::reserved, // 14
-            CPU::reserved, // 15
-            CPU::reserved, // 16
-            CPU::reserved, // 17
-            CPU::mult,     // 18
-            CPU::multu,    // 19
-            CPU::div,      // 1a
-            CPU::divu,     // 1b
-            CPU::reserved, // 1c
-            CPU::reserved, // 1d,
-            CPU::reserved, // 1e,
-            CPU::reserved, // 1f
-            CPU::add,      // 20
-            CPU::addu,     // 21
-            CPU::sub,      // 22
-            CPU::subu,     // 23
-            CPU::and,      // 24
-            CPU::or,       // 25
-            CPU::xor,      // 26
-            CPU::nor,      // 27
-            CPU::reserved, // 28
-            CPU::reserved, // 29
-            CPU::slt,      // 2a
-            CPU::sltu,     // 2b
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-            CPU::reserved,
-        ];
+    pub fn new(exe_file: Option<String>, game_path: String) -> Self {
+        let instructions = build_instructions();
+        let special_instructions = build_special_instructions();
 
         Self {
             r: Registers([0; 32]),
@@ -251,7 +267,13 @@ impl CPU {
             gte: Gte::new(),
             exe_file,
             should_transfer_load: false,
+            game_path,
         }
+    }
+
+    pub fn reload_instructions(&mut self) {
+        self.instructions = build_instructions();
+        self.special_instructions = build_special_instructions();
     }
 
     fn handle_interrupts(&mut self) {
@@ -554,5 +576,19 @@ impl CPU {
             0x80000080
         };
         self.next_pc = self.pc + 4;
+    }
+
+    pub fn create_save_state(&self) -> (Vec<u8>, usize) {
+        let data = bincode::serde::encode_to_vec(self, bincode::config::standard()).unwrap();
+
+        let len = data.len();
+
+        (data, len)
+    }
+
+    pub fn load_save_state(&mut self, data: &[u8]) {
+        if let Ok((cpu, _)) = bincode::serde::decode_from_slice(data, bincode::config::standard()) {
+            *self = cpu;
+        }
     }
 }

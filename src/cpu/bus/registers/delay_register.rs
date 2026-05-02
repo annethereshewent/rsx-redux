@@ -1,21 +1,24 @@
-#[derive(Copy, Clone)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum BusWidth {
     Bit8 = 0,
     Bit16 = 1,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum DmaTiming {
     Normal = 0,
     UseBits = 1,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub enum WideDma {
     Normal = 0,
     Override = 1,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct DelayRegister {
     pub write_delay: u32,
     pub read_delay: u32,

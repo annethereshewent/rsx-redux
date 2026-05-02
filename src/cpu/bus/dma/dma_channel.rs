@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 #[cfg(feature = "new_spu")]
 use crate::cpu::bus::spu::SPU;
 #[cfg(feature = "old_spu")]
@@ -20,7 +22,7 @@ pub const DMA_SPU: usize = 4;
 pub const DMA_PIO: usize = 5;
 pub const DMA_OTC: usize = 6;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct DmaChannel {
     pub base_address: u32,
     pub block_size: u32,
@@ -320,6 +322,7 @@ impl DmaChannel {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Dma {
     pub channels: [DmaChannel; 7],
     pub dma_control: DmaControlRegister,

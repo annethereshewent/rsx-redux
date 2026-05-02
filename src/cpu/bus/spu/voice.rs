@@ -1,5 +1,7 @@
 use std::{cmp, i16};
 
+use serde::{Deserialize, Serialize};
+
 use crate::cpu::bus::{
     registers::interrupt_register::InterruptRegister,
     spu::{SPU, SoundRam},
@@ -80,19 +82,19 @@ const GAUSSIAN_TABLE: [i32; 0x200] = [
     0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3, //
 ];
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum EnvelopeMode {
     Linear = 0,
     Exponential = 1,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum EnvelopeDirection {
     Increase = 0,
     Decrease = 1,
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum AdsrPhase {
     Attack,
     Sustain,
@@ -101,7 +103,7 @@ pub enum AdsrPhase {
     Idle,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 struct Envelope {
     counter: u32,
     increment: u16,
@@ -220,7 +222,7 @@ impl Envelope {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Adsr {
     pub phase: AdsrPhase,
     attack_mode: EnvelopeMode,
@@ -439,7 +441,7 @@ impl Adsr {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 struct ADPCMBlock {
     pub filter: u8,
     pub shift: u8,
@@ -462,7 +464,7 @@ impl ADPCMBlock {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Voice {
     start_address: u32,
     sample_rate: u16,

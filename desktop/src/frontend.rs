@@ -1,3 +1,5 @@
+use dirs_next::data_dir;
+use memmap2::Mmap;
 #[cfg(feature = "hardware_gpu")]
 use objc2::rc::Retained;
 #[cfg(feature = "hardware_gpu")]
@@ -15,7 +17,9 @@ use sdl2::render::Canvas;
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
+use std::fs::{self, File};
 use std::ops::DerefMut;
+use std::path::PathBuf;
 use std::process::exit;
 
 #[cfg(feature = "hardware_gpu")]
@@ -204,6 +208,58 @@ impl Frontend {
         }
     }
 
+    fn get_quick_state_path(cpu: &CPU) -> PathBuf {
+        let filename = "quick_save.state";
+
+        let game_path = cpu.game_path.replace(".sav", "");
+
+        let mut split: Vec<&str> = game_path.split('/').collect();
+
+        let game_name = split.pop().unwrap();
+
+        let mut dir = data_dir().unwrap();
+
+        dir.push("RSX-redux");
+        dir.push(game_name);
+
+        fs::create_dir_all(&dir).expect("Couldn't create save state directory");
+
+        dir.push(filename);
+
+        dir
+    }
+
+    pub fn load_quick_state(cpu: &mut CPU) {
+        let quick_save_path = Self::get_quick_state_path(cpu);
+
+        if let Ok(compressed) = fs::read(quick_save_path) {
+            if let Ok(bytes) = zstd::decode_all(&*compressed) {
+                cpu.load_save_state(&bytes);
+
+                let game_file = File::open(&cpu.game_path).unwrap();
+
+                let game_data = unsafe { Mmap::map(&game_file).unwrap() };
+
+                cpu.bus.cdrom.load_game_desktop(game_data);
+                cpu.reload_instructions();
+                cpu.bus.scheduler.deserialize_scheduler();
+            }
+        }
+    }
+
+    pub fn create_quick_state(cpu: &mut CPU) {
+        cpu.bus.scheduler.serialize_scheduler();
+        let (data, _) = cpu.create_save_state();
+
+        let compressed = zstd::encode_all(&*data, 9).unwrap_or_default();
+
+        if !compressed.is_empty() {
+            let quick_save_path = Self::get_quick_state_path(cpu);
+
+            fs::write(quick_save_path, compressed).unwrap();
+        }
+    }
+
     pub fn handle_events(&mut self, cpu: &mut CPU) {
         for event in self.event_pump.poll_iter() {
             match event {
@@ -217,6 +273,12 @@ impl Frontend {
                             println!("setting debug on to {}", cpu.debug_on);
                         } else if keycode == Keycode::F {
                             cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
+                        }
+
+                        match keycode {
+                            Keycode::F5 => Self::create_quick_state(cpu),
+                            Keycode::F7 => Self::load_quick_state(cpu),
+                            _ => (),
                         }
                     }
                 }

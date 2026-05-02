@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 /*
   0-2   DMA0, MDECin  Priority      (0..7; 0=Highest, 7=Lowest)
   3     DMA0, MDECin  Master Enable (0=Disable, 1=Enable)
@@ -18,6 +19,7 @@ use bitflags::bitflags;
   31    No effect, should be CPU memory access enable (R/W)
 */
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct DmaControlRegister: u32 {
         const DMA0_ENABLE = 1 << 3;
         const DMA1_ENABLE = 1 << 7;

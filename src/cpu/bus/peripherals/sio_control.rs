@@ -1,6 +1,8 @@
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
 
 bitflags! {
+    #[derive(Serialize, Deserialize)]
     pub struct SIOControl: u16 {
         const TX_ENABLE = 1;
         const DTR_OUT = 1 << 1;

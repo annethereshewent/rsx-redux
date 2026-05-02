@@ -1,6 +1,8 @@
-use std::{collections::VecDeque, mem};
+use std::{array::from_fn, collections::VecDeque, mem};
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 enum OutputDepth {
     Bit4 = 0,
     Bit8 = 1,
@@ -8,7 +10,7 @@ enum OutputDepth {
     Bit15 = 3,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum BlockType {
     Cr = 0,
     Cb = 1,
@@ -23,6 +25,7 @@ const ZIGZAG_TABLE: [usize; 64] = [
     37, 47, 50, 56, 59, 61, 35, 36, 48, 49, 57, 58, 62, 63,
 ];
 
+#[derive(Serialize, Deserialize)]
 pub struct Mdec {
     pub in_fifo: VecDeque<u16>,
     out_fifo: VecDeque<u8>,
@@ -30,16 +33,16 @@ pub struct Mdec {
     dma_out_enable: bool,
     words_remaining: u16,
     command: Option<u32>,
-    luminance_quant_table: [u8; 64],
-    color_quant_table: [u8; 64],
-    scale_table: [i16; 64],
+    luminance_quant_table: Box<[u8]>,
+    color_quant_table: Box<[u8]>,
+    scale_table: Box<[i16]>,
     with_color: bool,
     current_block: usize,
     output_depth: OutputDepth,
     is_signed: bool,
     output_bit15: bool,
-    blocks: [[i16; 64]; 3],
-    zagzig_table: [usize; 64],
+    blocks: [Box<[i16]>; 3],
+    zagzig_table: Box<[usize]>,
 }
 
 impl Default for Mdec {
@@ -53,9 +56,9 @@ impl Mdec {
         Self {
             in_fifo: VecDeque::new(),
             out_fifo: VecDeque::new(),
-            luminance_quant_table: [0; 64],
-            color_quant_table: [0; 64],
-            scale_table: [0; 64],
+            luminance_quant_table: vec![0; 64].into_boxed_slice(),
+            color_quant_table: vec![0; 64].into_boxed_slice(),
+            scale_table: vec![0; 64].into_boxed_slice(),
             dma_in_enable: false,
             dma_out_enable: false,
             words_remaining: 0,
@@ -65,13 +68,13 @@ impl Mdec {
             output_depth: OutputDepth::Bit4,
             is_signed: false,
             output_bit15: false,
-            blocks: [[0; 64]; 3],
+            blocks: from_fn(|_| vec![0; 64].into_boxed_slice()),
             zagzig_table: Self::populate_zagzig_table(),
         }
     }
 
-    fn populate_zagzig_table() -> [usize; 64] {
-        let mut table = [0; 64];
+    fn populate_zagzig_table() -> Box<[usize]> {
+        let mut table = vec![0; 64].into_boxed_slice();
         for i in 0..64 {
             table[ZIGZAG_TABLE[i]] = i;
         }
@@ -290,7 +293,7 @@ impl Mdec {
     fn idct_core(&mut self, block_type: BlockType) {
         let block = &mut self.blocks[block_type as usize];
 
-        let mut dest = [0; 64];
+        let mut dest = vec![0; 64].into_boxed_slice();
 
         for _ in 0..2 {
             for x in 0..8 {

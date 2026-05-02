@@ -1,10 +1,13 @@
 use std::cmp;
 
+use serde::{Deserialize, Serialize};
+
 use crate::cpu::bus::gpu::{
     Color, DisplayDepth, GPU, Polygon, Semitransparency, Texpage, TexturePageColors, Vertex,
     deltas::Deltas,
 };
 
+#[derive(Serialize, Deserialize)]
 struct Coordinate2d {
     x: i32,
     y: i32,
