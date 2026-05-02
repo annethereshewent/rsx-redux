@@ -77,11 +77,6 @@ fragment float4 fragment_fb(
             params.displayWidth - 1u
         );
 
-        uint displayY = min(
-            uint(in.uv.y * float(params.displayHeight)),
-            params.displayHeight - 1u
-        );
-
         return readPixel24bit(
             vram,
             params.displayStartX,
