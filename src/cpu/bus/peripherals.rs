@@ -96,6 +96,8 @@ impl Peripherals {
             self.tx_idle = true;
             self.tx_ready = true;
         }
+
+        if self.ctrl.contains(SIOControl::ACK) && self.state != PeripheralState::Acknowledge {}
     }
 
     pub fn read_byte(&mut self) -> u8 {
@@ -165,7 +167,7 @@ impl Peripherals {
 
     pub fn write_byte(&mut self, value: u8, scheduler: &mut Scheduler) {
         // TODO: deal with latched TXEN values, apparently it's an issue in Wipeout
-        if self.ctrl.contains(SIOControl::TX_ENABLE) {
+        if self.tx_fifo.is_empty() {
             self.tx_fifo.push_back(value);
         }
 
