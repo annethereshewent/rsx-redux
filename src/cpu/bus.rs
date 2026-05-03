@@ -206,10 +206,25 @@ impl Bus {
                 self.tick(5);
                 self.interrupt_mask.bits() >> 16
             }
+            0x1f801100 => self.timers[0].counter as u32,
+            0x1f801104 => self.timers[0].counter_register.bits() as u32,
+            0x1f801108 => self.timers[0].counter_target as u32,
+            0x1f801110 => self.timers[1].counter as u32,
+            0x1f801114 => self.timers[1].counter_register.bits() as u32,
+            0x1f801118 => self.timers[1].counter_target as u32,
             0x1f801120 => self.timers[2].counter,
+            0x1f801124 => self.timers[2].counter_register.bits() as u32,
+            0x1f801128 => self.timers[2].counter_target as u32,
             0x1f801c00..=0x1f801e7f => {
                 self.tick(5);
                 self.spu.read16(address) as u32
+            }
+            0x1fc00000..=0x1fc80000 => {
+                if (self.cache_config >> 11) & 1 == 0 {
+                    self.tick(4);
+                }
+
+                unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u16) as u32 }
             }
             _ => todo!("(mem_read16) address: 0x{:x}", address),
         }
