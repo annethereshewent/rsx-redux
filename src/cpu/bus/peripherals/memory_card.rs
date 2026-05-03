@@ -1,6 +1,7 @@
 use memmap2::MmapMut;
+use serde::{Deserialize, Serialize};
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Serialize, Deserialize)]
 enum CardState {
     #[default]
     Idle,
@@ -12,7 +13,7 @@ enum CardState {
 
 pub const MEMORY_SIZE: usize = 0x20000;
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct MemoryCard {
     card_state: CardState,
     flag_byte: u8,
@@ -23,6 +24,8 @@ pub struct MemoryCard {
     checksum: u8,
     checksum_match: bool,
     previous: u8,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
     memory_file: Option<MmapMut>,
 }
 

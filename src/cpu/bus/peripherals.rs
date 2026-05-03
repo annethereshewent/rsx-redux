@@ -43,8 +43,6 @@ pub struct Peripherals {
     state: PeripheralState,
     selected_peripheral: SelectedPeripheral,
     pub controller: Controller,
-    #[serde(skip_serializing)]
-    #[serde(skip_deserializing)]
     pub memory_card: MemoryCard,
     interrupt: bool,
     rx_parity_error: bool,
