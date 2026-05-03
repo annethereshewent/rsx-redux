@@ -420,6 +420,15 @@ impl CPU {
             return;
         }
 
+        if self.pc == 0x80030000 {
+            if let Some(exe_file) = &self.exe_file {
+                let exe_file = exe_file.clone();
+                self.load_exe(exe_file.as_str());
+            }
+        }
+
+        self.previous_pc = self.pc;
+
         let opcode = self.bus.mem_read32(self.pc);
 
         if self.check_irqs() {
@@ -442,15 +451,6 @@ impl CPU {
         }
 
         self.update_tty();
-
-        self.previous_pc = self.pc;
-
-        if self.previous_pc == 0x80030000 {
-            if let Some(exe_file) = &self.exe_file {
-                let exe_file = exe_file.clone();
-                self.load_exe(exe_file.as_str());
-            }
-        }
 
         self.pc = self.next_pc;
 
