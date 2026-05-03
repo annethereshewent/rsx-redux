@@ -201,7 +201,6 @@ impl MemoryCard {
             4 => 0x5c,
             5 => 0x5d,
             6 => (self.current_sector >> 8) as u8,
-            // 7 => self.current_sector as u8,
             7 => {
                 let return_byte = self.current_sector as u8;
 
