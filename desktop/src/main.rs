@@ -1,14 +1,13 @@
 use std::{
     env,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
 };
 
-use dirs_next::data_dir;
 use frontend::Frontend;
-use memmap2::{Mmap, MmapMut};
+use memmap2::Mmap;
 #[cfg(feature = "hardware_gpu")]
 use objc2_core_foundation::CGSize;
-use rsx_redux::cpu::{CPU, bus::peripherals::memory_card::MEMORY_SIZE};
+use rsx_redux::cpu::CPU;
 
 pub mod frontend;
 #[cfg(feature = "hardware_gpu")]
@@ -36,24 +35,7 @@ fn main() {
     let mut cpu = CPU::new(exe_file, args[1].to_string());
     cpu.bus.load_bios(bios);
     cpu.bus.cdrom.load_game_desktop(game_data);
-
-    if let Some(mut memory_path) = data_dir() {
-        memory_path.push("RSX-redux");
-        memory_path.push("memory_card.mcd");
-
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(memory_path)
-            .unwrap();
-
-        file.set_len(MEMORY_SIZE as u64).unwrap();
-
-        let memory_data = unsafe { MmapMut::map_mut(&file).unwrap() };
-
-        cpu.bus.peripherals.memory_card.set_memory_file(memory_data);
-    }
+    cpu.bus.peripherals.memory_card.set_memory_file(Frontend::get_memory_file());
 
     let mut frontend = Frontend::new(&cpu.bus.gpu);
 

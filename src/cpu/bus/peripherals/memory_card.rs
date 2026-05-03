@@ -78,147 +78,168 @@ impl MemoryCard {
                 }
             }
             CardState::GetId => {
-                reply = match self.step {
-                    0 => 0x5a,
-                    1 => 0x5d,
-                    2 => 0x5c,
-                    3 => 0x5d,
-                    4 => 0x4,
-                    5 => 0x0,
-                    6 => 0x0,
-                    7 => 0x80,
-                    _ => unreachable!(),
-                };
-
-                if self.step == 7 {
-                    self.card_state = CardState::Idle;
-                    self.step = 0;
-                } else {
-                    self.step += 1;
-                }
+                reply = self.handle_get_id();
             }
             CardState::Reading => {
-                reply = match self.step {
-                    0 => 0x5a,
-                    1 => 0x5d,
-                    2 => {
-                        self.current_sector = (command as u16) << 8;
-                        self.checksum = command;
-
-                        self.previous = command;
-
-                        0x0
-                    }
-                    3 => {
-                        self.current_sector |= command as u16;
-                        self.checksum ^= command;
-
-                        self.previous
-                    }
-                    4 => 0x5c,
-                    5 => 0x5d,
-                    6 => (self.current_sector >> 8) as u8,
-                    // 7 => self.current_sector as u8,
-                    7 => {
-                        let return_byte = self.current_sector as u8;
-
-                        if self.current_sector > 0x3ff {
-                            self.card_state = CardState::Idle;
-                        }
-
-                        return_byte
-                    }
-                    8 => {
-                        let return_byte = if let Some(memory_file) = &self.memory_file {
-                            memory_file[(128 * self.current_sector as usize) + self.current_byte]
-                        } else {
-                            0xff
-                        };
-
-                        self.current_byte += 1;
-                        if self.current_byte == 128 {
-                            self.finished_transferring = true;
-                        }
-
-                        self.checksum ^= return_byte;
-
-                        return_byte
-                    }
-                    9 => self.checksum,
-                    10 => 0x47,
-                    _ => unreachable!(),
-                };
-
-                if self.step == 10 {
-                    self.card_state = CardState::Idle;
-                    self.step = 0;
-                } else if (self.step == 8 && self.finished_transferring) || self.step != 8 {
-                    self.step += 1;
-                }
+                reply = self.handle_read_command(command);
             }
             CardState::Writing => {
-                reply = match self.step {
-                    0 => {
-                        self.flag_byte &= !0x8;
-                        0x5a
-                    }
-                    1 => 0x5d,
-                    2 => {
-                        self.previous = command;
-                        self.current_sector = (command as u16) << 8;
-                        self.checksum = command;
-                        0x0
-                    }
-                    3 => {
-                        let previous = self.previous;
-                        self.previous = command;
-                        self.current_sector |= command as u16;
-
-                        self.checksum ^= command;
-
-                        previous
-                    }
-                    4 => {
-                        let previous = self.previous;
-                        self.previous = command;
-                        self.checksum ^= command;
-
-                        if let Some(memory_file) = &mut self.memory_file {
-                            memory_file[(128 * self.current_sector as usize) + self.current_byte] =
-                                command;
-                        }
-
-                        self.current_byte += 1;
-                        if self.current_byte == 128 {
-                            self.finished_transferring = true;
-                        }
-                        previous
-                    }
-                    5 => {
-                        self.checksum_match = self.checksum == command;
-                        self.checksum
-                    }
-                    6 => 0x5c,
-                    7 => 0x5d,
-                    8 => {
-                        if self.checksum_match {
-                            0x47
-                        } else {
-                            0x4e
-                        }
-                    }
-                    _ => unreachable!(),
-                };
-
-                if self.step == 8 {
-                    self.card_state = CardState::Idle;
-                } else if (self.step == 4 && self.finished_transferring) || self.step != 4 {
-                    self.step += 1;
-                }
+                reply = self.handle_write_command(command);
             }
         }
 
         reply
+    }
+
+    fn handle_get_id(&mut self) -> u8 {
+        let return_byte = match self.step {
+            0 => 0x5a,
+            1 => 0x5d,
+            2 => 0x5c,
+            3 => 0x5d,
+            4 => 0x4,
+            5 => 0x0,
+            6 => 0x0,
+            7 => 0x80,
+            _ => unreachable!(),
+        };
+
+        if self.step == 7 {
+            self.card_state = CardState::Idle;
+            self.step = 0;
+        } else {
+            self.step += 1;
+        }
+
+        return_byte
+    }
+
+    fn handle_write_command(&mut self, command: u8) -> u8 {
+        let return_byte = match self.step {
+            0 => {
+                self.flag_byte &= !0x8;
+                0x5a
+            }
+            1 => 0x5d,
+            2 => {
+                self.previous = command;
+                self.current_sector = (command as u16) << 8;
+                self.checksum = command;
+                0x0
+            }
+            3 => {
+                let previous = self.previous;
+                self.previous = command;
+                self.current_sector |= command as u16;
+
+                self.checksum ^= command;
+
+                previous
+            }
+            4 => {
+                let previous = self.previous;
+                self.previous = command;
+                self.checksum ^= command;
+
+                if let Some(memory_file) = &mut self.memory_file {
+                    memory_file[(128 * self.current_sector as usize) + self.current_byte] =
+                        command;
+                }
+
+                self.current_byte += 1;
+                if self.current_byte == 128 {
+                    if let Some(memory_file) = &mut self.memory_file {
+                        memory_file.flush().unwrap();
+                    }
+                    self.finished_transferring = true;
+                }
+                previous
+            }
+            5 => {
+                self.checksum_match = self.checksum == command;
+                self.checksum
+            }
+            6 => 0x5c,
+            7 => 0x5d,
+            8 => {
+                if self.checksum_match {
+                    0x47
+                } else {
+                    0x4e
+                }
+            }
+            _ => unreachable!(),
+        };
+
+        if self.step == 8 {
+            self.card_state = CardState::Idle;
+        } else if (self.step == 4 && self.finished_transferring) || self.step != 4 {
+            self.step += 1;
+        }
+
+        return_byte
+    }
+
+    fn handle_read_command(&mut self, command: u8) -> u8 {
+        let return_byte = match self.step {
+            0 => 0x5a,
+            1 => 0x5d,
+            2 => {
+                self.current_sector = (command as u16) << 8;
+                self.checksum = command;
+
+                self.previous = command;
+
+                0x0
+            }
+            3 => {
+                self.current_sector |= command as u16;
+                self.checksum ^= command;
+
+                self.previous
+            }
+            4 => 0x5c,
+            5 => 0x5d,
+            6 => (self.current_sector >> 8) as u8,
+            // 7 => self.current_sector as u8,
+            7 => {
+                let return_byte = self.current_sector as u8;
+
+                if self.current_sector > 0x3ff {
+                    self.card_state = CardState::Idle;
+                }
+
+                return_byte
+            }
+            8 => {
+                let return_byte = if let Some(memory_file) = &self.memory_file {
+                    memory_file[(128 * self.current_sector as usize) + self.current_byte]
+                } else {
+                    0xff
+                };
+
+                self.current_byte += 1;
+                if self.current_byte == 128 {
+                    self.finished_transferring = true;
+                }
+
+                self.checksum ^= return_byte;
+
+                return_byte
+            }
+            9 => self.checksum,
+            10 => 0x47,
+            _ => unreachable!(),
+        };
+
+        if self.step == 10 {
+            self.card_state = CardState::Idle;
+            self.step = 0;
+        } else if (self.step == 8 && self.finished_transferring) || self.step != 8 {
+            self.step += 1;
+        }
+
+        return_byte
     }
 
     pub fn reset(&mut self) {
@@ -226,7 +247,7 @@ impl MemoryCard {
         self.step = 0;
     }
 
-    pub fn set_memory_file(&mut self, memory_file: MmapMut) {
-        self.memory_file = Some(memory_file);
+    pub fn set_memory_file(&mut self, memory_file: Option<MmapMut>) {
+        self.memory_file = memory_file;
     }
 }
