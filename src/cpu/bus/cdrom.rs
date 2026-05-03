@@ -269,6 +269,33 @@ enum SubresponseMode {
 }
 
 #[derive(Serialize, Deserialize)]
+struct SubchannelQ {
+    track: u8,
+    index: u8,
+    mm: u8,
+    ss: u8,
+    sect: u8,
+    amm: u8,
+    ass: u8,
+    asect: u8
+}
+
+impl SubchannelQ {
+    fn new() -> Self {
+        Self {
+            track: 0,
+            index: 0,
+            mm: 0,
+            ss: 0,
+            sect: 0,
+            amm: 0,
+            ass: 0,
+            asect: 0
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct CDRom {
     hntmask: HntmaskRegister,
     bank: usize,
@@ -314,6 +341,7 @@ pub struct CDRom {
     drive_cycles: usize,
     controller_cycles: usize,
     subresponse_cycles: usize,
+    subchannel_q: SubchannelQ,
 }
 
 impl CDRom {
@@ -362,6 +390,7 @@ impl CDRom {
             controller_cycles: 1,
             subresponse_cycles: 1,
             ringbuffer: [[0; 32]; 2],
+            subchannel_q: SubchannelQ::new(),
         }
     }
 
@@ -672,7 +701,9 @@ impl CDRom {
             0x9 => self.pause(),
             0xa => self.init(),
             0xb | 0xc => self.stat(),
+            0xd => self.setfilter(),
             0xe => self.set_mode(),
+            0x11 => self.getloc_p(),
             0x15 => self.seek(),
             0x19 => self.commandx19(),
             0x1a => self.get_id(),
@@ -684,6 +715,24 @@ impl CDRom {
         self.controller_cycles += 10;
 
         self.controller_param_fifo.clear();
+    }
+
+    fn setfilter(&mut self) {
+        let file = self.controller_param_fifo.pop_front().unwrap();
+        let filter = self.controller_param_fifo.pop_front().unwrap();
+
+        self.filter_file = file;
+        self.filter_channel = filter;
+    }
+
+    fn getloc_p(&mut self) {
+        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.mm));
+        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.ss));
+        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.sect));
+
+        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.amm));
+        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.ass));
+        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.asect));
     }
 
     fn toc(&mut self) {
@@ -710,9 +759,20 @@ impl CDRom {
             self.current_header = CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]);
 
             if self.current_header.mode != CDMode::Mode2 {
-                todo!("non mode 2 header")
+                panic!("non mode 2 header");
             }
             self.subheader = CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]);
+
+            self.subchannel_q.track = 1;
+            self.subchannel_q.index = 1;
+
+            self.subchannel_q.mm = self.current_header.mm;
+            self.subchannel_q.ss = self.current_header.ss - 2;
+            self.subchannel_q.sect = self.current_header.sect;
+
+            self.subchannel_q.amm = self.current_header.mm;
+            self.subchannel_q.ass = self.current_header.ss;
+            self.subchannel_q.asect = self.current_header.sect;
 
             if self.current_header.mm != self.current_msf.amm
                 || self.current_header.ss != self.current_msf.ass
@@ -960,6 +1020,10 @@ impl CDRom {
         ((value >> 4) * 10) + (value & 0xf)
     }
 
+    fn u8_to_bcd(value: u8) -> u8 {
+        (value / 10) << 4 | value % 10
+    }
+
     fn cd_stat(&mut self) {
         assert!(self.irqs == 0);
 
@@ -985,6 +1049,20 @@ impl CDRom {
         msf.asect = self.msf.asect;
 
         self.current_msf = msf;
+
+        self.subchannel_q.track = 1;
+        self.subchannel_q.index = 1;
+
+        self.subchannel_q.track = 1;
+        self.subchannel_q.index = 1;
+
+        self.subchannel_q.mm = self.msf.amm;
+        self.subchannel_q.ss = self.msf.ass - 2;
+        self.subchannel_q.sect = self.msf.asect;
+
+        self.subchannel_q.amm = self.msf.amm;
+        self.subchannel_q.ass = self.msf.ass;
+        self.subchannel_q.asect = self.msf.asect;
 
         if let Some(mode) = self.next_mode.take() {
             self.drive_mode = mode;
