@@ -3,12 +3,15 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 
 use crate::cpu::bus::{
-    peripherals::{controller::Controller, sio_control::SIOControl, sio_mode::SIOMode},
+    peripherals::{
+        controller::Controller, memory_card::MemoryCard, sio_control::SIOControl, sio_mode::SIOMode,
+    },
     registers::interrupt_register::InterruptRegister,
     scheduler::{EventType, Scheduler},
 };
 
 pub mod controller;
+pub mod memory_card;
 pub mod sio_control;
 pub mod sio_mode;
 
@@ -40,6 +43,9 @@ pub struct Peripherals {
     state: PeripheralState,
     selected_peripheral: SelectedPeripheral,
     pub controller: Controller,
+    pub memory_card: MemoryCard,
+    interrupt: bool,
+    rx_parity_error: bool,
 }
 
 impl Default for Peripherals {
@@ -61,21 +67,21 @@ impl Peripherals {
             state: PeripheralState::Idle,
             selected_peripheral: SelectedPeripheral::None,
             controller: Controller::new(),
+            memory_card: MemoryCard::new(),
+            interrupt: false,
+            rx_parity_error: false,
         }
     }
 
     pub fn write_ctrl(&mut self, value: u16, scheduler: &mut Scheduler) {
         self.ctrl = SIOControl::from_bits_retain(value);
 
-        // TODO: handle Acknowledgements as well as bits
-        // related to them
-
         if !self.ctrl.contains(SIOControl::DTR_OUT) {
             scheduler.remove(EventType::ControllerByteTransfer);
             self.selected_peripheral = SelectedPeripheral::None;
             self.state = PeripheralState::Idle;
             self.controller.reset();
-            // TODO: Reset memory card state
+            self.memory_card.reset();
         }
 
         if self.ctrl.contains(SIOControl::RESET) {
@@ -88,6 +94,13 @@ impl Peripherals {
 
             self.tx_idle = true;
             self.tx_ready = true;
+        }
+
+        // TODO: actually figure out what rx_parity_error flag is supposed to be set besides false
+        // currently it's always false so this does nothing.
+        if self.ctrl.contains(SIOControl::ACK) && self.state != PeripheralState::Acknowledge {
+            self.rx_parity_error = false;
+            self.interrupt = false;
         }
     }
 
@@ -127,12 +140,17 @@ impl Peripherals {
             }
         }
 
-        let reply = match self.selected_peripheral {
-            SelectedPeripheral::Controller => self.controller.reply(command),
-            _ => 0xff,
+        let (reply, in_ack) = match self.selected_peripheral {
+            SelectedPeripheral::Controller => {
+                (self.controller.reply(command), self.controller.in_ack())
+            }
+            SelectedPeripheral::MemoryCard => {
+                (self.memory_card.reply(command), self.memory_card.in_ack())
+            }
+            _ => (0xff, false),
         };
 
-        if self.controller.in_ack() {
+        if in_ack {
             self.state = PeripheralState::Acknowledge;
             scheduler.schedule(EventType::ControllerByteTransfer, CONTROLLER_CYCLES);
         } else {
@@ -148,12 +166,14 @@ impl Peripherals {
     fn handle_ack(&mut self, interrupt: &mut InterruptRegister) {
         self.state = PeripheralState::Idle;
 
+        self.interrupt = true;
+
         interrupt.insert(InterruptRegister::PERIPHERAL);
     }
 
     pub fn write_byte(&mut self, value: u8, scheduler: &mut Scheduler) {
         // TODO: deal with latched TXEN values, apparently it's an issue in Wipeout
-        if self.ctrl.contains(SIOControl::TX_ENABLE) {
+        if self.tx_fifo.is_empty() {
             self.tx_fifo.push_back(value);
         }
 
@@ -171,7 +191,9 @@ impl Peripherals {
         (self.tx_ready as u16)
             | (!self.rx_fifo.is_empty() as u16) << 1
             | (self.tx_idle as u16) << 2
+            | (self.rx_parity_error as u16) << 3
             | ((self.state == PeripheralState::Acknowledge) as u16) << 7
+            | (self.interrupt as u16) << 9
             | self.baudrate_timer << 11
     }
 

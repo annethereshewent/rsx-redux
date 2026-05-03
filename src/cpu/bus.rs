@@ -146,6 +146,7 @@ impl Bus {
                 *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u32)
             },
             0x1f801014 => self.spu_delay.read(),
+            0x1f801044 => self.peripherals.read_stat() as u32,
             0x1f801060 => self.ram_size,
             0x1f801070 => self.interrupt_stat.bits(),
             0x1f801074 => self.interrupt_mask.bits(),

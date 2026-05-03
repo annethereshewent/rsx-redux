@@ -1,9 +1,10 @@
 use dirs_next::data_dir;
-use memmap2::Mmap;
+use memmap2::{Mmap, MmapMut};
 #[cfg(feature = "hardware_gpu")]
 use objc2::rc::Retained;
 #[cfg(feature = "hardware_gpu")]
 use objc2_quartz_core::CAMetalLayer;
+use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use sdl2::GameControllerSubsystem;
@@ -17,7 +18,7 @@ use sdl2::render::Canvas;
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::process::exit;
@@ -208,6 +209,36 @@ impl Frontend {
         }
     }
 
+    pub fn get_memory_card_path() -> Option<PathBuf> {
+        if let Some(mut memory_path) = data_dir() {
+            memory_path.push("RSX-redux");
+            memory_path.push("memory_card.mcd");
+
+            return Some(memory_path);
+        }
+
+        None
+    }
+
+    pub fn get_memory_file() -> Option<MmapMut> {
+        if let Some(memory_path) = Self::get_memory_card_path() {
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(memory_path)
+                .unwrap();
+
+            file.set_len(MEMORY_SIZE as u64).unwrap();
+
+            let memory_data = unsafe { MmapMut::map_mut(&file).unwrap() };
+
+            return Some(memory_data);
+        }
+
+        None
+    }
+
     fn get_quick_state_path(cpu: &CPU) -> PathBuf {
         #[cfg(feature = "software_gpu")]
         let filename = "quick_save_sw.state";
@@ -253,6 +284,7 @@ impl Frontend {
                 cpu.bus.cdrom.load_game_desktop(game_data);
                 cpu.reload_instructions();
                 cpu.bus.scheduler.deserialize_scheduler();
+                cpu.bus.peripherals.memory_card.set_memory_file(Self::get_memory_file());
                 after_load(cpu);
             }
         }
