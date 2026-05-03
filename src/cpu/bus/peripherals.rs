@@ -46,6 +46,8 @@ pub struct Peripherals {
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     pub memory_card: MemoryCard,
+    interrupt: bool,
+    rx_parity_error: bool,
 }
 
 impl Default for Peripherals {
@@ -68,14 +70,13 @@ impl Peripherals {
             selected_peripheral: SelectedPeripheral::None,
             controller: Controller::new(),
             memory_card: MemoryCard::new(),
+            interrupt: false,
+            rx_parity_error: false,
         }
     }
 
     pub fn write_ctrl(&mut self, value: u16, scheduler: &mut Scheduler) {
         self.ctrl = SIOControl::from_bits_retain(value);
-
-        // TODO: handle Acknowledgements as well as bits
-        // related to them
 
         if !self.ctrl.contains(SIOControl::DTR_OUT) {
             scheduler.remove(EventType::ControllerByteTransfer);
@@ -97,7 +98,12 @@ impl Peripherals {
             self.tx_ready = true;
         }
 
-        if self.ctrl.contains(SIOControl::ACK) && self.state != PeripheralState::Acknowledge {}
+        // TODO: actually figure out what rx_parity_error flag is supposed to be set besides false
+        // currently it's always false so this does nothing.
+        if self.ctrl.contains(SIOControl::ACK) && self.state != PeripheralState::Acknowledge {
+            self.rx_parity_error = false;
+            self.interrupt = false;
+        }
     }
 
     pub fn read_byte(&mut self) -> u8 {
@@ -162,6 +168,8 @@ impl Peripherals {
     fn handle_ack(&mut self, interrupt: &mut InterruptRegister) {
         self.state = PeripheralState::Idle;
 
+        self.interrupt = true;
+
         interrupt.insert(InterruptRegister::PERIPHERAL);
     }
 
@@ -185,7 +193,9 @@ impl Peripherals {
         (self.tx_ready as u16)
             | (!self.rx_fifo.is_empty() as u16) << 1
             | (self.tx_idle as u16) << 2
+            | (self.rx_parity_error as u16) << 3
             | ((self.state == PeripheralState::Acknowledge) as u16) << 7
+            | (self.interrupt as u16) << 9
             | self.baudrate_timer << 11
     }
 
