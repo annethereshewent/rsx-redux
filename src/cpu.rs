@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     fs,
-    ops::{Index, IndexMut},
+    ops::{Index, IndexMut}, ptr::{read_unaligned, write_unaligned},
 };
 
 use bus::{Bus, scheduler::EventType};
@@ -20,8 +20,65 @@ pub const RA_REGISTER: usize = 31;
 
 pub const CPU_FREQUENCY: f64 = 33_868_800.0;
 
+const ICACHE_SIZE: usize = 0x1000;
+
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Registers([u32; 32]);
+
+#[derive(Serialize, Deserialize)]
+struct IsolatedCache {
+    data: Box<[u8]>
+}
+
+impl IsolatedCache {
+    fn new() -> Self {
+        Self {
+            data: vec![0; ICACHE_SIZE].into_boxed_slice()
+        }
+    }
+}
+
+impl IsolatedCache {
+    fn load8(&self, address: u32) -> u32 {
+        let index = Self::isolated_cache_index(address);
+
+        self.data[index] as u32
+    }
+
+    fn load16(&self, address: u32) -> u32 {
+        let index = Self::isolated_cache_index(address);
+
+        unsafe { read_unaligned(self.data.as_ptr().add(index) as *const u16) as u32 }
+    }
+
+    fn load32(&self, address: u32) -> u32 {
+        let index = Self::isolated_cache_index(address);
+
+        unsafe { read_unaligned(self.data.as_ptr().add(index) as *const u32) }
+    }
+
+    fn store8(&mut self, address: u32, value: u8) {
+        let index = Self::isolated_cache_index(address);
+
+        self.data[index] = value;
+    }
+
+    fn store16(&mut self, address: u32, value: u16) {
+        let index = Self::isolated_cache_index(address);
+
+        unsafe { write_unaligned(self.data.as_mut_ptr().add(index) as *mut u16, value) };
+    }
+
+    fn store32(&mut self, address: u32, value: u32) {
+        let index = Self::isolated_cache_index(address);
+
+        unsafe { write_unaligned(self.data.as_mut_ptr().add(index) as *mut u32, value) };
+    }
+
+    fn isolated_cache_index(address: u32) -> usize {
+        (address as usize) & (ICACHE_SIZE - 1)
+    }
+}
 
 impl Index<usize> for Registers {
     type Output = u32;
@@ -80,6 +137,7 @@ pub struct CPU {
     #[serde(skip_deserializing)]
     exe_file: Option<String>,
     should_transfer_load: bool,
+    isolated_cache: IsolatedCache,
     pub game_path: String,
 }
 
@@ -267,6 +325,7 @@ impl CPU {
             gte: Gte::new(),
             exe_file,
             should_transfer_load: false,
+            isolated_cache: IsolatedCache::new(),
             game_path,
         }
     }
@@ -294,7 +353,7 @@ impl CPU {
 
     pub fn store8(&mut self, address: u32, value: u8) {
         if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
-            // TODO: implement this but for real
+            self.isolated_cache.store8(address, value);
             return;
         }
 
@@ -303,7 +362,7 @@ impl CPU {
 
     pub fn store16(&mut self, address: u32, value: u16) {
         if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
-            // TODO: implement this but for real
+            self.isolated_cache.store16(address, value);
             return;
         }
 
@@ -327,7 +386,7 @@ impl CPU {
 
     pub fn store32(&mut self, address: u32, value: u32) {
         if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
-            // TODO: implement this but for real
+            self.isolated_cache.store32(address, value);
             return;
         }
 
@@ -335,14 +394,23 @@ impl CPU {
     }
 
     pub fn load8(&mut self, address: u32) -> u32 {
+        if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
+            return self.isolated_cache.load8(address);
+        }
         self.bus.mem_read8(address)
     }
 
     pub fn load32(&mut self, address: u32) -> u32 {
+        if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
+            return self.isolated_cache.load32(address);
+        }
         self.bus.mem_read32(address)
     }
 
     pub fn load16(&mut self, address: u32) -> u32 {
+        if self.cop0.sr.contains(StatusRegister::ISOLATE_CACHE) {
+            return self.isolated_cache.load16(address);
+        }
         self.bus.mem_read16(address)
     }
     pub fn step_frame(&mut self) {

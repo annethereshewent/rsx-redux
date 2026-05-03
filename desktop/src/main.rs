@@ -13,6 +13,8 @@ pub mod frontend;
 #[cfg(feature = "hardware_gpu")]
 pub mod renderer;
 
+// TODO: fix using unsafe for type coersion (ie reading a u16 from a byte array) to use std::ptr::read_unaligned
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
