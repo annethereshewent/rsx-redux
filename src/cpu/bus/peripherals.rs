@@ -34,7 +34,7 @@ enum PeripheralState {
 #[derive(Serialize, Deserialize)]
 pub struct Peripherals {
     ctrl: SIOControl,
-    baudrate_timer: u16,
+    pub baudrate_timer: u16,
     mode: SIOMode,
     tx_fifo: VecDeque<u8>,
     rx_fifo: VecDeque<u8>,

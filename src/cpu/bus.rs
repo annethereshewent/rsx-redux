@@ -190,6 +190,7 @@ impl Bus {
             },
             0x1f801044 => self.peripherals.read_stat() as u32,
             0x1f80104a => self.peripherals.read_ctrl() as u32,
+            0x1f80104e => self.peripherals.baudrate_timer as u32,
             0x1f801070 => {
                 self.tick(5);
                 self.interrupt_stat.bits() & 0xffff

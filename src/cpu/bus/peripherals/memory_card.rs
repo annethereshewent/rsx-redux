@@ -77,7 +77,10 @@ impl MemoryCard {
                         self.card_state = CardState::GetId;
                         self.step = 0;
                     }
-                    _ => unreachable!("shouldn't happen"),
+                    _ => {
+                        println!("[WARN]: invalid byte received for memory card: 0x{command:x}");
+                        self.card_state = CardState::Idle;
+                    }
                 }
             }
             CardState::GetId => {
