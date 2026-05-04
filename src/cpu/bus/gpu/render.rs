@@ -346,7 +346,7 @@ impl GPU {
         (masked_u as u8, masked_v as u8)
     }
 
-    pub fn update_picture(&mut self) {
+    pub fn update_framebuffer(&mut self) {
         let (width, height) = self.get_dimensions();
         let mut i = 0;
 
@@ -354,10 +354,11 @@ impl GPU {
         let display_start_y = self.display_start_y;
 
         for y in display_start_y..display_start_y + height {
-            for x in display_start_x..display_start_x + width {
+            for x in 0..width {
                 match self.display_depth {
                     DisplayDepth::Bit15 => {
-                        let vram_address = GPU::get_vram_address(x & 0x3ff, y & 0x1ff);
+                        let curr_x = x + display_start_x;
+                        let vram_address = GPU::get_vram_address(curr_x & 0x3ff, y & 0x1ff);
 
                         let halfword =
                             unsafe { *(&self.vram[vram_address] as *const u8 as *const u16) };
@@ -369,7 +370,11 @@ impl GPU {
                         self.picture[i + 2] = color.b;
                     }
                     DisplayDepth::Bit24 => {
-                        let vram_address = GPU::get_vram_address_24(x & 0x3ff, y & 0x1ff);
+                        let byte_offset =
+                            display_start_x as usize * 2 + x as usize * 3;
+
+                        let row_base = y as usize * 1024 * 2;
+                        let vram_address = row_base + byte_offset;
 
                         self.picture[i] = self.vram[vram_address];
                         self.picture[i + 1] = self.vram[vram_address + 1];

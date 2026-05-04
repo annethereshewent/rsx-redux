@@ -398,7 +398,7 @@ impl Frontend {
 
     #[cfg(feature = "software_gpu")]
     pub fn render(&mut self, gpu: &mut GPU) {
-        gpu.update_picture();
+        gpu.update_framebuffer();
 
         let (width, height) = gpu.get_dimensions();
 
