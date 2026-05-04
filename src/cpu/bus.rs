@@ -254,6 +254,15 @@ impl Bus {
                 self.tick(5);
                 self.cdrom.read(address) as u32
             }
+            0x1f801c00..=0x1f801e7f => {
+                let value = self.spu.read16(address & !1);
+
+                if address & 1 == 0 {
+                    value as u8 as u32
+                } else {
+                    ((value >> 8) & 0xff) as u32
+                }
+            }
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => {
                 if (self.cache_config >> 1) & 1 == 0 {
@@ -261,7 +270,7 @@ impl Bus {
                 }
                 self.bios[address - 0x1fc00000] as u32
             }
-            _ => todo!("(mem_read8) address 0x{:x}", address),
+            _ => todo!("(mem_read8) address: 0x{address:x}")
         }
     }
 
