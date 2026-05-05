@@ -236,9 +236,6 @@ impl SPU {
         let mut cd_left = 0.0;
         let mut cd_right = 0.0;
 
-        self.update_voices();
-        self.tick_noise();
-
         if !self.cd_left_samples.is_empty() {
             cd_left = SPU::to_f32(self.cd_left_samples.pop_front().unwrap());
         }
@@ -316,6 +313,9 @@ impl SPU {
 
         self.push_sample(output_left);
         self.push_sample(output_right);
+
+        self.update_voices();
+        self.tick_noise();
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }

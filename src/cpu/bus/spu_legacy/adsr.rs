@@ -131,6 +131,9 @@ impl Adsr {
                 }
             } else {
                 step = (step * self.current_volume as i32) >> 15;
+                if step == 0 {
+                    step = -1;
+                }
             }
         }
 
@@ -147,8 +150,8 @@ impl Adsr {
                 return;
             }
 
-            if (direction == AdsrDirection::Increasing && self.current_volume >= target as i16)
-                || (direction == AdsrDirection::Decreasing && self.current_volume <= target as i16)
+            if (direction == AdsrDirection::Increasing && self.current_volume as i32 >= target)
+                || (direction == AdsrDirection::Decreasing && self.current_volume as i32 <= target)
             {
                 self.cycles = 0;
                 self.state = next;
@@ -169,7 +172,7 @@ impl Adsr {
     }
 
     pub fn sustain_level(&self) -> u32 {
-        ((self.value & 0xf) + 1) * 0x800
+        (((self.value & 0xf) + 1) * 0x800).min(0x7fff)
     }
 
     pub fn sustain_mode(&self) -> AdsrMode {

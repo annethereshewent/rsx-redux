@@ -1348,11 +1348,6 @@ impl GPU {
         (2 * (x + 1024 * y)) as usize
     }
 
-    #[cfg(feature = "software_gpu")]
-    fn get_vram_address_24(x: u32, y: u32) -> usize {
-        (3 * x + 2048 * y) as usize
-    }
-
     pub fn process_gp1_commands(&mut self, word: u32) {
         let command = word >> 24;
         match command {
