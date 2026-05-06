@@ -11,6 +11,7 @@ use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
+#[cfg(feature = "software_gpu")]
 use sdl2::pixels::PixelFormatEnum;
 #[cfg(feature = "software_gpu")]
 use sdl2::render::Canvas;
