@@ -550,7 +550,7 @@ impl Renderer {
                             let mut r = halfword & 0x1f;
                             let mut g = (halfword >> 5) & 0x1f;
                             let mut b = (halfword >> 10) & 0x1f;
-                            let a = ((halfword >> 15) & 1) * 0xff;
+                            let a = 0;
 
                             r = r << 3 | r >> 2;
                             g = g << 3 | g >> 2;
@@ -629,12 +629,18 @@ impl Renderer {
                     let command_buffer = self.command_queue.commandBuffer().unwrap();
                     let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
 
-                    let origin = MTLOrigin {
+                    let source_origin = MTLOrigin {
                         x: params.source_start_x as usize,
                         y: params.source_start_y as usize,
                         z: 0,
                     };
-                    let start_origin = MTLOrigin { x: 0, y: 0, z: 0 };
+
+                    let destination_origin = MTLOrigin {
+                        x: params.destination_start_x as usize,
+                        y: params.destination_start_y as usize,
+                        z: 0 as usize,
+                    };
+
                     let size = MTLSize {
                         width: params.width as usize,
                         height: params.height as usize,
@@ -646,48 +652,48 @@ impl Renderer {
                             self.vram_write.as_ref().unwrap(),
                             0,
                             0,
-                            origin,
+                            source_origin,
                             size,
-                            &write_texture,
+                            write_texture.as_ref(),
                             0,
                             0,
-                            start_origin
+                            MTLOrigin { x: 0, y: 0, z: 0 },
                         );
 
                         blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                            &write_texture,
+                            write_texture.as_ref(),
                             0,
                             0,
-                            start_origin,
+                            MTLOrigin { x: 0, y: 0, z: 0 },
                             size,
                             self.vram_write.as_ref().unwrap(),
                             0,
                             0,
-                            origin
+                            destination_origin,
                         );
 
                         blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                             self.vram_read.as_ref().unwrap(),
                             0,
                             0,
-                            origin,
+                            source_origin,
                             size,
-                            &read_texture,
+                            read_texture.as_ref(),
                             0,
                             0,
-                            start_origin
+                            MTLOrigin { x: 0, y: 0, z: 0 },
                         );
 
                         blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                            &read_texture,
+                            read_texture.as_ref(),
                             0,
                             0,
-                            start_origin,
+                            MTLOrigin { x: 0, y: 0, z: 0 },
                             size,
                             self.vram_read.as_ref().unwrap(),
                             0,
                             0,
-                            origin
+                            destination_origin,
                         );
                     }
 
@@ -706,7 +712,7 @@ impl Renderer {
                     g = g << 3 | g >> 2;
                     b = b << 3 | b >> 2;
 
-                    let a = (((params.pixel >> 15) & 1) * 255) as u8;
+                    let a = 0;
 
                     for _ in 0..params.height {
                         for _ in 0..params.width {

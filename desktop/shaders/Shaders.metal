@@ -191,7 +191,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         }
     }
 
-    finalColor[3] = 1.0;
+    finalColor[3] = 0.0;
 
     return finalColor;
 }
@@ -204,7 +204,7 @@ kernel void rgba8_to_rgb5551(texture2d<float, access::sample> src [[texture(0)]]
     ushort r = ushort(c.r * 31.0);
     ushort g = ushort(c.g * 31.0);
     ushort b = ushort(c.b * 31.0);
-    ushort a = (r | g | b) ? 1 : 0;
+    ushort a = 0;
     ushort packed = r | (g << 5) | (b << 10) | (a << 15);
     dst.write(packed, dstOrigin + gid);
 }
