@@ -277,7 +277,7 @@ struct SubchannelQ {
     sect: u8,
     amm: u8,
     ass: u8,
-    asect: u8
+    asect: u8,
 }
 
 impl SubchannelQ {
@@ -290,7 +290,7 @@ impl SubchannelQ {
             sect: 0,
             amm: 0,
             ass: 0,
-            asect: 0
+            asect: 0,
         }
     }
 }
@@ -726,13 +726,19 @@ impl CDRom {
     }
 
     fn getloc_p(&mut self) {
-        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.mm));
-        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.ss));
-        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.sect));
+        self.controller_response_fifo
+            .push_back(Self::u8_to_bcd(self.subchannel_q.mm));
+        self.controller_response_fifo
+            .push_back(Self::u8_to_bcd(self.subchannel_q.ss));
+        self.controller_response_fifo
+            .push_back(Self::u8_to_bcd(self.subchannel_q.sect));
 
-        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.amm));
-        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.ass));
-        self.controller_response_fifo.push_back(Self::u8_to_bcd(self.subchannel_q.asect));
+        self.controller_response_fifo
+            .push_back(Self::u8_to_bcd(self.subchannel_q.amm));
+        self.controller_response_fifo
+            .push_back(Self::u8_to_bcd(self.subchannel_q.ass));
+        self.controller_response_fifo
+            .push_back(Self::u8_to_bcd(self.subchannel_q.asect));
     }
 
     fn toc(&mut self) {

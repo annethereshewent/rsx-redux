@@ -154,7 +154,7 @@ pub struct Polygon {
     pub texture_mask_x: u32,
     pub texture_mask_y: u32,
     pub texture_offset_x: u32,
-    pub texture_offset_y: u32
+    pub texture_offset_y: u32,
 }
 
 impl Polygon {
@@ -172,7 +172,7 @@ impl Polygon {
             texture_mask_x: 0,
             texture_mask_y: 0,
             texture_offset_x: 0,
-            texture_offset_y: 0
+            texture_offset_y: 0,
         }
     }
 }
@@ -802,7 +802,7 @@ impl GPU {
                     texture_mask_x: self.texture_window_mask_x,
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
-                    texture_offset_y: self.texture_window_offset_y
+                    texture_offset_y: self.texture_window_offset_y,
                 });
 
                 polygons.push(Polygon {
@@ -822,7 +822,7 @@ impl GPU {
                     texture_mask_x: self.texture_window_mask_x,
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
-                    texture_offset_y: self.texture_window_offset_y
+                    texture_offset_y: self.texture_window_offset_y,
                 });
             } else {
                 polygons.push(Polygon {
@@ -842,7 +842,7 @@ impl GPU {
                     texture_mask_x: self.texture_window_mask_x,
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
-                    texture_offset_y: self.texture_window_offset_y
+                    texture_offset_y: self.texture_window_offset_y,
                 });
             }
 
@@ -1023,7 +1023,7 @@ impl GPU {
                 texture_mask_x: self.texture_window_mask_x,
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
-                texture_offset_y: self.texture_window_offset_y
+                texture_offset_y: self.texture_window_offset_y,
             });
             self.polygons.push(Polygon {
                 vertices: vertices2,
@@ -1042,7 +1042,7 @@ impl GPU {
                 texture_mask_x: self.texture_window_mask_x,
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
-                texture_offset_y: self.texture_window_offset_y
+                texture_offset_y: self.texture_window_offset_y,
             });
         }
         #[cfg(feature = "software_gpu")]
@@ -1312,13 +1312,9 @@ impl GPU {
         }
     }
 
-    fn draw_line(&mut self) {
+    fn draw_line(&mut self) {}
 
-    }
-
-    fn draw_polyline(&mut self) {
-
-    }
+    fn draw_polyline(&mut self) {}
 
     fn transfer_to_vram(&mut self, halfword: u16) {
         let curr_x = self.read_x + self.transfer_x;

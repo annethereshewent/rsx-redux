@@ -270,7 +270,7 @@ impl Bus {
                 }
                 self.bios[address - 0x1fc00000] as u32
             }
-            _ => todo!("(mem_read8) address: 0x{address:x}")
+            _ => todo!("(mem_read8) address: 0x{address:x}"),
         }
     }
 

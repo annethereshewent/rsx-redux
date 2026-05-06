@@ -1,6 +1,7 @@
 use std::{
     env,
-    fs::{self, File}, path::Path,
+    fs::{self, File},
+    path::Path,
 };
 
 use frontend::Frontend;
@@ -25,7 +26,11 @@ fn main() {
     let file_path = Path::new(&args[1]);
     let bios = fs::read("SCPH1001.bin").unwrap();
 
-    let file_extension = file_path.extension().unwrap_or_default().to_str().unwrap_or_default();
+    let file_extension = file_path
+        .extension()
+        .unwrap_or_default()
+        .to_str()
+        .unwrap_or_default();
 
     let mut cpu = if file_extension == "exe" {
         CPU::new(Some(args[1].to_string()), "".to_string())
@@ -40,7 +45,10 @@ fn main() {
     };
 
     cpu.bus.load_bios(bios);
-    cpu.bus.peripherals.memory_card.set_memory_file(Frontend::get_memory_file());
+    cpu.bus
+        .peripherals
+        .memory_card
+        .set_memory_file(Frontend::get_memory_file());
 
     let mut frontend = Frontend::new(&cpu.bus.gpu);
 

@@ -95,7 +95,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(metal_layer: Retained<CAMetalLayer>, gpu: &GPU) -> Self {
+    pub fn new(metal_layer: Retained<CAMetalLayer>) -> Self {
         let device = MTLCreateSystemDefaultDevice().unwrap();
 
         let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
@@ -454,7 +454,8 @@ impl Renderer {
                     1,
                 );
                 encoder.setFragmentBytes_length_atIndex(
-                    NonNull::new(&mut [polygon.clut.0, polygon.clut.1] as *mut _ as *mut c_void).unwrap(),
+                    NonNull::new(&mut [polygon.clut.0, polygon.clut.1] as *mut _ as *mut c_void)
+                        .unwrap(),
                     size_of::<[u32; 2]>(),
                     2,
                 );

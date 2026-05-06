@@ -1,7 +1,8 @@
 use std::{
     collections::HashSet,
     fs,
-    ops::{Index, IndexMut}, ptr::{read_unaligned, write_unaligned},
+    ops::{Index, IndexMut},
+    ptr::{read_unaligned, write_unaligned},
 };
 
 use bus::{Bus, scheduler::EventType};
@@ -27,13 +28,13 @@ pub struct Registers([u32; 32]);
 
 #[derive(Serialize, Deserialize)]
 struct IsolatedCache {
-    data: Box<[u8]>
+    data: Box<[u8]>,
 }
 
 impl IsolatedCache {
     fn new() -> Self {
         Self {
-            data: vec![0; ICACHE_SIZE].into_boxed_slice()
+            data: vec![0; ICACHE_SIZE].into_boxed_slice(),
         }
     }
 }

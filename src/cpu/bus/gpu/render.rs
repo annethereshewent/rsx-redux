@@ -370,8 +370,7 @@ impl GPU {
                         self.picture[i + 2] = color.b;
                     }
                     DisplayDepth::Bit24 => {
-                        let byte_offset =
-                            display_start_x as usize * 2 + x as usize * 3;
+                        let byte_offset = display_start_x as usize * 2 + x as usize * 3;
 
                         let row_base = y as usize * 1024 * 2;
                         let vram_address = row_base + byte_offset;
