@@ -52,7 +52,6 @@ pub struct MetalVertex {
     position: [f32; 2],
     uv: [f32; 2],
     color: [f32; 4],
-    clut: [u32; 2],
     orig: [f32; 2],
 }
 
@@ -62,7 +61,6 @@ impl MetalVertex {
             position: [0.0; 2],
             uv: [0.0; 2],
             color: [0.0; 4],
-            clut: [0; 2],
             orig: [0.0; 2],
         }
     }
@@ -184,17 +182,10 @@ impl Renderer {
         unsafe { color.setOffset(16) };
         unsafe { color.setBufferIndex(0) };
 
-        let clut = unsafe { attributes.objectAtIndexedSubscript(3) };
-        clut.setFormat(MTLVertexFormat::UInt2);
-        unsafe {
-            clut.setOffset(32);
-            clut.setBufferIndex(0);
-        }
-
-        let orig = unsafe { attributes.objectAtIndexedSubscript(4) };
+        let orig = unsafe { attributes.objectAtIndexedSubscript(3) };
 
         unsafe {
-            orig.setOffset(40);
+            orig.setOffset(32);
             orig.setBufferIndex(0);
         }
 
@@ -220,7 +211,7 @@ impl Renderer {
         unsafe { fb_uv.setOffset(8) };
         unsafe { fb_uv.setBufferIndex(0) };
 
-        assert_eq!(size_of::<MetalVertex>(), 48);
+        assert_eq!(size_of::<MetalVertex>(), 40);
 
         let fb_layout = unsafe { fb_vertex_descriptor.layouts().objectAtIndexedSubscript(0) };
 
@@ -378,10 +369,10 @@ impl Renderer {
 
         let mut fragment_uniform = FragmentUniform {
             has_texture: polygon.textured,
-            texture_mask_x: gpu.texture_window_mask_x,
-            texture_mask_y: gpu.texture_window_mask_y,
-            texture_offset_x: gpu.texture_window_offset_x,
-            texture_offset_y: gpu.texture_window_offset_y,
+            texture_mask_x: polygon.texture_mask_x,
+            texture_mask_y: polygon.texture_mask_y,
+            texture_offset_x: polygon.texture_offset_x,
+            texture_offset_y: polygon.texture_offset_y,
             semitransparent: polygon.semitransparent,
             modulate: polygon.modulate,
             depth,
@@ -440,7 +431,6 @@ impl Renderer {
             metal_vert.uv[0] = u_f32;
             metal_vert.uv[1] = v_f32;
             if let Some(texpage) = polygon.texpage {
-                metal_vert.clut = [polygon.clut.0, polygon.clut.1];
                 fragment_uniform.page = [texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16];
             }
         }
@@ -462,7 +452,12 @@ impl Renderer {
                     NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap(),
                     size_of::<FragmentUniform>(),
                     1,
-                )
+                );
+                encoder.setFragmentBytes_length_atIndex(
+                    NonNull::new(&mut [polygon.clut.0, polygon.clut.1] as *mut _ as *mut c_void).unwrap(),
+                    size_of::<[u32; 2]>(),
+                    2,
+                );
             };
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 

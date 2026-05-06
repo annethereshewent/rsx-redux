@@ -151,6 +151,10 @@ pub struct Polygon {
     pub modulate: bool,
     pub transparent_mode: u32,
     pub clut: (u32, u32),
+    pub texture_mask_x: u32,
+    pub texture_mask_y: u32,
+    pub texture_offset_x: u32,
+    pub texture_offset_y: u32
 }
 
 impl Polygon {
@@ -165,6 +169,10 @@ impl Polygon {
             clut: (0, 0),
             transparent_mode: 0,
             modulate: false,
+            texture_mask_x: 0,
+            texture_mask_y: 0,
+            texture_offset_x: 0,
+            texture_offset_y: 0
         }
     }
 }
@@ -791,6 +799,10 @@ impl GPU {
                     semitransparent: self.is_semitransparent,
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y
                 });
 
                 polygons.push(Polygon {
@@ -807,6 +819,10 @@ impl GPU {
                     },
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y
                 });
             } else {
                 polygons.push(Polygon {
@@ -823,6 +839,10 @@ impl GPU {
                     },
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y
                 });
             }
 
@@ -1000,6 +1020,10 @@ impl GPU {
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
                 modulate: self.modulate,
+                texture_mask_x: self.texture_window_mask_x,
+                texture_mask_y: self.texture_window_mask_y,
+                texture_offset_x: self.texture_window_offset_x,
+                texture_offset_y: self.texture_window_offset_y
             });
             self.polygons.push(Polygon {
                 vertices: vertices2,
@@ -1015,6 +1039,10 @@ impl GPU {
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
                 modulate: self.modulate,
+                texture_mask_x: self.texture_window_mask_x,
+                texture_mask_y: self.texture_window_mask_y,
+                texture_offset_x: self.texture_window_offset_x,
+                texture_offset_y: self.texture_window_offset_y
             });
         }
         #[cfg(feature = "software_gpu")]
@@ -1285,17 +1313,11 @@ impl GPU {
     }
 
     fn draw_line(&mut self) {
-        #[cfg(feature = "hardware_gpu")]
-        {
-            self.commands_ready = true;
-        }
+
     }
 
     fn draw_polyline(&mut self) {
-        #[cfg(feature = "hardware_gpu")]
-        {
-            self.commands_ready = true;
-        }
+
     }
 
     fn transfer_to_vram(&mut self, halfword: u16) {
