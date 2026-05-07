@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cpu::bus::{
     registers::interrupt_register::InterruptRegister,
-    spu::{SPU, SoundRam},
+    spu::{SoundRam, SOUND_RAM_SIZE, SPU},
 };
 
 pub const VOLUME_MIN: i32 = -0x8000;
@@ -79,7 +79,7 @@ const GAUSSIAN_TABLE: [i32; 0x200] = [
     0x57C3, 0x57E2, 0x57FF, 0x581C, 0x5838, 0x5853, 0x586D, 0x5886, //
     0x589E, 0x58B5, 0x58CB, 0x58E0, 0x58F4, 0x5907, 0x5919, 0x592A, //
     0x593A, 0x5949, 0x5958, 0x5965, 0x5971, 0x597C, 0x5986, 0x598F, //
-    0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3, //
+    0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3  //
 ];
 
 #[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -618,18 +618,9 @@ impl Voice {
         }
     }
 
-    fn interpolate(&mut self, interpolation_index: usize, sample_index: usize) -> f32 {
-        let oldest = self.get_interpolate_sample(sample_index as isize - 3);
-        let older = self.get_interpolate_sample(sample_index as isize - 2);
-        let old = self.get_interpolate_sample(sample_index as isize - 1);
-        let new = self.get_interpolate_sample(sample_index as isize);
-
-        let mut out = (GAUSSIAN_TABLE[0xff - interpolation_index] * oldest) >> 15;
-        out += (GAUSSIAN_TABLE[0x1ff - interpolation_index] * older) >> 15;
-        out += (GAUSSIAN_TABLE[0x100 - interpolation_index] * old) >> 15;
-        out += (GAUSSIAN_TABLE[interpolation_index] * new) >> 15;
-
-        SPU::to_f32(out as i16)
+    pub fn force_off(&mut self) {
+        self.adsr.envelope.volume = 0;
+        self.adsr.phase = AdsrPhase::Idle;
     }
 
     pub fn generate_samples(
@@ -637,174 +628,37 @@ impl Voice {
         sound_ram: &SoundRam,
         irq_address: u32,
         irq9_enable: bool,
+        irq9_flag: bool,
         interrupt_register: &mut InterruptRegister,
         pitch_modulate: bool,
         previous_volume: i32,
         noise_enable: bool,
-    ) -> (f32, f32, bool) {
+    ) -> (i16, i16, bool) {
         if self.adsr.phase == AdsrPhase::Idle && !irq9_enable {
-            return (0.0, 0.0, false);
-        }
+            self.last_volume = 0;
 
-        let mut endx = false;
+            return (0, 0, false);
+        }
 
         if !self.has_samples {
-            if irq9_enable
-                && (self.current_address == irq_address
-                    || ((self.current_address + 8) & 0x7_ffff) == irq_address)
-            {
-                interrupt_register.insert(InterruptRegister::SPU);
-            }
-            let block = self.read_adpcm_block(sound_ram);
-            self.decode_adpcm_block(&block);
-
-            self.has_samples = true;
+            let mut block = ADPCMBlock::new();
+            Self::read_adpcm_block(sound_ram, self.current_address, &mut block, irq9_enable, irq9_flag, interrupt_register);
         }
 
-        let interpolation_index = (self.pitch_counter >> 4) & 0xff;
-        let sample_index = self.pitch_counter >> 12;
-
-        let volume = if self.adsr.envelope.volume > 0 {
-            let sample = if noise_enable {
-                todo!("noise");
-            } else {
-                self.interpolate(interpolation_index as usize, sample_index as usize)
-            };
-
-            sample * SPU::to_f32(self.adsr.envelope.volume)
-        } else {
-            0.0
-        };
-
-        self.last_volume = SPU::to_i16(volume) as i32;
-
-        let mut step = self.sample_rate as u32;
-
-        if self.adsr.phase != AdsrPhase::Idle {
-            self.adsr.tick();
-        }
-
-        if pitch_modulate {
-            let factor = (SPU::clamp(previous_volume, -0x8000, 0x7fff) as i32 + 0x80000) as u32;
-
-            step = ((step * factor) >> 15) as i16 as u16 as u32;
-        }
-
-        if step > 0x3fff {
-            step = 0x4000;
-        }
-
-        self.pitch_counter += step;
-
-        let mut sample_index = self.pitch_counter >> 12;
-
-        if sample_index >= NUM_BLOCK_SAMPLES as u32 {
-            self.is_first_block = false;
-            sample_index -= NUM_BLOCK_SAMPLES as u32;
-
-            self.has_samples = false;
-
-            self.pitch_counter &= 0xfff;
-            self.pitch_counter |= sample_index << 12;
-
-            // self.current_address = (self.current_address + 2) & 0x7_ffff;
-
-            if self.current_block.loop_end {
-                endx = true;
-
-                self.current_address = self.repeat_address;
-
-                if !self.current_block.loop_repeat && !noise_enable {
-                    self.adsr.envelope.volume = 0;
-                    self.adsr.phase = AdsrPhase::Idle;
-                }
-            }
-        }
-
-        let left = volume * SPU::to_f32(self.left_envelope.volume);
-        let right = volume * SPU::to_f32(self.right_envelope.volume);
-
-        if self.using_left_envelope {
-            self.using_left_envelope = self.left_envelope.tick();
-        }
-        if self.using_right_envelope {
-            self.using_right_envelope = self.right_envelope.tick();
-        }
-
-        (left, right, endx)
+        (0, 0, true)
     }
 
-    fn get_interpolate_sample(&self, index: isize) -> i32 {
-        if index < 0 {
-            self.last_gaussian_samples[(index + 3) as usize] as i32
-        } else {
-            self.current_samples[index as usize] as i32
-        }
-    }
+    fn read_adpcm_block(
+        sound_ram: &SoundRam,
+        current_address: u32,
+        block: &mut ADPCMBlock,
+        irq9_enable: bool,
+        irq9_flag: bool,
+        interrupt_register: &mut InterruptRegister
+    ) {
+        let ram_address = current_address & (SOUND_RAM_SIZE as u32 -1);
 
-    fn decode_adpcm_block(&mut self, block: &ADPCMBlock) {
-        let positive_filter = POS_FILTER_TABLE[block.filter as usize];
-        let negative_filter = NEG_FILTER_TABLE[block.filter as usize];
 
-        let mut j = 0;
-
-        for i in 24..self.current_samples.len() {
-            self.last_gaussian_samples[j] = self.current_samples[i];
-            j += 1;
-        }
-
-        for i in 0..NUM_BLOCK_SAMPLES {
-            let byte = block.sample_blocks[i / 2];
-
-            let nibble = if i & 1 == 0 { byte & 0xf } else { byte >> 4 };
-
-            let mut sample = (((nibble as i16) << 12) as i32) >> block.shift as i32;
-
-            let filter = (32
-                + self.last_decoded_samples[0] as i32 * positive_filter as i32
-                + self.last_decoded_samples[1] as i32 * negative_filter as i32)
-                / 64;
-
-            sample += filter;
-
-            self.last_decoded_samples[1] = self.last_decoded_samples[0];
-            self.last_decoded_samples[0] = SPU::clamp(sample, -0x8000, 0x7fff);
-
-            self.current_samples[i] = self.last_decoded_samples[0];
-        }
-
-        self.current_block = *block;
-    }
-
-    fn read_adpcm_block(&mut self, sound_ram: &SoundRam) -> ADPCMBlock {
-        let mut block = ADPCMBlock::new();
-
-        let shift_filter = sound_ram.read8(self.current_address as usize);
-
-        block.shift = shift_filter & 0xf;
-        block.filter = (shift_filter >> 4) & 0xf;
-
-        self.current_address = (self.current_address + 1) & 0x7_ffff;
-
-        let flags = sound_ram.read8(self.current_address as usize);
-
-        block.loop_end = flags & 1 == 1;
-        block.loop_repeat = (flags >> 1) & 1 == 1;
-        block.loop_start = (flags >> 2) & 1 == 1;
-
-        if block.loop_start && !self.ignore_loop_address {
-            self.repeat_address = self.current_address - 1;
-        }
-
-        self.current_address = (self.current_address + 1) & 0x7_ffff;
-
-        for i in 0..14 {
-            block.sample_blocks[i] = sound_ram.read8(self.current_address as usize);
-
-            self.current_address = (self.current_address + 1) & 0x7_ffff;
-        }
-
-        block
     }
 
     pub fn update_keyon(&mut self) {

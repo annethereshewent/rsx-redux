@@ -27,16 +27,18 @@ use std::process::exit;
 #[cfg(feature = "hardware_gpu")]
 use crate::renderer::Renderer;
 
+#[cfg(feature = "old_spu")]
 pub struct PsxAudioCallback {
     pub audio_buffer: VecDeque<f32>,
 }
 
+#[cfg(feature = "old_spu")]
 impl AudioCallback for PsxAudioCallback {
     type Channel = f32;
 
     fn callback(&mut self, buf: &mut [Self::Channel]) {
-        let mut left_sample: f32 = 0.0;
-        let mut right_sample: f32 = 0.0;
+        let mut left_sample = 0.0;
+        let mut right_sample = 0.0;
 
         let len = self.audio_buffer.len();
 
@@ -63,6 +65,54 @@ impl AudioCallback for PsxAudioCallback {
     }
 }
 
+#[cfg(feature = "new_spu")]
+pub struct PsxAudioCallback {
+    pub audio_buffer: VecDeque<i16>,
+}
+
+#[cfg(feature = "new_spu")]
+impl AudioCallback for PsxAudioCallback {
+    type Channel = i16;
+
+    fn callback(&mut self, buf: &mut [Self::Channel]) {
+        let mut left_sample: i16 = 0;
+        let mut right_sample: i16 = 0;
+
+        let len = self.audio_buffer.len();
+
+        if self.audio_buffer.len() > 2 {
+            left_sample = self.audio_buffer[len - 2];
+            right_sample = self.audio_buffer[len - 1];
+        }
+
+        let mut is_left_sample = true;
+
+        for b in buf.iter_mut() {
+            *b = if let Some(sample) = self.audio_buffer.pop_front() {
+                sample
+            } else {
+                if is_left_sample {
+                    left_sample
+                } else {
+                    right_sample
+                }
+            };
+
+            is_left_sample = !is_left_sample;
+        }
+    }
+}
+
+#[cfg(feature = "new_spu")]
+impl PsxAudioCallback {
+    pub fn push_samples(&mut self, samples: Vec<i16>) {
+        for sample in samples.iter() {
+            self.audio_buffer.push_back(*sample);
+        }
+    }
+}
+
+#[cfg(feature = "old_spu")]
 impl PsxAudioCallback {
     pub fn push_samples(&mut self, samples: Vec<f32>) {
         for sample in samples.iter() {
@@ -114,9 +164,16 @@ impl Frontend {
         }
     }
 
+    #[cfg(feature = "new_spu")]
+    pub fn push_samples(&mut self, samples: Vec<i16>) {
+        self.device.lock().deref_mut().push_samples(samples);
+    }
+
+    #[cfg(feature = "old_spu")]
     pub fn push_samples(&mut self, samples: Vec<f32>) {
         self.device.lock().deref_mut().push_samples(samples);
     }
+
     #[allow(unused_variables)]
     pub fn new(gpu: &GPU) -> Self {
         let sdl_context = sdl2::init().unwrap();

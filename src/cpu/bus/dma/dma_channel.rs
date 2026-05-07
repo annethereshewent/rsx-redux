@@ -293,6 +293,9 @@ impl DmaChannel {
 
             current_address += 4;
         }
+
+        #[cfg(feature = "new_spu")]
+        spu.update_dma_request();
     }
 
     pub fn start_pio_transfer(&mut self) {
