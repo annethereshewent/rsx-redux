@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cpu::bus::{
     registers::interrupt_register::InterruptRegister,
-    spu::{SoundRam, SOUND_RAM_SIZE, SPU},
+    spu::{SOUND_RAM_SIZE, SPU, SoundRam},
 };
 
 pub const VOLUME_MIN: i32 = -0x8000;
@@ -79,7 +79,7 @@ const GAUSSIAN_TABLE: [i32; 0x200] = [
     0x57C3, 0x57E2, 0x57FF, 0x581C, 0x5838, 0x5853, 0x586D, 0x5886, //
     0x589E, 0x58B5, 0x58CB, 0x58E0, 0x58F4, 0x5907, 0x5919, 0x592A, //
     0x593A, 0x5949, 0x5958, 0x5965, 0x5971, 0x597C, 0x5986, 0x598F, //
-    0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3  //
+    0x5997, 0x599E, 0x59A4, 0x59A9, 0x59AD, 0x59B0, 0x59B2, 0x59B3, //
 ];
 
 #[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -642,7 +642,14 @@ impl Voice {
 
         if !self.has_samples {
             let mut block = ADPCMBlock::new();
-            Self::read_adpcm_block(sound_ram, self.current_address, &mut block, irq9_enable, irq9_flag, interrupt_register);
+            Self::read_adpcm_block(
+                sound_ram,
+                self.current_address,
+                &mut block,
+                irq9_enable,
+                irq9_flag,
+                interrupt_register,
+            );
         }
 
         (0, 0, true)
@@ -654,11 +661,9 @@ impl Voice {
         block: &mut ADPCMBlock,
         irq9_enable: bool,
         irq9_flag: bool,
-        interrupt_register: &mut InterruptRegister
+        interrupt_register: &mut InterruptRegister,
     ) {
-        let ram_address = current_address & (SOUND_RAM_SIZE as u32 -1);
-
-
+        let ram_address = current_address & (SOUND_RAM_SIZE as u32 - 1);
     }
 
     pub fn update_keyon(&mut self) {
