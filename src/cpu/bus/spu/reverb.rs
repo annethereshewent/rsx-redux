@@ -40,8 +40,8 @@ pub struct Reverb {
     mrapf1: u32,
     mrapf2: u32,
     pub calculate_left: bool,
-    pub left_out: f32,
-    pub right_out: f32,
+    pub left_out: i32,
+    pub right_out: i32,
     pub buffer_address: u32,
 }
 
@@ -81,8 +81,8 @@ impl Reverb {
             mrapf2: 0,
             mldiff: 0,
             mrdiff: 0,
-            left_out: 0.0,
-            right_out: 0.0,
+            left_out: 0,
+            right_out: 0,
             calculate_left: false,
             buffer_address: 0,
         }
@@ -112,80 +112,99 @@ impl Reverb {
       ___Finally, before repeating the above steps_________________________________
       BufferAddress = MAX(mBASE, (BufferAddress+2) AND 7FFFEh)
     */
-    pub fn calculate_right_reverb(&mut self, ram: &mut SoundRam, right_input: f32) {
-        let rin = SPU::to_f32(self.vrin) * right_input;
+    pub fn calculate_right_reverb(&mut self, ram: &mut SoundRam, right_input: i32) {
+        let rin = SPU::apply_volume(right_input, self.vrin as i32);
 
         let temp = self.get_from_ram(ram, self.mrsame - 2);
-        let mrsame = rin + self.get_from_ram(ram, self.drsame) * SPU::to_f32(self.vwall)
-            - temp * SPU::to_f32(self.viir)
+        let mrsame = rin
+            + SPU::apply_volume(self.get_from_ram(ram, self.drsame), self.vwall as i32)
+            - SPU::apply_volume(temp, self.viir as i32)
             + temp;
-        self.write_to_ram(ram, self.mrsame, mrsame);
+        self.write_to_ram(ram, self.mrsame, mrsame.clamp(-0x8000, 0x7fff) as i16);
 
         let temp = self.get_from_ram(ram, self.mrdiff - 2);
-        let mrdiff = rin + self.get_from_ram(ram, self.dldiff) * SPU::to_f32(self.vwall)
-            - temp * SPU::to_f32(self.viir)
+        let mrdiff = rin
+            + SPU::apply_volume(self.get_from_ram(ram, self.dldiff), self.vwall as i32)
+            - SPU::apply_volume(temp, self.viir as i32)
             + temp;
-        self.write_to_ram(ram, self.mrdiff, mrdiff);
+        self.write_to_ram(ram, self.mrdiff, mrdiff.clamp(-0x8000, 0x7fff) as i16);
 
-        let mut rout = SPU::to_f32(self.vcomb1) * self.get_from_ram(ram, self.mrcomb1);
-        rout += SPU::to_f32(self.vcomb2) * self.get_from_ram(ram, self.mrcomb2);
-        rout += SPU::to_f32(self.vcomb3) * self.get_from_ram(ram, self.mrcomb3);
-        rout += SPU::to_f32(self.vcomb4) * self.get_from_ram(ram, self.mrcomb4);
+        let mut rout = SPU::apply_volume(self.get_from_ram(ram, self.mrcomb1), self.vcomb1 as i32);
+        rout += SPU::apply_volume(self.get_from_ram(ram, self.mrcomb2), self.vcomb2 as i32);
+        rout += SPU::apply_volume(self.get_from_ram(ram, self.mrcomb3), self.vcomb3 as i32);
+        rout += SPU::apply_volume(self.get_from_ram(ram, self.mrcomb4), self.vcomb4 as i32);
 
-        rout -= SPU::to_f32(self.vapf1) * self.get_from_ram(ram, self.mrapf1 - self.dapf1);
-        self.write_to_ram(ram, self.mrapf1, rout);
-        rout = rout * SPU::to_f32(self.vapf1) + self.get_from_ram(ram, self.mrapf1 - self.dapf1);
+        rout -= SPU::apply_volume(
+            self.get_from_ram(ram, self.mrapf1 - self.dapf1),
+            self.vapf1 as i32,
+        );
+        self.write_to_ram(ram, self.mrapf1, rout.clamp(-0x8000, 0x7fff) as i16);
+        rout = SPU::apply_volume(rout, self.vapf1 as i32)
+            + self.get_from_ram(ram, self.mrapf1 - self.dapf1);
 
-        rout -= SPU::to_f32(self.vapf2) * self.get_from_ram(ram, self.mrapf2 - self.dapf2);
-        self.write_to_ram(ram, self.mrapf2, rout);
-        rout = rout * SPU::to_f32(self.vapf2) + self.get_from_ram(ram, self.mrapf2 - self.dapf2);
+        rout -= SPU::apply_volume(
+            self.get_from_ram(ram, self.mrapf2 - self.dapf2),
+            self.vapf2 as i32,
+        );
+        self.write_to_ram(ram, self.mrapf2, rout.clamp(-0x8000, 0x7fff) as i16);
+        rout = SPU::apply_volume(rout, self.vapf2 as i32)
+            + self.get_from_ram(ram, self.mrapf2 - self.dapf2);
 
         self.right_out = rout;
 
         // once we have finished calculating both lin and rout, we can update the buffer address to the next address.
         self.buffer_address = cmp::max((self.buffer_address + 2) & 0x7fffe, self.mbase);
     }
-    pub fn calculate_left_reverb(&mut self, ram: &mut SoundRam, left_input: f32) {
-        let lin = SPU::to_f32(self.vlin) * left_input;
+    pub fn calculate_left_reverb(&mut self, ram: &mut SoundRam, left_input: i32) {
+        let lin = SPU::apply_volume(left_input, self.vlin as i32);
 
         let temp = self.get_from_ram(ram, self.mlsame - 2);
-        let mlsame = lin + self.get_from_ram(ram, self.dlsame) * SPU::to_f32(self.vwall)
-            - temp * SPU::to_f32(self.viir)
+        let mlsame = lin
+            + SPU::apply_volume(self.get_from_ram(ram, self.dlsame), self.vwall as i32)
+            - SPU::apply_volume(temp, self.viir as i32)
             + temp;
-        self.write_to_ram(ram, self.mlsame, mlsame);
+        self.write_to_ram(ram, self.mlsame, mlsame.clamp(-0x8000, 0x7fff) as i16);
 
         let temp = self.get_from_ram(ram, self.mldiff - 2);
-        let mldiff = lin + self.get_from_ram(ram, self.drdiff) * SPU::to_f32(self.vwall)
-            - temp * SPU::to_f32(self.viir)
+        let mldiff = lin
+            + SPU::apply_volume(self.get_from_ram(ram, self.drdiff), self.vwall as i32)
+            - SPU::apply_volume(temp, self.viir as i32)
             + temp;
-        self.write_to_ram(ram, self.mldiff, mldiff);
+        self.write_to_ram(ram, self.mldiff, mldiff.clamp(-0x8000, 0x7fff) as i16);
 
-        let mut lout = SPU::to_f32(self.vcomb1) * self.get_from_ram(ram, self.mlcomb1);
-        lout += SPU::to_f32(self.vcomb2) * self.get_from_ram(ram, self.mlcomb2);
-        lout += SPU::to_f32(self.vcomb3) * self.get_from_ram(ram, self.mlcomb3);
-        lout += SPU::to_f32(self.vcomb4) * self.get_from_ram(ram, self.mlcomb4);
+        let mut lout = SPU::apply_volume(self.get_from_ram(ram, self.mlcomb1), self.vcomb1 as i32);
+        lout += SPU::apply_volume(self.get_from_ram(ram, self.mlcomb2), self.vcomb2 as i32);
+        lout += SPU::apply_volume(self.get_from_ram(ram, self.mlcomb3), self.vcomb3 as i32);
+        lout += SPU::apply_volume(self.get_from_ram(ram, self.mlcomb4), self.vcomb4 as i32);
 
-        lout -= SPU::to_f32(self.vapf1) * self.get_from_ram(ram, self.mlapf1 - self.dapf1);
-        self.write_to_ram(ram, self.mlapf1, lout);
-        lout = lout * SPU::to_f32(self.vapf1) + self.get_from_ram(ram, self.mlapf1 - self.dapf1);
+        lout -= SPU::apply_volume(
+            self.get_from_ram(ram, self.mlapf1 - self.dapf1),
+            self.vapf1 as i32,
+        );
+        self.write_to_ram(ram, self.mlapf1, lout.clamp(-0x8000, 0x7fff) as i16);
+        lout = SPU::apply_volume(lout, self.vapf1 as i32)
+            + self.get_from_ram(ram, self.mlapf1 - self.dapf1);
 
-        lout -= SPU::to_f32(self.vapf2) * self.get_from_ram(ram, self.mlapf2 - self.dapf2);
-        self.write_to_ram(ram, self.mlapf2, lout);
-        lout = lout * SPU::to_f32(self.vapf2) + self.get_from_ram(ram, self.mlapf2 - self.dapf2);
+        lout -= SPU::apply_volume(
+            self.get_from_ram(ram, self.mlapf2 - self.dapf2),
+            self.vapf2 as i32,
+        );
+        self.write_to_ram(ram, self.mlapf2, lout.clamp(-0x8000, 0x7fff) as i16);
+        lout = SPU::apply_volume(lout, self.vapf2 as i32)
+            + self.get_from_ram(ram, self.mlapf2 - self.dapf2);
 
         self.left_out = lout;
     }
 
-    fn get_from_ram(&self, ram: &mut SoundRam, address: u32) -> f32 {
-        let value = ram.read16(self.calculate_address(address) as usize) as i16;
-        SPU::to_f32(value)
+    fn get_from_ram(&self, ram: &mut SoundRam, address: u32) -> i32 {
+        let value = ram.read16(self.calculate_address(address) as usize) as i16 as i32;
+        value as i16 as i32
     }
 
-    fn write_to_ram(&self, ram: &mut SoundRam, address: u32, val: f32) {
+    fn write_to_ram(&self, ram: &mut SoundRam, address: u32, val: i16) {
         let address = self.calculate_address(address);
-        let result = SPU::to_i16(val) as u16;
 
-        ram.write16(address as usize, result);
+        ram.write16(address as usize, val as u16);
     }
 
     fn calculate_address(&self, address: u32) -> u32 {

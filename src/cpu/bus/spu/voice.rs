@@ -1,10 +1,9 @@
-use std::{cmp, i16};
-
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 use crate::cpu::bus::{
     registers::interrupt_register::InterruptRegister,
-    spu::{SOUND_RAM_SIZE, SPU, SoundRam},
+    spu::{SOUND_RAM_SIZE, SPU, SoundRam, spu_stat_register::SpuStatRegister},
 };
 
 pub const VOLUME_MIN: i32 = -0x8000;
@@ -131,93 +130,93 @@ impl Envelope {
     // per duckstation
     fn reset(
         &mut self,
-        rate: u8,
-        shift: i8,
-        step: i8,
+        rate: u16,
         rate_mask: u8,
+        sweep_direction: EnvelopeDirection,
         mode: EnvelopeMode,
-        direction: EnvelopeDirection,
-        invert: bool,
+        phase_invert: bool,
     ) {
-        self.counter = 0;
-        self.increment = 0x8000;
-        self.rate = rate;
-        self.invert_phase = invert;
-        self.direction = direction;
-
-        let decreasing = direction == EnvelopeDirection::Decrease;
-
-        let invert_phase = self.invert_phase && !(decreasing && mode == EnvelopeMode::Exponential);
-
-        self.step = if invert_phase {
-            !step as i16
-        } else {
-            step as i16
-        };
-
+        self.rate = rate as u8;
+        self.direction = sweep_direction;
         self.mode = mode;
 
-        if rate < 44 {
-            self.step <<= 11 - shift;
-        } else if rate >= 48 {
-            self.increment >>= shift - 11;
+        self.invert_phase = phase_invert
+            && (mode == EnvelopeMode::Exponential
+                && sweep_direction == EnvelopeDirection::Increase);
 
-            if (rate & rate_mask) != rate_mask {
-                self.increment = cmp::max(self.increment, 1);
+        self.counter = 0;
+        self.increment = 0x8000;
+
+        let base_step = (7 - (self.rate & 3)) as i16;
+        let decreasing = sweep_direction == EnvelopeDirection::Decrease;
+        let is_exponential = mode == EnvelopeMode::Exponential;
+
+        self.step = if decreasing != phase_invert || decreasing && is_exponential {
+            !base_step
+        } else {
+            base_step
+        };
+
+        if self.rate < 44 {
+            self.step <<= 11 - (self.rate >> 2);
+        } else if self.rate >= 48 {
+            self.increment >>= (rate >> 2) - 11;
+
+            if (self.rate & rate_mask) != rate_mask {
+                self.increment = self.increment.max(1);
             }
         }
     }
 
-    fn tick(&mut self) -> bool {
-        let (actual_step, actual_increment) = if self.mode == EnvelopeMode::Exponential {
+    fn tick(&mut self, current_level: &mut i16) -> bool {
+        let mut this_increment = self.increment;
+        let mut this_step = self.step;
+
+        if self.mode == EnvelopeMode::Exponential {
             if self.direction == EnvelopeDirection::Decrease {
-                (
-                    ((self.step as i32 * self.volume as i32) >> 15) as i16,
-                    self.increment,
-                )
+                this_step = (this_step * *current_level) >> 15;
             } else {
-                if self.volume >= 0x6000 {
+                if *current_level >= 0x6000 {
                     if self.rate < 40 {
-                        (self.step >> 2, self.increment)
+                        this_step >>= 2;
                     } else if self.rate >= 44 {
-                        (self.step, self.increment >> 2)
+                        this_increment >>= 2;
                     } else {
-                        (self.step >> 1, self.increment >> 1)
+                        this_step >>= 1;
+                        this_increment >>= 1;
                     }
-                } else {
-                    (self.step, self.increment)
                 }
             }
-        } else {
-            (self.step, self.increment)
-        };
+        }
 
-        self.counter += actual_increment as u32;
+        self.counter += this_increment as u32;
 
-        if (self.counter >> 15) & 1 == 0 {
+        if self.counter & 0x8000 == 0 {
             return true;
         }
 
         self.counter = 0;
 
-        let new_volume = self.volume as i32 + actual_step as i32;
+        let new_level = *current_level as i32 + this_step as i32;
 
         if self.direction == EnvelopeDirection::Increase {
-            self.volume = SPU::clamp(new_volume, VOLUME_MIN, VOLUME_MAX);
-
-            if self.step < 0 {
-                self.volume as i32 != VOLUME_MIN
+            let new_level = new_level.clamp(-0x8000, 0x7fff) as i16;
+            *current_level = new_level;
+            if this_step < 0 {
+                new_level != -0x8000
             } else {
-                self.volume as i32 != VOLUME_MAX
+                new_level != 0x7fff
             }
         } else {
-            if self.invert_phase {
-                self.volume = SPU::clamp(new_volume, VOLUME_MIN, 0);
+            let new_level = if self.invert_phase {
+                new_level.clamp(-0x8000, 0) as i16
             } else {
-                self.volume = cmp::max(new_volume, 0) as i16;
-            }
+                new_level.max(0) as i16
+            };
 
-            self.volume == 0
+            *current_level = new_level;
+
+            new_level == 0
         }
     }
 }
@@ -337,106 +336,67 @@ impl Adsr {
         };
     }
 
-    pub fn tick(&mut self) {
-        if self.envelope.increment > 0 {
-            self.envelope.tick();
-        }
-
-        if self.current_target < 0 {
-            return;
-        }
-
-        let reached_target = match self.phase {
-            AdsrPhase::Attack | AdsrPhase::Idle => self.envelope.volume >= self.current_target,
-            AdsrPhase::Decay | AdsrPhase::Release => self.envelope.volume <= self.current_target,
-            AdsrPhase::Sustain => {
-                if self.sustain_direction == EnvelopeDirection::Decrease {
-                    self.envelope.volume <= self.current_target
-                } else {
-                    self.envelope.volume >= self.current_target
-                }
-            }
-        };
-
-        if reached_target {
-            self.phase = match self.phase {
-                AdsrPhase::Attack => AdsrPhase::Decay,
-                AdsrPhase::Decay => AdsrPhase::Sustain,
-                AdsrPhase::Sustain => AdsrPhase::Sustain,
-                AdsrPhase::Idle => AdsrPhase::Idle,
-                AdsrPhase::Release => AdsrPhase::Idle,
-            };
-
-            self.update_envelope();
-        }
-    }
-
     pub fn update_envelope(&mut self) {
         match self.phase {
+            AdsrPhase::Idle => {
+                self.current_target = 0;
+                self.envelope.reset(
+                    0,
+                    0,
+                    EnvelopeDirection::Increase,
+                    EnvelopeMode::Linear,
+                    false,
+                );
+            }
             AdsrPhase::Attack => {
                 self.current_target = 0x7fff;
                 self.envelope.reset(
-                    self.attack_rate,
-                    self.attack_shift as i8,
-                    self.attack_step as i8,
+                    self.attack_rate as u16,
                     0x7f,
-                    self.attack_mode,
                     EnvelopeDirection::Increase,
+                    self.attack_mode,
                     false,
                 );
             }
             AdsrPhase::Decay => {
                 self.current_target = self.sustain_level as i16;
                 self.envelope.reset(
-                    self.decay_shift << 2,
-                    self.decay_shift as i8,
-                    -8,
+                    (self.decay_shift as u16) << 2,
                     0x1f << 2,
-                    EnvelopeMode::Exponential,
                     EnvelopeDirection::Decrease,
+                    EnvelopeMode::Exponential,
                     false,
                 );
             }
             AdsrPhase::Sustain => {
-                self.current_target = -1;
+                self.current_target = 0;
                 self.envelope.reset(
-                    self.sustain_rate,
-                    self.sustain_shift as i8,
-                    if self.sustain_direction == EnvelopeDirection::Decrease {
-                        !self.sustain_step as i8
-                    } else {
-                        self.sustain_step as i8
-                    },
+                    self.sustain_rate as u16,
                     0x7f,
-                    self.sustain_mode,
                     self.sustain_direction,
+                    self.sustain_mode,
                     false,
                 );
             }
             AdsrPhase::Release => {
                 self.current_target = 0;
                 self.envelope.reset(
-                    self.release_shift << 2,
-                    self.release_shift as i8,
-                    -8,
+                    (self.release_shift as u16) << 2,
                     0x1f << 2,
-                    self.release_mode,
                     EnvelopeDirection::Decrease,
+                    self.release_mode,
                     false,
                 );
             }
-            AdsrPhase::Idle => {
-                self.current_target = 0;
-                self.envelope.reset(
-                    0,
-                    0,
-                    0,
-                    0,
-                    EnvelopeMode::Linear,
-                    EnvelopeDirection::Increase,
-                    false,
-                );
-            }
+        }
+    }
+
+    pub fn get_next_phase(&mut self) -> AdsrPhase {
+        match self.phase {
+            AdsrPhase::Attack => AdsrPhase::Decay,
+            AdsrPhase::Release => AdsrPhase::Idle,
+            AdsrPhase::Sustain | AdsrPhase::Decay => AdsrPhase::Sustain,
+            AdsrPhase::Idle => AdsrPhase::Idle,
         }
     }
 }
@@ -459,7 +419,84 @@ impl ADPCMBlock {
             loop_end: false,
             loop_repeat: false,
             loop_start: false,
-            sample_blocks: [0; 14],
+            sample_blocks: [0; NUM_BLOCK_SAMPLES / 2],
+        }
+    }
+}
+
+#[derive(Copy, Clone, Serialize, Deserialize)]
+struct VolumeSweep {
+    register: VolumeRegister,
+    envelope: Envelope,
+    current_level: i16,
+    envelope_active: bool,
+}
+
+impl VolumeSweep {
+    fn new() -> Self {
+        Self {
+            register: VolumeRegister::from_bits_retain(0),
+            envelope: Envelope::new(),
+            current_level: 0,
+            envelope_active: false,
+        }
+    }
+
+    fn tick(&mut self) {
+        if !self.envelope_active {
+            return;
+        }
+
+        self.envelope_active = self.envelope.tick(&mut self.current_level);
+    }
+
+    fn reset(&mut self) {
+        if !self.register.contains(VolumeRegister::SWEEP_MODE) {
+            self.current_level = self.register.fixed_volume() as i16 * 2;
+            self.envelope_active = false;
+        } else {
+            self.envelope.reset(
+                self.register.sweep_rate(),
+                0x7f,
+                self.register.sweep_direction(),
+                self.register.sweep_mode(),
+                self.register.contains(VolumeRegister::SWEEP_PHASE_NEGATIVE),
+            );
+
+            self.envelope_active = self.envelope.increment > 0;
+        }
+    }
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Serialize, Deserialize)]
+    struct VolumeRegister: u16 {
+        const SWEEP_PHASE_NEGATIVE = 1 << 12;
+        const SWEEP_DIRECTION_DECREASE = 1 << 13;
+        const SWEEP_EXPONENTIAL = 1 << 14;
+        const SWEEP_MODE = 1 << 15;
+    }
+}
+
+impl VolumeRegister {
+    fn sweep_rate(&self) -> u16 {
+        self.bits() & 0x7f
+    }
+    fn fixed_volume(&self) -> u16 {
+        self.bits() & 0x7fff
+    }
+    fn sweep_direction(&self) -> EnvelopeDirection {
+        if self.contains(Self::SWEEP_DIRECTION_DECREASE) {
+            EnvelopeDirection::Decrease
+        } else {
+            EnvelopeDirection::Increase
+        }
+    }
+    fn sweep_mode(&self) -> EnvelopeMode {
+        if self.contains(Self::SWEEP_EXPONENTIAL) {
+            EnvelopeMode::Exponential
+        } else {
+            EnvelopeMode::Linear
         }
     }
 }
@@ -479,16 +516,18 @@ pub struct Voice {
     current_samples: [i16; NUM_BLOCK_SAMPLES],
     current_block: ADPCMBlock,
     pub last_volume: i32,
-    left_envelope: Envelope,
-    right_envelope: Envelope,
+    left_volume: VolumeSweep,
+    right_volume: VolumeSweep,
     using_left_envelope: bool,
     using_right_envelope: bool,
     ignore_loop_address: bool,
     repeat_address_io_write: bool,
+    adsr_volume: i16,
+    voice_index: usize,
 }
 
 impl Voice {
-    pub fn new() -> Self {
+    pub fn new(voice_index: usize) -> Self {
         Self {
             adsr: Adsr::new(),
             start_address: 0,
@@ -502,93 +541,27 @@ impl Voice {
             current_samples: [0; NUM_BLOCK_SAMPLES],
             current_block: ADPCMBlock::new(),
             last_volume: 0,
-            left_envelope: Envelope::new(),
-            right_envelope: Envelope::new(),
+            left_volume: VolumeSweep::new(),
+            right_volume: VolumeSweep::new(),
             using_left_envelope: false,
             using_right_envelope: false,
             last_gaussian_samples: [0; 4],
             ignore_loop_address: false,
             repeat_address_io_write: false,
+            adsr_volume: 0,
+            voice_index,
         }
-    }
-
-    fn get_sweep_params(value: u16) -> (u8, i8, i8, EnvelopeMode, EnvelopeDirection, bool) {
-        let sweep_shift = (value >> 2) & 0x1f;
-        let sweep_rate = value & 0x7f;
-
-        let invert_phase = (value >> 12) & 1 == 1;
-
-        let direction = match (value >> 13) & 1 {
-            0 => EnvelopeDirection::Increase,
-            1 => EnvelopeDirection::Decrease,
-            _ => unreachable!(),
-        };
-
-        let sweep_step = if direction == EnvelopeDirection::Increase {
-            7 - ((value & 0x3) as i8)
-        } else {
-            -8 + ((value & 0x3) as i8)
-        };
-
-        let mode = match (value >> 14) & 1 {
-            0 => EnvelopeMode::Linear,
-            1 => EnvelopeMode::Exponential,
-            _ => unreachable!(),
-        };
-
-        (
-            sweep_rate as u8,
-            sweep_shift as i8,
-            sweep_step,
-            mode,
-            direction,
-            invert_phase,
-        )
     }
 
     pub fn write(&mut self, channel: usize, value: u16) {
         match channel {
             0x0 => {
-                if (value >> 15) & 1 == 1 {
-                    let (sweep_rate, sweep_shift, sweep_step, mode, direction, invert_phase) =
-                        Self::get_sweep_params(value);
-
-                    self.left_envelope.reset(
-                        sweep_rate as u8,
-                        sweep_shift as i8,
-                        sweep_step,
-                        0x7f,
-                        mode,
-                        direction,
-                        invert_phase,
-                    );
-                    self.using_right_envelope = self.right_envelope.increment > 0;
-
-                    self.using_left_envelope = self.left_envelope.increment > 0;
-                } else {
-                    self.using_left_envelope = false;
-                    self.left_envelope.volume = (value * 2) as i16;
-                }
+                self.left_volume.register = VolumeRegister::from_bits_retain(value);
+                self.left_volume.reset();
             }
             0x2 => {
-                if (value >> 15) & 1 == 1 {
-                    let (sweep_rate, sweep_shift, sweep_step, mode, direction, invert_phase) =
-                        Self::get_sweep_params(value);
-
-                    self.right_envelope.reset(
-                        sweep_rate as u8,
-                        sweep_shift as i8,
-                        sweep_step,
-                        0x7f,
-                        mode,
-                        direction,
-                        invert_phase,
-                    );
-                    self.using_right_envelope = self.right_envelope.increment > 0;
-                } else {
-                    self.using_right_envelope = false;
-                    self.right_envelope.volume = (value * 2) as i16;
-                }
+                self.right_volume.register = VolumeRegister::from_bits_retain(value);
+                self.right_volume.reset();
             }
             0x4 => self.sample_rate = value,
             0x6 => self.start_address = (value as u32) * 8,
@@ -606,7 +579,7 @@ impl Voice {
                     self.adsr.update_envelope();
                 }
             }
-            0xc => self.adsr.envelope.volume = value as i16,
+            0xc => self.adsr_volume = value as i16,
             0xe => {
                 self.ignore_loop_address =
                     !self.is_first_block && self.adsr.phase == AdsrPhase::Idle;
@@ -623,47 +596,231 @@ impl Voice {
         self.adsr.phase = AdsrPhase::Idle;
     }
 
+    fn get_noise_sample(&self) -> i32 {
+        0
+    }
+
+    fn interpolate(&self) -> i32 {
+        let i = ((self.pitch_counter >> 4) & 0xff) as usize;
+        let sample_index = (3 + self.pitch_counter >> 12) as usize;
+
+        let mut out = GAUSSIAN_TABLE[0xff - i] * self.current_samples[sample_index - 3] as i32;
+        out += GAUSSIAN_TABLE[0x1ff - i] * self.current_samples[sample_index - 2] as i32;
+        out += GAUSSIAN_TABLE[0x100 + i] * self.current_samples[sample_index - 1] as i32;
+        out += GAUSSIAN_TABLE[0x000 + i] * self.current_samples[sample_index] as i32;
+
+        out
+    }
+
+    fn tick_adsr(&mut self) {
+        if self.adsr.envelope.increment > 0 {
+            self.adsr.envelope.tick(&mut self.adsr_volume);
+        }
+
+        if self.adsr.phase != AdsrPhase::Sustain {
+            let reached_target = if self.adsr.envelope.direction == EnvelopeDirection::Decrease {
+                self.adsr_volume <= self.adsr.current_target
+            } else {
+                self.adsr_volume >= self.adsr.current_target
+            };
+
+            if reached_target {
+                self.adsr.phase = self.adsr.get_next_phase();
+                self.adsr.update_envelope();
+            }
+        }
+    }
+
     pub fn generate_samples(
         &mut self,
         sound_ram: &SoundRam,
+        endx: &mut u32,
         irq_address: u32,
         irq9_enable: bool,
         irq9_flag: bool,
         interrupt_register: &mut InterruptRegister,
+        spustat: &mut SpuStatRegister,
         pitch_modulate: bool,
         previous_volume: i32,
         noise_enable: bool,
-    ) -> (i16, i16, bool) {
+    ) -> (i32, i32) {
         if self.adsr.phase == AdsrPhase::Idle && !irq9_enable {
             self.last_volume = 0;
 
-            return (0, 0, false);
+            return (0, 0);
         }
 
         if !self.has_samples {
-            let mut block = ADPCMBlock::new();
-            Self::read_adpcm_block(
+            let block = Self::read_adpcm_block(
                 sound_ram,
                 self.current_address,
-                &mut block,
                 irq9_enable,
                 irq9_flag,
+                irq_address,
+                spustat,
                 interrupt_register,
             );
+
+            self.decode_block(block);
+
+            self.has_samples = true;
+
+            if block.loop_start && !self.ignore_loop_address {
+                self.repeat_address = self.current_address;
+            }
         }
 
-        (0, 0, true)
+        let volume = if self.adsr_volume != 0 {
+            let sample = if noise_enable {
+                self.get_noise_sample()
+            } else {
+                self.interpolate()
+            };
+
+            SPU::apply_volume(sample, self.adsr_volume as i32)
+        } else {
+            0
+        };
+
+        self.last_volume = volume;
+
+        if self.adsr.phase != AdsrPhase::Idle {
+            self.tick_adsr();
+        }
+
+        let mut step = self.sample_rate as u32;
+
+        if pitch_modulate {
+            let factor = (previous_volume.clamp(-0x8000, 0x7fff) + 0x8000) as u32;
+
+            step = ((step * factor) >> 15) as i16 as u16 as u32;
+        }
+
+        if step > 0x3fff {
+            step = 0x4000;
+        }
+
+        self.pitch_counter += step;
+
+        let mut sample_index = self.pitch_counter >> 12;
+
+        if sample_index >= NUM_BLOCK_SAMPLES as u32 {
+            self.is_first_block = false;
+            self.has_samples = false;
+            sample_index -= NUM_BLOCK_SAMPLES as u32;
+
+            self.pitch_counter &= 0xfff;
+            self.pitch_counter |= sample_index << 12;
+
+            self.current_address += 16;
+
+            if self.current_block.loop_end {
+                *endx |= 1 << self.voice_index;
+
+                self.current_address = self.repeat_address;
+
+                if !self.current_block.loop_repeat && !noise_enable {
+                    self.force_off();
+                }
+            }
+        }
+
+        self.left_volume.tick();
+        self.right_volume.tick();
+
+        (
+            SPU::apply_volume(volume, self.left_volume.current_level as i32),
+            SPU::apply_volume(volume, self.right_volume.current_level as i32),
+        )
+    }
+
+    fn decode_block(&mut self, block: ADPCMBlock) {
+        let positive_filter = POS_FILTER_TABLE[block.filter as usize];
+        let negative_filter = NEG_FILTER_TABLE[block.filter as usize];
+
+        let samples_len = self.current_samples.len();
+
+        self.current_samples[2] = self.current_samples[samples_len - 1];
+        self.current_samples[1] = self.current_samples[samples_len - 2];
+        self.current_samples[0] = self.current_samples[samples_len - 3];
+
+        let mut last_samples = [self.last_decoded_samples[0], self.last_decoded_samples[1]];
+
+        for i in 0..NUM_BLOCK_SAMPLES {
+            let byte = block.sample_blocks[i / 2];
+
+            let nibble = if i & 1 == 0 {
+                byte & 0xf
+            } else {
+                (byte >> 4) & 0xf
+            };
+
+            let mut sample = (((nibble as i16) << 12) >> block.shift) as i32;
+
+            sample += (last_samples[0] as i32 * positive_filter as i32) >> 6;
+            sample += (last_samples[1] as i32 * negative_filter as i32) >> 6;
+
+            last_samples[1] = last_samples[0];
+
+            let sample = sample.clamp(-0x8000, 0x7fff) as i16;
+
+            self.current_samples[i + 3] = sample;
+            last_samples[0] = sample;
+        }
+
+        self.last_decoded_samples = last_samples;
+        self.current_block = block;
     }
 
     fn read_adpcm_block(
         sound_ram: &SoundRam,
-        current_address: u32,
-        block: &mut ADPCMBlock,
+        mut current_address: u32,
         irq9_enable: bool,
         irq9_flag: bool,
+        irq_address: u32,
+        spustat: &mut SpuStatRegister,
         interrupt_register: &mut InterruptRegister,
-    ) {
-        let ram_address = current_address & (SOUND_RAM_SIZE as u32 - 1);
+    ) -> ADPCMBlock {
+        let mut block = ADPCMBlock::new();
+        if irq9_enable
+            && !irq9_flag
+            && (current_address == irq_address || current_address + 8 == irq_address)
+        {
+            spustat.insert(SpuStatRegister::IRQ9_FLAG);
+            interrupt_register.insert(InterruptRegister::SPU);
+        }
+
+        let shift_filter = sound_ram.read8(current_address as usize);
+
+        block.shift = shift_filter & 0xf;
+        block.filter = (shift_filter >> 4) & 0xf;
+
+        current_address = (current_address + 1) & (SOUND_RAM_SIZE as u32 - 1);
+
+        let flags = sound_ram.read8(current_address as usize);
+
+        block.loop_end = flags & 0x1 == 1;
+        block.loop_repeat = (flags >> 1) & 0x1 == 1;
+        block.loop_start = (flags >> 2) & 0x1 == 1;
+
+        current_address = (current_address + 1) & (SOUND_RAM_SIZE as u32 - 1);
+
+        if current_address + 14 < SOUND_RAM_SIZE as u32 {
+            let mut data = [0; 14];
+
+            data.copy_from_slice(
+                &sound_ram.ram[current_address as usize..current_address as usize + 14],
+            );
+
+            block.sample_blocks = data;
+        } else {
+            for i in 0..14 {
+                block.sample_blocks[i] = sound_ram.read8(current_address as usize);
+                current_address = (current_address + 1) & (SOUND_RAM_SIZE as u32 - 1);
+            }
+        }
+
+        block
     }
 
     pub fn update_keyon(&mut self) {
@@ -693,8 +850,8 @@ impl Voice {
 
     pub fn read(&self, channel: usize) -> u16 {
         match channel {
-            0x0 => (self.left_envelope.volume / 2) as u16,
-            0x2 => (self.right_envelope.volume / 2) as u16,
+            0x0 => (self.left_volume.register.bits()) as u16,
+            0x2 => (self.right_volume.register.bits()) as u16,
             0x4 => self.sample_rate,
             0x6 => (self.start_address / 8) as u16,
             0x8 => self.adsr.value as u16,

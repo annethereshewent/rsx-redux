@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{array::from_fn, collections::VecDeque, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
@@ -112,7 +112,7 @@ impl SPU {
             sound_ram_address: 0,
             irq_address: 0,
             current_ram_address: 0,
-            voices: [Voice::new(); 24],
+            voices: from_fn(|index| Voice::new(index)),
             keyon: 0,
             sample_fifo: VecDeque::new(),
             sound_ram: SoundRam::new(),
@@ -126,8 +126,8 @@ impl SPU {
         }
     }
 
-    fn apply_volume(sample: f32, volume: i16) -> f32 {
-        sample * SPU::to_f32(volume)
+    fn apply_volume(sample: i32, volume: i32) -> i32 {
+        (sample * volume) >> 15
     }
 
     pub fn clamp(value: i32, min: i32, max: i32) -> i16 {
@@ -437,9 +437,8 @@ impl SPU {
     pub fn tick(&mut self, interrupt_register: &mut InterruptRegister, scheduler: &mut Scheduler) {
         let mut output_left = 0;
         let mut output_right = 0;
-        let mut reverb_left = 0;
-        let mut reverb_right = 0;
-
+        let mut reverb_in_left = 0;
+        let mut reverb_in_right = 0;
         let mut cd_audio_left = 0;
         let mut cd_audio_right = 0;
 
@@ -452,17 +451,80 @@ impl SPU {
 
             let voice = &mut self.voices[i];
 
-            let (left, right, endx) = voice.generate_samples(
+            let (left, right) = voice.generate_samples(
                 &self.sound_ram,
+                &mut self.endx,
                 self.irq_address,
                 self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE),
                 self.spustat.contains(SpuStatRegister::IRQ9_FLAG),
                 interrupt_register,
+                &mut self.spustat,
                 (self.sound_modulation >> i) & 1 == 1 && i > 0,
                 previous_out,
                 (self.noise_enable >> i) & 1 == 1,
             );
+
+            output_left += left;
+            output_right += right;
+
+            if (self.echo_on >> i) & 1 == 1 {
+                reverb_in_left += left;
+                reverb_in_right += right;
+            }
         }
+
+        if self.spucnt.contains(SpuControlRegister::MUTE_SPU) {
+            output_left = 0;
+            output_right = 0;
+            reverb_in_left = 0;
+            reverb_in_right = 0;
+        }
+
+        if self.spucnt.contains(SpuControlRegister::CD_AUDIO_ENABLE) {
+            if let Some(cd_left_sample) = self.cd_left_samples.pop_front() {
+                cd_audio_left = cd_left_sample;
+                let cd_volume_left =
+                    Self::apply_volume(cd_left_sample as i32, self.cd_volume.0 as i32);
+
+                if self.spucnt.contains(SpuControlRegister::CD_AUDIO_REVERB) {
+                    reverb_in_left += cd_volume_left;
+                }
+
+                output_left += cd_volume_left;
+            }
+            if let Some(cd_right_sample) = self.cd_right_samples.pop_front() {
+                cd_audio_right = cd_right_sample;
+                let cd_volume_right =
+                    Self::apply_volume(cd_right_sample as i32, self.cd_volume.1 as i32);
+
+                if self.spucnt.contains(SpuControlRegister::CD_AUDIO_REVERB) {
+                    reverb_in_right += cd_volume_right;
+                }
+
+                output_right += cd_volume_right;
+            }
+        }
+
+        if self
+            .spucnt
+            .contains(SpuControlRegister::REVERB_MASTER_ENABLE)
+        {
+            output_left += self.reverb.left_out;
+            output_right += self.reverb.right_out;
+
+            if self.reverb.calculate_left {
+                self.reverb
+                    .calculate_left_reverb(&mut self.sound_ram, reverb_in_left);
+            } else {
+                self.reverb
+                    .calculate_right_reverb(&mut self.sound_ram, reverb_in_right);
+            }
+
+            self.reverb.calculate_left = !self.reverb.calculate_left;
+        }
+
+        output_left = Self::apply_volume(output_left, self.main_volume_left as i16 as i32);
+        output_right = Self::apply_volume(output_right, self.main_volume_right as i16 as i32);
 
         self.write_to_capture(0, cd_audio_left as u16, interrupt_register);
         self.write_to_capture(1, cd_audio_right as u16, interrupt_register);
@@ -477,6 +539,9 @@ impl SPU {
             interrupt_register,
         );
         self.increment_capture_buffer_address();
+
+        self.push_sample(output_left as i16);
+        self.push_sample(output_right as i16);
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }
