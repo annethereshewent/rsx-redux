@@ -1,4 +1,4 @@
-use std::{array::from_fn, collections::VecDeque, sync::Arc};
+use std::{array::from_fn, collections::VecDeque};
 
 use serde::{Deserialize, Serialize};
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
@@ -7,7 +7,7 @@ use voice::Voice;
 use crate::cpu::bus::{
     registers::interrupt_register::InterruptRegister,
     scheduler::{EventType, Scheduler},
-    spu::{reverb::Reverb, spu_stat_register::SpuStatRegister, voice::AdsrPhase},
+    spu::{reverb::Reverb, spu_stat_register::SpuStatRegister},
 };
 
 pub mod reverb;
@@ -187,7 +187,7 @@ impl SPU {
 
             self.spustat.remove(SpuStatRegister::DMA_TRANSFER_BUSY);
         } else {
-            while let Some(value) = self.sample_fifo.pop_back() {
+            while let Some(value) = self.sample_fifo.pop_front() {
                 self.sound_ram
                     .write16(self.current_ram_address as usize, value);
 
@@ -363,19 +363,21 @@ impl SPU {
                 let previous_enable = self.spucnt.contains(SpuControlRegister::SPU_ENABLE);
                 self.spucnt = SpuControlRegister::from_bits_retain(value);
 
-                if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::ManualWrite {
+                if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::DMAWrite {
                     while !self.sample_fifo.is_empty() {
                         if self.current_ram_address == self.irq_address && self.is_irq_triggerable()
                         {
                             self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
                             interrupt_register.insert(InterruptRegister::SPU);
                         }
+
                         self.sound_ram.write16(
                             self.current_ram_address as usize,
                             self.sample_fifo.pop_front().unwrap(),
                         );
                         self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
                     }
+
                 }
 
                 if previous_enable && !self.spucnt.contains(SpuControlRegister::SPU_ENABLE) {
@@ -473,7 +475,7 @@ impl SPU {
             }
         }
 
-        if self.spucnt.contains(SpuControlRegister::MUTE_SPU) {
+        if !self.spucnt.contains(SpuControlRegister::MUTE_SPU) {
             output_left = 0;
             output_right = 0;
             reverb_in_left = 0;
@@ -542,6 +544,8 @@ impl SPU {
 
         self.push_sample(output_left as i16);
         self.push_sample(output_right as i16);
+
+        self.update_keystatus();
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }

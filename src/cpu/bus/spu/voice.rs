@@ -111,7 +111,6 @@ struct Envelope {
     direction: EnvelopeDirection,
     mode: EnvelopeMode,
     invert_phase: bool,
-    pub volume: i16,
 }
 
 impl Envelope {
@@ -124,7 +123,6 @@ impl Envelope {
             direction: EnvelopeDirection::Decrease,
             mode: EnvelopeMode::Linear,
             invert_phase: false,
-            volume: 0,
         }
     }
     // per duckstation
@@ -160,7 +158,7 @@ impl Envelope {
         if self.rate < 44 {
             self.step <<= 11 - (self.rate >> 2);
         } else if self.rate >= 48 {
-            self.increment >>= (rate >> 2) - 11;
+            self.increment >>= (self.rate >> 2) - 11;
 
             if (self.rate & rate_mask) != rate_mask {
                 self.increment = self.increment.max(1);
@@ -170,11 +168,11 @@ impl Envelope {
 
     fn tick(&mut self, current_level: &mut i16) -> bool {
         let mut this_increment = self.increment;
-        let mut this_step = self.step;
+        let mut this_step = self.step as i32;
 
         if self.mode == EnvelopeMode::Exponential {
             if self.direction == EnvelopeDirection::Decrease {
-                this_step = (this_step * *current_level) >> 15;
+                this_step = (this_step * *current_level as i32) >> 15;
             } else {
                 if *current_level >= 0x6000 {
                     if self.rate < 40 {
@@ -197,11 +195,12 @@ impl Envelope {
 
         self.counter = 0;
 
-        let new_level = *current_level as i32 + this_step as i32;
+        let new_level = *current_level as i32 + this_step;
 
         if self.direction == EnvelopeDirection::Increase {
             let new_level = new_level.clamp(-0x8000, 0x7fff) as i16;
             *current_level = new_level;
+
             if this_step < 0 {
                 new_level != -0x8000
             } else {
@@ -290,7 +289,7 @@ impl Adsr {
     */
     pub fn write_lower(&mut self, value: u16) {
         self.value = (self.value & 0xffff0000) | value as u32;
-        self.sustain_level = ((value & 0xf) + 1) * 0x800;
+        self.sustain_level = (((value & 0xf) + 1) * 0x800).min(0x7fff);
 
         self.decay_shift = ((value >> 4) & 0xf) as u8;
 
@@ -360,6 +359,7 @@ impl Adsr {
             }
             AdsrPhase::Decay => {
                 self.current_target = self.sustain_level as i16;
+
                 self.envelope.reset(
                     (self.decay_shift as u16) << 2,
                     0x1f << 2,
@@ -513,7 +513,7 @@ pub struct Voice {
     is_first_block: bool,
     last_decoded_samples: [i16; 2],
     last_gaussian_samples: [i16; 4],
-    current_samples: [i16; NUM_BLOCK_SAMPLES],
+    current_samples: [i16; NUM_BLOCK_SAMPLES + 3],
     current_block: ADPCMBlock,
     pub last_volume: i32,
     left_volume: VolumeSweep,
@@ -521,7 +521,6 @@ pub struct Voice {
     using_left_envelope: bool,
     using_right_envelope: bool,
     ignore_loop_address: bool,
-    repeat_address_io_write: bool,
     adsr_volume: i16,
     voice_index: usize,
 }
@@ -538,7 +537,7 @@ impl Voice {
             has_samples: false,
             is_first_block: false,
             last_decoded_samples: [0; 2],
-            current_samples: [0; NUM_BLOCK_SAMPLES],
+            current_samples: [0; NUM_BLOCK_SAMPLES + 3],
             current_block: ADPCMBlock::new(),
             last_volume: 0,
             left_volume: VolumeSweep::new(),
@@ -547,7 +546,6 @@ impl Voice {
             using_right_envelope: false,
             last_gaussian_samples: [0; 4],
             ignore_loop_address: false,
-            repeat_address_io_write: false,
             adsr_volume: 0,
             voice_index,
         }
@@ -582,17 +580,15 @@ impl Voice {
             0xc => self.adsr_volume = value as i16,
             0xe => {
                 self.ignore_loop_address =
-                    !self.is_first_block && self.adsr.phase == AdsrPhase::Idle;
+                    !self.is_first_block || self.adsr.phase == AdsrPhase::Idle;
                 self.repeat_address = value as u32 * 8;
-
-                self.repeat_address_io_write = true;
             }
             _ => panic!("invalid channel given: 0x{:x}", channel),
         }
     }
 
     pub fn force_off(&mut self) {
-        self.adsr.envelope.volume = 0;
+        self.adsr_volume = 0;
         self.adsr.phase = AdsrPhase::Idle;
     }
 
@@ -600,14 +596,13 @@ impl Voice {
         0
     }
 
-    fn interpolate(&self) -> i32 {
-        let i = ((self.pitch_counter >> 4) & 0xff) as usize;
-        let sample_index = (3 + self.pitch_counter >> 12) as usize;
+    fn interpolate(&self, interpolation_index: usize, sample_index: usize) -> i32 {
+        let sample_index = sample_index + 3;
 
-        let mut out = GAUSSIAN_TABLE[0xff - i] * self.current_samples[sample_index - 3] as i32;
-        out += GAUSSIAN_TABLE[0x1ff - i] * self.current_samples[sample_index - 2] as i32;
-        out += GAUSSIAN_TABLE[0x100 + i] * self.current_samples[sample_index - 1] as i32;
-        out += GAUSSIAN_TABLE[0x000 + i] * self.current_samples[sample_index] as i32;
+        let mut out = (GAUSSIAN_TABLE[0xff - interpolation_index] * self.current_samples[sample_index - 3] as i32) >> 15;
+        out += (GAUSSIAN_TABLE[0x1ff - interpolation_index] * self.current_samples[sample_index - 2] as i32) >> 15;
+        out += (GAUSSIAN_TABLE[0x100 + interpolation_index] * self.current_samples[sample_index - 1] as i32) >> 15;
+        out += (GAUSSIAN_TABLE[0x000 + interpolation_index] * self.current_samples[sample_index] as i32) >> 15;
 
         out
     }
@@ -626,6 +621,7 @@ impl Voice {
 
             if reached_target {
                 self.adsr.phase = self.adsr.get_next_phase();
+
                 self.adsr.update_envelope();
             }
         }
@@ -670,11 +666,15 @@ impl Voice {
             }
         }
 
-        let volume = if self.adsr_volume != 0 {
+        let sample = if self.adsr_volume != 0 {
             let sample = if noise_enable {
                 self.get_noise_sample()
             } else {
-                self.interpolate()
+                let sample_index = self.pitch_counter >> 12;
+                let interpolation_index = (self.pitch_counter >> 4) & 0xff;
+
+
+                self.interpolate(interpolation_index as usize, sample_index as usize)
             };
 
             SPU::apply_volume(sample, self.adsr_volume as i32)
@@ -682,7 +682,7 @@ impl Voice {
             0
         };
 
-        self.last_volume = volume;
+        self.last_volume = sample;
 
         if self.adsr.phase != AdsrPhase::Idle {
             self.tick_adsr();
@@ -693,7 +693,7 @@ impl Voice {
         if pitch_modulate {
             let factor = (previous_volume.clamp(-0x8000, 0x7fff) + 0x8000) as u32;
 
-            step = ((step * factor) >> 15) as i16 as u16 as u32;
+            step = ((step as i16 as i32 * factor as i16 as i32) >> 15) as i16 as u16 as u32;
         }
 
         if step > 0x3fff {
@@ -729,8 +729,8 @@ impl Voice {
         self.right_volume.tick();
 
         (
-            SPU::apply_volume(volume, self.left_volume.current_level as i32),
-            SPU::apply_volume(volume, self.right_volume.current_level as i32),
+            SPU::apply_volume(sample, self.left_volume.current_level as i32),
+            SPU::apply_volume(sample, self.right_volume.current_level as i32),
         )
     }
 
@@ -826,16 +826,11 @@ impl Voice {
     pub fn update_keyon(&mut self) {
         self.current_address = self.start_address;
 
-        if !self.repeat_address_io_write {
-            self.repeat_address = self.start_address;
-        }
-
-        self.repeat_address_io_write = false;
-
         self.adsr.phase = AdsrPhase::Attack;
-        self.adsr.envelope.volume = 0;
+        self.adsr_volume = 0;
         self.is_first_block = true;
         self.has_samples = false;
+        self.ignore_loop_address = false;
 
         self.adsr.update_envelope();
     }
@@ -850,13 +845,13 @@ impl Voice {
 
     pub fn read(&self, channel: usize) -> u16 {
         match channel {
-            0x0 => (self.left_volume.register.bits()) as u16,
-            0x2 => (self.right_volume.register.bits()) as u16,
+            0x0 => self.left_volume.register.bits(),
+            0x2 => self.right_volume.register.bits(),
             0x4 => self.sample_rate,
             0x6 => (self.start_address / 8) as u16,
             0x8 => self.adsr.value as u16,
             0xa => (self.adsr.value >> 16) as u16,
-            0xc => self.adsr.envelope.volume as u16,
+            0xc => self.adsr_volume as u16,
             0xe => (self.repeat_address / 8) as u16,
             _ => panic!("invalid channel given: 0x{:x}", channel),
         }
