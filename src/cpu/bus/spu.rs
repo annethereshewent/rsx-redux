@@ -35,11 +35,11 @@ impl SoundRam {
     }
 
     pub fn read16(&self, address: usize) -> u16 {
-        unsafe { *(&self.ram[address] as *const u8 as *const u16) }
+        unsafe { *(&self.ram[address & 0x7_ffff] as *const u8 as *const u16) }
     }
 
     pub fn read8(&self, address: usize) -> u8 {
-        self.ram[address]
+        self.ram[address & 0x7_ffff]
     }
 
     pub fn readf32(&self, address: usize) -> f32 {
@@ -47,11 +47,11 @@ impl SoundRam {
     }
 
     pub fn write16(&mut self, address: usize, value: u16) {
-        unsafe { *(&mut self.ram[address] as *mut u8 as *mut u16) = value };
+        unsafe { *(&mut self.ram[address & 0x7_ffff] as *mut u8 as *mut u16) = value };
     }
 
     pub fn writef32(&mut self, address: usize, value: f32) {
-        unsafe { *(&mut self.ram[address] as *mut u8 as *mut u16) = SPU::to_i16(value) as u16 };
+        unsafe { *(&mut self.ram[address & 0x7_ffff] as *mut u8 as *mut u16) = SPU::to_i16(value) as u16 };
     }
 }
 
