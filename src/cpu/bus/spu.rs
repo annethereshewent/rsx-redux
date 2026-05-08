@@ -173,7 +173,7 @@ impl SPU {
             while self.sample_fifo.len() < FIFO_SIZE {
                 let value = self.sound_ram.read16(self.current_ram_address as usize);
 
-                self.current_ram_address += 2;
+                self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
 
                 self.sample_fifo.push_back(value);
 
@@ -191,7 +191,7 @@ impl SPU {
                 self.sound_ram
                     .write16(self.current_ram_address as usize, value);
 
-                self.current_ram_address += 2;
+                self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
 
                 if self.is_irq_triggerable() && self.irq_address == self.current_ram_address {
                     interrupt_register.insert(InterruptRegister::SPU);
@@ -233,9 +233,26 @@ impl SPU {
         self.voices[voice as usize].read(channel)
     }
 
-    pub fn dma_write(&mut self, value: u32) {
-        self.sample_fifo.push_back(value as u16);
-        self.sample_fifo.push_back((value >> 16) as u16);
+    pub fn dma_write(&mut self, value: u32, interrupt_register: &mut InterruptRegister) {
+        self.sound_ram
+            .write16(self.current_ram_address as usize, value as u16);
+
+        if self.is_irq_triggerable() && self.current_ram_address == self.irq_address {
+            interrupt_register.insert(InterruptRegister::SPU);
+            self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+        }
+
+        self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
+
+        self.sound_ram
+            .write16(self.current_ram_address as usize, (value >> 16) as u16);
+
+        if self.is_irq_triggerable() && self.current_ram_address == self.irq_address {
+            interrupt_register.insert(InterruptRegister::SPU);
+            self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+        }
+
+        self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
     }
 
     fn manual_transfer_write(&mut self, value: u16, interrupt_register: &mut InterruptRegister) {
@@ -247,10 +264,7 @@ impl SPU {
             self.execute_transfer(interrupt_register);
         }
 
-        self.sound_ram
-            .write16(self.current_ram_address as usize, value);
-
-        self.current_ram_address += 2;
+        self.sample_fifo.push_back(value);
 
         if self.is_irq_triggerable() && self.current_ram_address == self.irq_address {
             interrupt_register.insert(InterruptRegister::SPU);
@@ -363,7 +377,7 @@ impl SPU {
                 let previous_enable = self.spucnt.contains(SpuControlRegister::SPU_ENABLE);
                 self.spucnt = SpuControlRegister::from_bits_retain(value);
 
-                if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::DMAWrite {
+                if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::ManualWrite {
                     while !self.sample_fifo.is_empty() {
                         if self.current_ram_address == self.irq_address && self.is_irq_triggerable()
                         {
@@ -377,7 +391,6 @@ impl SPU {
                         );
                         self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
                     }
-
                 }
 
                 if previous_enable && !self.spucnt.contains(SpuControlRegister::SPU_ENABLE) {

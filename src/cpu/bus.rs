@@ -355,7 +355,11 @@ impl Bus {
                     }
                 },
                 DMA_CDROM => dma_channel.start_cdrom_transfer(&mut self.main_ram, &mut self.cdrom),
-                DMA_SPU => dma_channel.start_spu_transfer(&mut self.main_ram, &mut self.spu),
+                DMA_SPU => dma_channel.start_spu_transfer(
+                    &mut self.main_ram,
+                    &mut self.spu,
+                    &mut self.interrupt_stat,
+                ),
                 DMA_PIO => dma_channel.start_pio_transfer(),
                 DMA_OTC => dma_channel.start_otc_transfer(&mut self.main_ram),
                 _ => todo!("dma transfer for channel {channel}"),

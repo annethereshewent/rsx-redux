@@ -597,10 +597,14 @@ impl Voice {
     fn interpolate(&self, interpolation_index: usize, sample_index: usize) -> i32 {
         let sample_index = sample_index + 3;
 
-        let mut out = GAUSSIAN_TABLE[0xff - interpolation_index] * self.current_samples[sample_index - 3] as i32;
-        out += GAUSSIAN_TABLE[0x1ff - interpolation_index] * self.current_samples[sample_index - 2] as i32;
-        out += GAUSSIAN_TABLE[0x100 + interpolation_index] * self.current_samples[sample_index - 1] as i32;
-        out += GAUSSIAN_TABLE[0x000 + interpolation_index] * self.current_samples[sample_index] as i32;
+        let mut out = GAUSSIAN_TABLE[0xff - interpolation_index]
+            * self.current_samples[sample_index - 3] as i32;
+        out += GAUSSIAN_TABLE[0x1ff - interpolation_index]
+            * self.current_samples[sample_index - 2] as i32;
+        out += GAUSSIAN_TABLE[0x100 + interpolation_index]
+            * self.current_samples[sample_index - 1] as i32;
+        out +=
+            GAUSSIAN_TABLE[0x000 + interpolation_index] * self.current_samples[sample_index] as i32;
 
         out >> 15
     }
@@ -671,7 +675,6 @@ impl Voice {
                 let sample_index = self.pitch_counter >> 12;
                 let interpolation_index = (self.pitch_counter >> 4) & 0xff;
 
-
                 self.interpolate(interpolation_index as usize, sample_index as usize)
             };
 
@@ -733,6 +736,7 @@ impl Voice {
     }
 
     fn decode_block(&mut self, block: ADPCMBlock) {
+        let shift = if block.shift > 12 { 9 } else { block.shift };
         let positive_filter = POS_FILTER_TABLE[block.filter as usize];
         let negative_filter = NEG_FILTER_TABLE[block.filter as usize];
 
@@ -741,8 +745,6 @@ impl Voice {
         self.current_samples[2] = self.current_samples[samples_len - 1];
         self.current_samples[1] = self.current_samples[samples_len - 2];
         self.current_samples[0] = self.current_samples[samples_len - 3];
-
-        let mut last_samples = [self.last_decoded_samples[0], self.last_decoded_samples[1]];
 
         for i in 0..NUM_BLOCK_SAMPLES {
             let byte = block.sample_blocks[i / 2];
@@ -753,20 +755,19 @@ impl Voice {
                 (byte >> 4) & 0xf
             };
 
-            let mut sample = (((nibble as i16) << 12) >> block.shift) as i32;
+            let mut sample = (((nibble as i16) << 12) >> shift) as i32;
 
-            sample += (last_samples[0] as i32 * positive_filter as i32) >> 6;
-            sample += (last_samples[1] as i32 * negative_filter as i32) >> 6;
+            sample += (self.last_decoded_samples[0] as i32 * positive_filter as i32) >> 6;
+            sample += (self.last_decoded_samples[1] as i32 * negative_filter as i32) >> 6;
 
-            last_samples[1] = last_samples[0];
+            self.last_decoded_samples[1] = self.last_decoded_samples[0];
 
             let sample = sample.clamp(-0x8000, 0x7fff) as i16;
 
             self.current_samples[i + 3] = sample;
-            last_samples[0] = sample;
+            self.last_decoded_samples[0] = sample;
         }
 
-        self.last_decoded_samples = last_samples;
         self.current_block = block;
     }
 

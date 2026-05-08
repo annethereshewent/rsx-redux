@@ -272,7 +272,12 @@ impl DmaChannel {
         }
     }
 
-    pub fn start_spu_transfer(&mut self, ram: &mut [u8], spu: &mut SPU) {
+    pub fn start_spu_transfer(
+        &mut self,
+        ram: &mut [u8],
+        spu: &mut SPU,
+        interrupt_register: &mut InterruptRegister,
+    ) {
         let mut current_address = self.base_address;
 
         assert_eq!(self.control.sync_mode(), SyncMode::Slice);
@@ -284,12 +289,12 @@ impl DmaChannel {
             panic!("only transfers from ram to spu allowed");
         }
 
-        let num_words = self.num_blocks * self.block_size;
+        let num_words = self.get_num_words();
 
         for _ in 0..num_words {
             let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
 
-            spu.dma_write(word);
+            spu.dma_write(word, interrupt_register);
 
             current_address += 4;
         }

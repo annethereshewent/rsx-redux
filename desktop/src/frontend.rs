@@ -298,10 +298,23 @@ impl Frontend {
     }
 
     fn get_quick_state_path(cpu: &CPU) -> PathBuf {
+        let mut suffixes = Vec::new();
         #[cfg(feature = "software_gpu")]
-        let filename = "quick_save_sw.state";
+        suffixes.push("_sw");
         #[cfg(feature = "hardware_gpu")]
-        let filename = "quick_save_hw.state";
+        suffixes.push("_hw");
+        #[cfg(feature = "old_spu")]
+        suffixes.push("_old_spu");
+        #[cfg(feature = "new_spu")]
+        suffixes.push("_new_spu");
+
+        let mut filename = "quick_save".to_string();
+
+        for suffix in suffixes {
+            filename.push_str(&suffix);
+        }
+
+        filename.push_str(".state");
 
         let game_path = Path::new(&cpu.game_path);
 
