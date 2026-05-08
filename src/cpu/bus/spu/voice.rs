@@ -139,17 +139,17 @@ impl Envelope {
         self.mode = mode;
 
         self.invert_phase = phase_invert
-            && (mode == EnvelopeMode::Exponential
-                && sweep_direction == EnvelopeDirection::Increase);
+            && !(mode == EnvelopeMode::Exponential
+                && sweep_direction == EnvelopeDirection::Decrease);
 
         self.counter = 0;
         self.increment = 0x8000;
 
         let base_step = (7 - (self.rate & 3)) as i16;
-        let decreasing = sweep_direction == EnvelopeDirection::Decrease;
-        let is_exponential = mode == EnvelopeMode::Exponential;
+        let decreasing = (sweep_direction == EnvelopeDirection::Decrease) as u8;
+        let is_exponential = (mode == EnvelopeMode::Exponential) as u8;
 
-        self.step = if decreasing != phase_invert || decreasing && is_exponential {
+        self.step = if ((decreasing ^ phase_invert as u8) | (decreasing & is_exponential)) != 0 {
             !base_step
         } else {
             base_step
@@ -173,16 +173,14 @@ impl Envelope {
         if self.mode == EnvelopeMode::Exponential {
             if self.direction == EnvelopeDirection::Decrease {
                 this_step = (this_step * *current_level as i32) >> 15;
-            } else {
-                if *current_level >= 0x6000 {
-                    if self.rate < 40 {
-                        this_step >>= 2;
-                    } else if self.rate >= 44 {
-                        this_increment >>= 2;
-                    } else {
-                        this_step >>= 1;
-                        this_increment >>= 1;
-                    }
+            } else if *current_level >= 0x6000 {
+                if self.rate < 40 {
+                    this_step >>= 2;
+                } else if self.rate >= 44 {
+                    this_increment >>= 2;
+                } else {
+                    this_step >>= 1;
+                    this_increment >>= 1;
                 }
             }
         }
@@ -599,12 +597,12 @@ impl Voice {
     fn interpolate(&self, interpolation_index: usize, sample_index: usize) -> i32 {
         let sample_index = sample_index + 3;
 
-        let mut out = (GAUSSIAN_TABLE[0xff - interpolation_index] * self.current_samples[sample_index - 3] as i32) >> 15;
-        out += (GAUSSIAN_TABLE[0x1ff - interpolation_index] * self.current_samples[sample_index - 2] as i32) >> 15;
-        out += (GAUSSIAN_TABLE[0x100 + interpolation_index] * self.current_samples[sample_index - 1] as i32) >> 15;
-        out += (GAUSSIAN_TABLE[0x000 + interpolation_index] * self.current_samples[sample_index] as i32) >> 15;
+        let mut out = GAUSSIAN_TABLE[0xff - interpolation_index] * self.current_samples[sample_index - 3] as i32;
+        out += GAUSSIAN_TABLE[0x1ff - interpolation_index] * self.current_samples[sample_index - 2] as i32;
+        out += GAUSSIAN_TABLE[0x100 + interpolation_index] * self.current_samples[sample_index - 1] as i32;
+        out += GAUSSIAN_TABLE[0x000 + interpolation_index] * self.current_samples[sample_index] as i32;
 
-        out
+        out >> 15
     }
 
     fn tick_adsr(&mut self) {
@@ -688,12 +686,12 @@ impl Voice {
             self.tick_adsr();
         }
 
-        let mut step = self.sample_rate as u32;
+        let mut step = self.sample_rate as i16 as i32 as u32;
 
         if pitch_modulate {
             let factor = (previous_volume.clamp(-0x8000, 0x7fff) + 0x8000) as u32;
 
-            step = ((step as i16 as i32 * factor as i16 as i32) >> 15) as i16 as u16 as u32;
+            step = (step * factor) >> 15;
         }
 
         if step > 0x3fff {
