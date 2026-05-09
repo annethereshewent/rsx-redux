@@ -24,6 +24,7 @@ const CYCLES_PER_SCANLINE: usize = 3413;
 const HBLANK_END: usize = CYCLES_PER_SCANLINE - HBLANK_START;
 const VBLANK_LINE_START: usize = 240;
 const NUM_SCANLINES: usize = 262;
+#[cfg(feature = "software_gpu")]
 const VRAM_SIZE: usize = 2 * 1024 * 512;
 pub const VRAM_WIDTH: usize = 1024;
 pub const VRAM_HEIGHT: usize = 512;
@@ -151,6 +152,10 @@ pub struct Polygon {
     pub modulate: bool,
     pub transparent_mode: u32,
     pub clut: (u32, u32),
+    pub texture_mask_x: u32,
+    pub texture_mask_y: u32,
+    pub texture_offset_x: u32,
+    pub texture_offset_y: u32,
 }
 
 impl Polygon {
@@ -165,6 +170,10 @@ impl Polygon {
             clut: (0, 0),
             transparent_mode: 0,
             modulate: false,
+            texture_mask_x: 0,
+            texture_mask_y: 0,
+            texture_offset_x: 0,
+            texture_offset_y: 0,
         }
     }
 }
@@ -791,6 +800,10 @@ impl GPU {
                     semitransparent: self.is_semitransparent,
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y,
                 });
 
                 polygons.push(Polygon {
@@ -807,6 +820,10 @@ impl GPU {
                     },
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y,
                 });
             } else {
                 polygons.push(Polygon {
@@ -823,6 +840,10 @@ impl GPU {
                     },
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y,
                 });
             }
 
@@ -850,6 +871,10 @@ impl GPU {
                     },
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y,
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -870,6 +895,10 @@ impl GPU {
                     },
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y,
                 };
 
                 self.rasterize_triangle(&mut polygon2);
@@ -888,6 +917,10 @@ impl GPU {
                     },
                     is_shaded: self.is_shaded,
                     modulate: self.modulate,
+                    texture_mask_x: self.texture_window_mask_x,
+                    texture_mask_y: self.texture_window_mask_y,
+                    texture_offset_x: self.texture_window_offset_x,
+                    texture_offset_y: self.texture_window_offset_y,
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -1000,6 +1033,10 @@ impl GPU {
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
                 modulate: self.modulate,
+                texture_mask_x: self.texture_window_mask_x,
+                texture_mask_y: self.texture_window_mask_y,
+                texture_offset_x: self.texture_window_offset_x,
+                texture_offset_y: self.texture_window_offset_y,
             });
             self.polygons.push(Polygon {
                 vertices: vertices2,
@@ -1015,6 +1052,10 @@ impl GPU {
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
                 modulate: self.modulate,
+                texture_mask_x: self.texture_window_mask_x,
+                texture_mask_y: self.texture_window_mask_y,
+                texture_offset_x: self.texture_window_offset_x,
+                texture_offset_y: self.texture_window_offset_y,
             });
         }
         #[cfg(feature = "software_gpu")]
@@ -1033,6 +1074,10 @@ impl GPU {
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
                 modulate: self.modulate,
+                texture_mask_x: self.texture_window_mask_x,
+                texture_mask_y: self.texture_window_mask_y,
+                texture_offset_x: self.texture_window_offset_x,
+                texture_offset_y: self.texture_window_offset_y,
             };
 
             self.rasterize_triangle(&mut polygon1);
@@ -1051,6 +1096,10 @@ impl GPU {
                 textured: self.is_textured,
                 is_shaded: self.is_shaded,
                 modulate: self.modulate,
+                texture_mask_x: self.texture_window_mask_x,
+                texture_mask_y: self.texture_window_mask_y,
+                texture_offset_x: self.texture_window_offset_x,
+                texture_offset_y: self.texture_window_offset_y,
             };
 
             self.rasterize_triangle(&mut polygon2);
@@ -1284,22 +1333,14 @@ impl GPU {
         }
     }
 
-    fn draw_line(&mut self) {
-        #[cfg(feature = "hardware_gpu")]
-        {
-            self.commands_ready = true;
-        }
-    }
+    fn draw_line(&mut self) {}
 
-    fn draw_polyline(&mut self) {
-        #[cfg(feature = "hardware_gpu")]
-        {
-            self.commands_ready = true;
-        }
-    }
+    fn draw_polyline(&mut self) {}
 
     fn transfer_to_vram(&mut self, halfword: u16) {
+        #[cfg(feature = "software_gpu")]
         let curr_x = self.read_x + self.transfer_x;
+        #[cfg(feature = "software_gpu")]
         let curr_y = self.read_y + self.transfer_y;
 
         self.read_x += 1;
@@ -1346,11 +1387,6 @@ impl GPU {
     #[cfg(feature = "software_gpu")]
     fn get_vram_address(x: u32, y: u32) -> usize {
         (2 * (x + 1024 * y)) as usize
-    }
-
-    #[cfg(feature = "software_gpu")]
-    fn get_vram_address_24(x: u32, y: u32) -> usize {
-        (3 * x + 2048 * y) as usize
     }
 
     pub fn process_gp1_commands(&mut self, word: u32) {

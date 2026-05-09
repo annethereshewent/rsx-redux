@@ -18,8 +18,6 @@ dirs-next = "2.0.0"
 zstd = "0.13"
 
 [features]
-default = ["old_spu", "software_gpu"]
-old_spu = ["rsx-redux/old_spu"]
-new_spu = ["rsx-redux/new_spu"]
+default = ["software_gpu"]
 software_gpu = ["rsx-redux/software_gpu"]
 hardware_gpu = ["rsx-redux/hardware_gpu"]

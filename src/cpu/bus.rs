@@ -5,10 +5,7 @@ use mdec::Mdec;
 use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};
 use scheduler::Scheduler;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "new_spu")]
 use spu::SPU;
-#[cfg(feature = "old_spu")]
-use spu_legacy::SPU;
 use timer::Timer;
 
 use crate::cpu::bus::{
@@ -28,10 +25,7 @@ pub mod mdec;
 pub mod peripherals;
 pub mod registers;
 pub mod scheduler;
-#[cfg(feature = "new_spu")]
 pub mod spu;
-#[cfg(feature = "old_spu")]
-pub mod spu_legacy;
 pub mod timer;
 
 #[derive(Serialize, Deserialize)]
@@ -190,6 +184,7 @@ impl Bus {
             },
             0x1f801044 => self.peripherals.read_stat() as u32,
             0x1f80104a => self.peripherals.read_ctrl() as u32,
+            0x1f80104e => self.peripherals.baudrate_timer as u32,
             0x1f801070 => {
                 self.tick(5);
                 self.interrupt_stat.bits() & 0xffff
@@ -206,10 +201,25 @@ impl Bus {
                 self.tick(5);
                 self.interrupt_mask.bits() >> 16
             }
+            0x1f801100 => self.timers[0].counter as u32,
+            0x1f801104 => self.timers[0].counter_register.bits() as u32,
+            0x1f801108 => self.timers[0].counter_target as u32,
+            0x1f801110 => self.timers[1].counter as u32,
+            0x1f801114 => self.timers[1].counter_register.bits() as u32,
+            0x1f801118 => self.timers[1].counter_target as u32,
             0x1f801120 => self.timers[2].counter,
+            0x1f801124 => self.timers[2].counter_register.bits() as u32,
+            0x1f801128 => self.timers[2].counter_target as u32,
             0x1f801c00..=0x1f801e7f => {
                 self.tick(5);
                 self.spu.read16(address) as u32
+            }
+            0x1fc00000..=0x1fc80000 => {
+                if (self.cache_config >> 11) & 1 == 0 {
+                    self.tick(4);
+                }
+
+                unsafe { *(&self.bios[address - 0x1fc00000] as *const u8 as *const u16) as u32 }
             }
             _ => todo!("(mem_read16) address: 0x{:x}", address),
         }
@@ -238,6 +248,15 @@ impl Bus {
                 self.tick(5);
                 self.cdrom.read(address) as u32
             }
+            0x1f801c00..=0x1f801e7f => {
+                let value = self.spu.read16(address & !1);
+
+                if address & 1 == 0 {
+                    value as u8 as u32
+                } else {
+                    ((value >> 8) & 0xff) as u32
+                }
+            }
             0x1f000000..=0x1f02ffff => 0, // expansion 1 I/O, not needed
             0x1fc00000..=0x1fc80000 => {
                 if (self.cache_config >> 1) & 1 == 0 {
@@ -245,7 +264,7 @@ impl Bus {
                 }
                 self.bios[address - 0x1fc00000] as u32
             }
-            _ => todo!("(mem_read8) address 0x{:x}", address),
+            _ => todo!("(mem_read8) address: 0x{address:x}"),
         }
     }
 
@@ -330,7 +349,11 @@ impl Bus {
                     }
                 },
                 DMA_CDROM => dma_channel.start_cdrom_transfer(&mut self.main_ram, &mut self.cdrom),
-                DMA_SPU => dma_channel.start_spu_transfer(&mut self.main_ram, &mut self.spu),
+                DMA_SPU => dma_channel.start_spu_transfer(
+                    &mut self.main_ram,
+                    &mut self.spu,
+                    &mut self.interrupt_stat,
+                ),
                 DMA_PIO => dma_channel.start_pio_transfer(),
                 DMA_OTC => dma_channel.start_otc_transfer(&mut self.main_ram),
                 _ => todo!("dma transfer for channel {channel}"),
@@ -388,9 +411,6 @@ impl Bus {
             0x1f801120 => self.timers[2].write_counter(value as u32),
             0x1f801124 => self.timers[2].write_counter_register(value),
             0x1f801128 => self.timers[2].counter_target = value,
-            #[cfg(feature = "old_spu")]
-            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value),
-            #[cfg(feature = "new_spu")]
             0x1f801c00..=0x1f801e7f => self.spu.write16(address, value, &mut self.interrupt_stat),
             _ => todo!("(mem_write16) address: 0x{:x}", address),
         }

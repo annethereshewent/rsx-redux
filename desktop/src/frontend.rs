@@ -4,13 +4,14 @@ use memmap2::{Mmap, MmapMut};
 use objc2::rc::Retained;
 #[cfg(feature = "hardware_gpu")]
 use objc2_quartz_core::CAMetalLayer;
-use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
+use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
 use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
 use sdl2::keyboard::Keycode;
+#[cfg(feature = "software_gpu")]
 use sdl2::pixels::PixelFormatEnum;
 #[cfg(feature = "software_gpu")]
 use sdl2::render::Canvas;
@@ -27,15 +28,15 @@ use std::process::exit;
 use crate::renderer::Renderer;
 
 pub struct PsxAudioCallback {
-    pub audio_buffer: VecDeque<f32>,
+    pub audio_buffer: VecDeque<i16>,
 }
 
 impl AudioCallback for PsxAudioCallback {
-    type Channel = f32;
+    type Channel = i16;
 
     fn callback(&mut self, buf: &mut [Self::Channel]) {
-        let mut left_sample: f32 = 0.0;
-        let mut right_sample: f32 = 0.0;
+        let mut left_sample: i16 = 0;
+        let mut right_sample: i16 = 0;
 
         let len = self.audio_buffer.len();
 
@@ -63,7 +64,7 @@ impl AudioCallback for PsxAudioCallback {
 }
 
 impl PsxAudioCallback {
-    pub fn push_samples(&mut self, samples: Vec<f32>) {
+    pub fn push_samples(&mut self, samples: Vec<i16>) {
         for sample in samples.iter() {
             self.audio_buffer.push_back(*sample);
         }
@@ -113,9 +114,10 @@ impl Frontend {
         }
     }
 
-    pub fn push_samples(&mut self, samples: Vec<f32>) {
+    pub fn push_samples(&mut self, samples: Vec<i16>) {
         self.device.lock().deref_mut().push_samples(samples);
     }
+
     #[allow(unused_variables)]
     pub fn new(gpu: &GPU) -> Self {
         let sdl_context = sdl2::init().unwrap();
@@ -198,7 +200,7 @@ impl Frontend {
             controller,
             game_controller_subsystem,
             #[cfg(feature = "hardware_gpu")]
-            renderer: Renderer::new(metal_layer, gpu),
+            renderer: Renderer::new(metal_layer),
             #[cfg(feature = "software_gpu")]
             canvas,
             device,
@@ -284,7 +286,10 @@ impl Frontend {
                 cpu.bus.cdrom.load_game_desktop(game_data);
                 cpu.reload_instructions();
                 cpu.bus.scheduler.deserialize_scheduler();
-                cpu.bus.peripherals.memory_card.set_memory_file(Self::get_memory_file());
+                cpu.bus
+                    .peripherals
+                    .memory_card
+                    .set_memory_file(Self::get_memory_file());
                 after_load(cpu);
             }
         }
@@ -398,7 +403,7 @@ impl Frontend {
 
     #[cfg(feature = "software_gpu")]
     pub fn render(&mut self, gpu: &mut GPU) {
-        gpu.update_picture();
+        gpu.update_framebuffer();
 
         let (width, height) = gpu.get_dimensions();
 

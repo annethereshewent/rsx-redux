@@ -19,15 +19,13 @@ struct VertexIn {
     float2 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
     float4 color    [[attribute(2)]];
-    uint2 clut [[attribute(3)]];
-    float2 orig [[attribute(4)]];
+    float2 orig [[attribute(3)]];
 };
 
 struct VertexOut {
     float4 position [[position]];
     float2 uv [[center_no_perspective]];
     float4 color;
-    uint2 clut;
     float2 orig;
 };
 
@@ -36,7 +34,6 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
     out.position = float4(in.position, 0.0, 1.0);
     out.uv = in.uv;
     out.color = in.color;
-    out.clut = in.clut;
     out.orig = in.orig;
 
     return out;
@@ -44,8 +41,11 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
 
 // TODO: actually implement CLUT
 float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
-    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+    uint u = uint(in.uv.x) & 0xffu;
+    uint v = uint(in.uv.y) & 0xffu;
+
+    u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
     uint offsetU = uniforms.page[0] + u;
     uint offsetV = uniforms.page[1] + v;
@@ -59,15 +59,18 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
-        a = -31.0;
+        discard_fragment();
     }
 
     return float4(r, g, b, a) / 31.0;
 }
 
-float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
-    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms, uint2 clut) {
+    uint u = uint(in.uv.x) & 0xffu;
+    uint v = uint(in.uv.y) & 0xffu;
+
+    u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
     uint offsetU = uniforms.page[0] + u / 4;
     uint offsetV = uniforms.page[1] + v;
@@ -82,7 +85,7 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
         texelIndex = (texelIndex >> 4) & 0xf;
     }
 
-    ushort texel = vram.read(uint2(texelIndex + in.clut[0], in.clut[1])).r;
+    ushort texel = vram.read(uint2(texelIndex + clut.x, clut.y)).r;
 
     uint r = texel & 0x1f;
     uint g = (texel >> 5) & 0x1f;
@@ -91,15 +94,18 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
-        a = -31.0;
+        discard_fragment();
     }
 
     return float4(r, g, b, a) / 31.0;
 }
 
-float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
-    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms, uint2 clut) {
+    uint u = uint(in.uv.x) & 0xffu;
+    uint v = uint(in.uv.y) & 0xffu;
+
+    u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
     uint offsetU = uniforms.page[0] + u / 2;
     uint offsetV = uniforms.page[1] + v;
@@ -108,7 +114,7 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
 
     uint texelIndex = (u & 1) == 0 ? halfWord & 0xff : halfWord >> 8;
 
-    ushort texel = vram.read(uint2(texelIndex + in.clut[0], in.clut[1])).r;
+    ushort texel = vram.read(uint2(texelIndex + clut.x, clut.y)).r;
 
     uint r = texel & 0x1f;
     uint g = (texel >> 5) & 0x1f;
@@ -117,7 +123,7 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     float a = float((texel >> 15) & 1) * 31.0;
 
     if (texel == 0) {
-        a = -31.0;
+        discard_fragment();
     }
 
     return float4(r, g, b, a) / 31.0;
@@ -126,7 +132,8 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
 // Fragment
 fragment float4 fragment_main(VertexOut in [[stage_in]],
                               texture2d<ushort, access::read> vram [[texture(0)]],
-                              constant FragmentUniforms& uniforms [[buffer(1)]]
+                              constant FragmentUniforms& uniforms [[buffer(1)]],
+                              constant uint2& clut [[buffer(2)]]
 )
 {
     float4 finalColor;
@@ -136,10 +143,10 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float4 texColor;
         switch (uniforms.depth) {
             case 0:
-                texColor = getTexColor4bpp(in, vram, uniforms);
+                texColor = getTexColor4bpp(in, vram, uniforms, clut);
                 break;
             case 1:
-                texColor = getTexColor8bpp(in, vram, uniforms);
+                texColor = getTexColor8bpp(in, vram, uniforms, clut);
                 break;
             case 2:
                 texColor = getTexColor16bpp(in, vram, uniforms);
@@ -147,10 +154,6 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         }
 
         texAlpha = texColor[3];
-
-        if (texAlpha == -1) {
-            discard_fragment();
-        }
 
         if (uniforms.modulate) {
             uint4 texColorUint = uint4(texColor * 255.0);
@@ -191,7 +194,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         }
     }
 
-    finalColor[3] = 1.0;
+    finalColor[3] = 0.0;
 
     return finalColor;
 }
@@ -204,7 +207,7 @@ kernel void rgba8_to_rgb5551(texture2d<float, access::sample> src [[texture(0)]]
     ushort r = ushort(c.r * 31.0);
     ushort g = ushort(c.g * 31.0);
     ushort b = ushort(c.b * 31.0);
-    ushort a = (r | g | b) ? 1 : 0;
+    ushort a = 0;
     ushort packed = r | (g << 5) | (b << 10) | (a << 15);
     dst.write(packed, dstOrigin + gid);
 }

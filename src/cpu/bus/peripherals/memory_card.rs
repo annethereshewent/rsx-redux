@@ -77,7 +77,10 @@ impl MemoryCard {
                         self.card_state = CardState::GetId;
                         self.step = 0;
                     }
-                    _ => unreachable!("shouldn't happen"),
+                    _ => {
+                        println!("[WARN]: invalid byte received for memory card: 0x{command:x}");
+                        self.card_state = CardState::Idle;
+                    }
                 }
             }
             CardState::GetId => {
@@ -145,8 +148,7 @@ impl MemoryCard {
                 self.checksum ^= command;
 
                 if let Some(memory_file) = &mut self.memory_file {
-                    memory_file[(128 * self.current_sector as usize) + self.current_byte] =
-                        command;
+                    memory_file[(128 * self.current_sector as usize) + self.current_byte] = command;
                 }
 
                 self.current_byte += 1;

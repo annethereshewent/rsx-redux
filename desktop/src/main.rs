@@ -1,6 +1,7 @@
 use std::{
     env,
     fs::{self, File},
+    path::Path,
 };
 
 use frontend::Frontend;
@@ -13,29 +14,41 @@ pub mod frontend;
 #[cfg(feature = "hardware_gpu")]
 pub mod renderer;
 
+// TODO: fix using unsafe for type coersion (ie reading a u16 from a byte array) to use std::ptr::read_unaligned
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        panic!("syntax: ./psx-redux <path_to_game>");
+        panic!("syntax: ./psx-redux <path_to_game/exe>");
     }
 
-    let file = File::open(&args[1]).unwrap();
-
-    let mut exe_file: Option<String> = None;
-
-    if args.len() >= 3 {
-        exe_file = Some(args[2].to_string());
-    }
-
-    let game_data = unsafe { Mmap::map(&file).unwrap() };
-
+    let file_path = Path::new(&args[1]);
     let bios = fs::read("SCPH1001.bin").unwrap();
 
-    let mut cpu = CPU::new(exe_file, args[1].to_string());
+    let file_extension = file_path
+        .extension()
+        .unwrap_or_default()
+        .to_str()
+        .unwrap_or_default();
+
+    let mut cpu = if file_extension == "exe" {
+        CPU::new(Some(args[1].to_string()), "".to_string())
+    } else {
+        let file = File::open(file_path).unwrap();
+        let game_data = unsafe { Mmap::map(&file).unwrap() };
+
+        let mut cpu = CPU::new(None, args[1].to_string());
+        cpu.bus.cdrom.load_game_desktop(game_data);
+
+        cpu
+    };
+
     cpu.bus.load_bios(bios);
-    cpu.bus.cdrom.load_game_desktop(game_data);
-    cpu.bus.peripherals.memory_card.set_memory_file(Frontend::get_memory_file());
+    cpu.bus
+        .peripherals
+        .memory_card
+        .set_memory_file(Frontend::get_memory_file());
 
     let mut frontend = Frontend::new(&cpu.bus.gpu);
 

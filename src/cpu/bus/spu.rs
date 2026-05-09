@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{array::from_fn, collections::VecDeque};
 
 use serde::{Deserialize, Serialize};
 use spu_control_register::{SoundRamTransferMode, SpuControlRegister};
@@ -7,19 +7,19 @@ use voice::Voice;
 use crate::cpu::bus::{
     registers::interrupt_register::InterruptRegister,
     scheduler::{EventType, Scheduler},
-    spu::{reverb::Reverb, voice::AdsrPhase},
+    spu::{reverb::Reverb, spu_stat_register::SpuStatRegister},
 };
 
 pub mod reverb;
 pub mod spu_control_register;
+pub mod spu_stat_register;
 pub mod voice;
 
 const SOUND_RAM_SIZE: usize = 0x8_0000;
-
+const FIFO_SIZE: usize = 32;
 pub const NUM_SAMPLES: usize = 8192 * 2;
 
 const SPU_CYCLES: usize = 768;
-
 const CAPTURE_SIZE: usize = 0x400;
 
 #[derive(Serialize, Deserialize)]
@@ -35,11 +35,11 @@ impl SoundRam {
     }
 
     pub fn read16(&self, address: usize) -> u16 {
-        unsafe { *(&self.ram[address] as *const u8 as *const u16) }
+        unsafe { *(&self.ram[address & 0x7_ffff] as *const u8 as *const u16) }
     }
 
     pub fn read8(&self, address: usize) -> u8 {
-        self.ram[address]
+        self.ram[address & 0x7_ffff]
     }
 
     pub fn readf32(&self, address: usize) -> f32 {
@@ -47,11 +47,13 @@ impl SoundRam {
     }
 
     pub fn write16(&mut self, address: usize, value: u16) {
-        unsafe { *(&mut self.ram[address] as *mut u8 as *mut u16) = value };
+        unsafe { *(&mut self.ram[address & 0x7_ffff] as *mut u8 as *mut u16) = value };
     }
 
     pub fn writef32(&mut self, address: usize, value: f32) {
-        unsafe { *(&mut self.ram[address] as *mut u8 as *mut u16) = SPU::to_i16(value) as u16 };
+        unsafe {
+            *(&mut self.ram[address & 0x7_ffff] as *mut u8 as *mut u16) = SPU::to_i16(value) as u16
+        };
     }
 }
 
@@ -69,6 +71,7 @@ pub struct SPU {
     main_volume_left: u16,
     main_volume_right: u16,
     spucnt: SpuControlRegister,
+    spustat: SpuStatRegister,
     sound_modulation: u32,
     keyoff: u32,
     keyon: u32,
@@ -85,10 +88,11 @@ pub struct SPU {
     voices: [Voice; 24],
     sample_fifo: VecDeque<u16>,
     sound_ram: SoundRam,
-    pub audio_buffer: Vec<f32>,
+    pub audio_buffer: Vec<i16>,
     endx: u32,
     pub cd_left_samples: VecDeque<i16>,
     pub cd_right_samples: VecDeque<i16>,
+    capture_buffer_pos: u16,
 }
 
 impl SPU {
@@ -98,6 +102,7 @@ impl SPU {
             main_volume_left: 0,
             main_volume_right: 0,
             spucnt: SpuControlRegister::from_bits_retain(0),
+            spustat: SpuStatRegister::from_bits_retain(0),
             keyoff: 0,
             sound_modulation: 0,
             noise_enable: 0,
@@ -109,7 +114,7 @@ impl SPU {
             sound_ram_address: 0,
             irq_address: 0,
             current_ram_address: 0,
-            voices: [Voice::new(); 24],
+            voices: from_fn(|index| Voice::new(index)),
             keyon: 0,
             sample_fifo: VecDeque::new(),
             sound_ram: SoundRam::new(),
@@ -119,11 +124,12 @@ impl SPU {
             cd_left_samples: VecDeque::new(),
             cd_right_samples: VecDeque::new(),
             reverb_volume: (0, 0),
+            capture_buffer_pos: 0,
         }
     }
 
-    fn apply_volume(sample: f32, volume: i16) -> f32 {
-        sample * SPU::to_f32(volume)
+    fn apply_volume(sample: i32, volume: i32) -> i32 {
+        (sample * volume) >> 15
     }
 
     pub fn clamp(value: i32, min: i32, max: i32) -> i16 {
@@ -164,6 +170,43 @@ impl SPU {
         }
     }
 
+    fn execute_transfer(&mut self, interrupt_register: &mut InterruptRegister) {
+        if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::DMARead {
+            while self.sample_fifo.len() < FIFO_SIZE {
+                let value = self.sound_ram.read16(self.current_ram_address as usize);
+
+                self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
+
+                self.sample_fifo.push_back(value);
+
+                if self.is_irq_triggerable() && self.current_ram_address == self.irq_address {
+                    interrupt_register.insert(InterruptRegister::SPU);
+                    self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+                }
+
+                self.update_dma_request();
+            }
+
+            self.spustat.remove(SpuStatRegister::DMA_TRANSFER_BUSY);
+        } else {
+            while let Some(value) = self.sample_fifo.pop_front() {
+                self.sound_ram
+                    .write16(self.current_ram_address as usize, value);
+
+                self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
+
+                if self.is_irq_triggerable() && self.irq_address == self.current_ram_address {
+                    interrupt_register.insert(InterruptRegister::SPU);
+                    self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+                }
+
+                self.update_dma_request();
+            }
+
+            self.spustat.remove(SpuStatRegister::DMA_TRANSFER_BUSY);
+        }
+    }
+
     /*
     15-12 Unknown/Unused (seems to be usually zero)
     11    Writing to First/Second half of Capture Buffers (0=First, 1=Second)
@@ -175,7 +218,7 @@ impl SPU {
     5-0   Current SPU Mode   (same as SPUCNT.Bit5-0, but, applied a bit delayed)
     */
     pub fn read_stat(&self) -> u16 {
-        self.spucnt.bits() & 0x3f
+        self.spustat.bits()
     }
 
     pub fn write_voices(&mut self, address: usize, value: u16) {
@@ -192,13 +235,43 @@ impl SPU {
         self.voices[voice as usize].read(channel)
     }
 
-    pub fn dma_write(&mut self, value: u32) {
+    pub fn dma_write(&mut self, value: u32, interrupt_register: &mut InterruptRegister) {
         self.sound_ram
             .write16(self.current_ram_address as usize, value as u16);
-        self.sound_ram
-            .write16(self.current_ram_address as usize + 2, (value >> 16) as u16);
 
-        self.current_ram_address = (self.current_ram_address + 4) & 0x7_ffff;
+        if self.is_irq_triggerable() && self.current_ram_address == self.irq_address {
+            interrupt_register.insert(InterruptRegister::SPU);
+            self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+        }
+
+        self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
+
+        self.sound_ram
+            .write16(self.current_ram_address as usize, (value >> 16) as u16);
+
+        if self.is_irq_triggerable() && self.current_ram_address == self.irq_address {
+            interrupt_register.insert(InterruptRegister::SPU);
+            self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+        }
+
+        self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
+    }
+
+    fn manual_transfer_write(&mut self, value: u16, interrupt_register: &mut InterruptRegister) {
+        let sound_transfer_mode = self.spucnt.sound_ram_transfer_mode();
+        if !self.sample_fifo.is_empty()
+            && sound_transfer_mode != SoundRamTransferMode::DMARead
+            && sound_transfer_mode != SoundRamTransferMode::Stop
+        {
+            self.execute_transfer(interrupt_register);
+        }
+
+        self.sample_fifo.push_back(value);
+
+        if self.is_irq_triggerable() && self.current_ram_address == self.irq_address {
+            interrupt_register.insert(InterruptRegister::SPU);
+            self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+        }
     }
 
     pub fn read16(&self, address: usize) -> u16 {
@@ -226,6 +299,38 @@ impl SPU {
         }
     }
 
+    pub fn update_dma_request(&mut self) {
+        match self.spucnt.sound_ram_transfer_mode() {
+            SoundRamTransferMode::DMARead => {
+                self.spustat.set(
+                    SpuStatRegister::DMA_READ_REQUEST,
+                    self.sample_fifo.len() == FIFO_SIZE,
+                );
+                self.spustat.remove(SpuStatRegister::DMA_WRITE_REQUEST);
+                self.spustat.set(
+                    SpuStatRegister::DMA_REQUEST_BIT,
+                    self.sample_fifo.len() == FIFO_SIZE,
+                );
+            }
+            SoundRamTransferMode::DMAWrite => {
+                self.spustat.remove(SpuStatRegister::DMA_READ_REQUEST);
+                self.spustat.set(
+                    SpuStatRegister::DMA_WRITE_REQUEST,
+                    self.sample_fifo.is_empty(),
+                );
+                self.spustat.set(
+                    SpuStatRegister::DMA_REQUEST_BIT,
+                    self.sample_fifo.is_empty(),
+                );
+            }
+            SoundRamTransferMode::ManualWrite | SoundRamTransferMode::Stop => {
+                self.spustat.remove(SpuStatRegister::DMA_READ_REQUEST);
+                self.spustat.remove(SpuStatRegister::DMA_WRITE_REQUEST);
+                self.spustat.remove(SpuStatRegister::DMA_REQUEST_BIT);
+            }
+        }
+    }
+
     pub fn write16(
         &mut self,
         address: usize,
@@ -236,8 +341,8 @@ impl SPU {
             0x1f801c00..=0x1f801d7f => self.write_voices(address, value),
             0x1f801d80 => self.main_volume_left = value,
             0x1f801d82 => self.main_volume_right = value,
-            0x1f80_1d84 => self.reverb_volume.0 = value,
-            0x1f80_1d86 => self.reverb_volume.1 = value,
+            0x1f801d84 => self.reverb_volume.0 = value,
+            0x1f801d86 => self.reverb_volume.1 = value,
             0x1f801d88 => self.keyon = (self.keyon & 0xffff0000) | value as u32,
             0x1f801d8a => self.keyon = (self.keyon & 0xffff) | (value as u32) << 16,
             0x1f801d8c => self.keyoff = (self.keyoff & 0xffff0000) | value as u32,
@@ -252,28 +357,36 @@ impl SPU {
             0x1f801d96 => self.noise_enable = (self.noise_enable & 0xffff) | (value as u32) << 16,
             0x1f801d98 => self.echo_on = (self.echo_on & 0xffff000) | value as u32,
             0x1f801d9a => self.echo_on = (self.echo_on & 0xffff) | (value as u32) << 16,
-            0x1f801da4 => self.irq_address = value as u32 * 8,
+            0x1f801da4 => {
+                self.irq_address = value as u32 * 8;
+
+                if self.is_irq_triggerable() && self.irq_address == self.current_ram_address {
+                    interrupt_register.insert(InterruptRegister::SPU);
+                    self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+                }
+            }
             0x1f801da6 => {
                 self.sound_ram_address = value as u32 * 8;
                 self.current_ram_address = self.sound_ram_address;
 
-                if self.irq_address == self.current_ram_address
-                    && self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE)
-                {
+                if self.irq_address == self.current_ram_address && self.is_irq_triggerable() {
+                    self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
                     interrupt_register.insert(InterruptRegister::SPU);
                 }
             }
-            0x1f801da8 => self.sample_fifo.push_back(value),
+            0x1f801da8 => self.manual_transfer_write(value, interrupt_register),
             0x1f801daa => {
+                let previous_enable = self.spucnt.contains(SpuControlRegister::SPU_ENABLE);
                 self.spucnt = SpuControlRegister::from_bits_retain(value);
 
                 if self.spucnt.sound_ram_transfer_mode() == SoundRamTransferMode::ManualWrite {
                     while !self.sample_fifo.is_empty() {
-                        if self.current_ram_address == self.irq_address
-                            && self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE)
+                        if self.current_ram_address == self.irq_address && self.is_irq_triggerable()
                         {
+                            self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
                             interrupt_register.insert(InterruptRegister::SPU);
                         }
+
                         self.sound_ram.write16(
                             self.current_ram_address as usize,
                             self.sample_fifo.pop_front().unwrap(),
@@ -281,6 +394,27 @@ impl SPU {
                         self.current_ram_address = (self.current_ram_address + 2) & 0x7_ffff;
                     }
                 }
+
+                if previous_enable && !self.spucnt.contains(SpuControlRegister::SPU_ENABLE) {
+                    for voice in &mut self.voices {
+                        voice.force_off();
+                    }
+                }
+
+                let mode = self.spucnt.bits() & 0x3f;
+
+                self.spustat =
+                    SpuStatRegister::from_bits_retain((self.spustat.bits() & !0x3f) | mode);
+
+                if !self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE) {
+                    self.spustat.remove(SpuStatRegister::IRQ9_FLAG);
+                } else if self.is_irq_triggerable() && self.irq_address == self.current_ram_address
+                {
+                    self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+                    interrupt_register.insert(InterruptRegister::SPU);
+                }
+
+                self.update_dma_request();
             }
             0x1f801dac => self.sound_ram_transfer_type = value,
             0x1f801db0 => self.cd_volume.0 = value,
@@ -295,13 +429,17 @@ impl SPU {
         }
     }
 
+    fn is_irq_triggerable(&self) -> bool {
+        self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE)
+            && !self.spustat.contains(SpuStatRegister::IRQ9_FLAG)
+    }
+
     fn update_keystatus(&mut self) {
         if self.keyoff != 0 || self.keyon != 0 {
             for i in 0..self.voices.len() {
                 if (self.keyoff >> i) & 1 == 1 {
                     self.voices[i].update_keyoff();
                 }
-
                 if (self.keyon >> i) & 1 == 1 {
                     self.endx &= !(1 << i);
                     self.voices[i].update_keyon();
@@ -314,22 +452,12 @@ impl SPU {
     }
 
     pub fn tick(&mut self, interrupt_register: &mut InterruptRegister, scheduler: &mut Scheduler) {
-        let mut left_total: f32 = 0.0;
-        let mut right_total: f32 = 0.0;
-
-        let mut reverb_left: f32 = 0.0;
-        let mut reverb_right: f32 = 0.0;
-
-        let mut cd_left = 0.0;
-        let mut cd_right = 0.0;
-
-        if !self.cd_left_samples.is_empty() {
-            cd_left = SPU::to_f32(self.cd_left_samples.pop_front().unwrap());
-        }
-
-        if !self.cd_right_samples.is_empty() {
-            cd_right = SPU::to_f32(self.cd_right_samples.pop_front().unwrap());
-        }
+        let mut output_left = 0;
+        let mut output_right = 0;
+        let mut reverb_in_left = 0;
+        let mut reverb_in_right = 0;
+        let mut cd_audio_left = 0;
+        let mut cd_audio_right = 0;
 
         for i in 0..self.voices.len() {
             let previous_out = if i > 0 {
@@ -340,81 +468,131 @@ impl SPU {
 
             let voice = &mut self.voices[i];
 
-            if voice.adsr.phase == AdsrPhase::Idle {
-                continue;
-            }
-
-            let (left, right, endx) = voice.generate_samples(
+            let (left, right) = voice.generate_samples(
                 &self.sound_ram,
+                &mut self.endx,
                 self.irq_address,
                 self.spucnt.contains(SpuControlRegister::IRQ9_ENABLE),
+                self.spustat.contains(SpuStatRegister::IRQ9_FLAG),
                 interrupt_register,
-                self.sound_modulation >> i == 1 && i > 0,
+                &mut self.spustat,
+                (self.sound_modulation >> i) & 1 == 1 && i > 0,
                 previous_out,
-                (self.noise_enable >> i) == 1,
+                (self.noise_enable >> i) & 1 == 1,
             );
 
-            if endx {
-                self.endx |= 1 << i;
-            }
-
-            left_total += left;
-            right_total += right;
+            output_left += left;
+            output_right += right;
 
             if (self.echo_on >> i) & 1 == 1 {
-                reverb_left += left;
-                reverb_right += right;
+                reverb_in_left += left;
+                reverb_in_right += right;
             }
         }
 
+        if !self.spucnt.contains(SpuControlRegister::SPU_UNMUTE) {
+            output_left = 0;
+            output_right = 0;
+            reverb_in_left = 0;
+            reverb_in_right = 0;
+        }
+
         if self.spucnt.contains(SpuControlRegister::CD_AUDIO_ENABLE) {
-            left_total += cd_left * SPU::to_f32(self.cd_volume.0 as i16);
-            right_total += cd_right * SPU::to_f32(self.cd_volume.1 as i16);
+            if let Some(cd_left_sample) = self.cd_left_samples.pop_front() {
+                cd_audio_left = cd_left_sample;
+                let cd_volume_left =
+                    Self::apply_volume(cd_left_sample as i32, self.cd_volume.0 as i32);
+
+                if self.spucnt.contains(SpuControlRegister::CD_AUDIO_REVERB) {
+                    reverb_in_left += cd_volume_left;
+                }
+
+                output_left += cd_volume_left;
+            }
+            if let Some(cd_right_sample) = self.cd_right_samples.pop_front() {
+                cd_audio_right = cd_right_sample;
+                let cd_volume_right =
+                    Self::apply_volume(cd_right_sample as i32, self.cd_volume.1 as i32);
+
+                if self.spucnt.contains(SpuControlRegister::CD_AUDIO_REVERB) {
+                    reverb_in_right += cd_volume_right;
+                }
+
+                output_right += cd_volume_right;
+            }
         }
 
         if self
             .spucnt
             .contains(SpuControlRegister::REVERB_MASTER_ENABLE)
         {
-            left_total += self.reverb.left_out;
-            right_total += self.reverb.right_out;
+            output_left += self.reverb.left_out;
+            output_right += self.reverb.right_out;
 
             if self.reverb.calculate_left {
                 self.reverb
-                    .calculate_left_reverb(&mut self.sound_ram, reverb_left);
+                    .calculate_left_reverb(&mut self.sound_ram, reverb_in_left);
             } else {
                 self.reverb
-                    .calculate_right_reverb(&mut self.sound_ram, reverb_right);
+                    .calculate_right_reverb(&mut self.sound_ram, reverb_in_right);
             }
 
             self.reverb.calculate_left = !self.reverb.calculate_left;
         }
 
-        self.write_to_capture(
-            CaptureIndexes::Voice1 as usize,
-            self.voices[1].last_volume as u16,
-        );
-        self.write_to_capture(
-            CaptureIndexes::Voice3 as usize,
-            self.voices[3].last_volume as u16,
-        );
+        output_left = Self::apply_volume(output_left, self.main_volume_left as i16 as i32);
+        output_right = Self::apply_volume(output_right, self.main_volume_right as i16 as i32);
 
-        self.push_sample(left_total);
-        self.push_sample(right_total);
+        self.write_to_capture(0, cd_audio_left as u16, interrupt_register);
+        self.write_to_capture(1, cd_audio_right as u16, interrupt_register);
+        self.write_to_capture(
+            2,
+            self.voices[1].last_volume.clamp(-0x8000, 0x7fff) as u16,
+            interrupt_register,
+        );
+        self.write_to_capture(
+            3,
+            self.voices[3].last_volume.clamp(-0x8000, 0x7fff) as u16,
+            interrupt_register,
+        );
+        self.increment_capture_buffer_address();
+
+        self.push_sample(output_left as i16);
+        self.push_sample(output_right as i16);
 
         self.update_keystatus();
 
         scheduler.schedule(EventType::TickSpu, SPU_CYCLES);
     }
 
-    fn push_sample(&mut self, sample: f32) {
+    fn increment_capture_buffer_address(&mut self) {
+        self.capture_buffer_pos += 2;
+        self.capture_buffer_pos %= CAPTURE_SIZE as u16;
+
+        self.spustat.set(
+            SpuStatRegister::CAPTURE_BUFFER_ID,
+            self.capture_buffer_pos >= (CAPTURE_SIZE as u16 / 2),
+        );
+    }
+
+    fn push_sample(&mut self, sample: i16) {
         if self.audio_buffer.len() < NUM_SAMPLES {
             self.audio_buffer.push(sample);
         }
     }
 
-    fn write_to_capture(&mut self, capture_index: usize, volume: u16) {
-        // unsafe { *(&mut self.sound_ram[CAPTURE_SIZE * capture_index] as *mut u8 as *mut u16) = volume };
-        self.sound_ram.write16(CAPTURE_SIZE * capture_index, volume)
+    fn write_to_capture(
+        &mut self,
+        capture_index: usize,
+        volume: u16,
+        interrupt_register: &mut InterruptRegister,
+    ) {
+        let ram_address = (capture_index * CAPTURE_SIZE) | self.capture_buffer_pos as usize;
+        self.sound_ram.write16(ram_address as usize, volume);
+
+        if self.is_irq_triggerable() && self.irq_address == ram_address as u32 {
+            interrupt_register.insert(InterruptRegister::SPU);
+            self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
+        }
     }
 }
