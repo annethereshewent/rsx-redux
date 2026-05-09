@@ -44,8 +44,8 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     uint u = uint(in.uv.x) & 0xffu;
     uint v = uint(in.uv.y) & 0xffu;
 
-    u = u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-    v = v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+    u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
     uint offsetU = uniforms.page[0] + u;
     uint offsetV = uniforms.page[1] + v;
@@ -104,8 +104,8 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     uint u = uint(in.uv.x) & 0xffu;
     uint v = uint(in.uv.y) & 0xffu;
 
-    u = u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-    v = v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+    u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
     uint offsetU = uniforms.page[0] + u / 2;
     uint offsetV = uniforms.page[1] + v;

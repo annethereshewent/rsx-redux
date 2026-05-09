@@ -15,7 +15,8 @@ use objc2_metal::{
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use rsx_redux::cpu::bus::gpu::{
-    CPUTransferParams, GPU, GPUCommand, Polygon, TexturePageColors, VRAM_HEIGHT, VRAM_WIDTH,
+    CPUTransferParams, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors, VRAM_HEIGHT,
+    VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
 };
 use std::cmp;
 
@@ -532,229 +533,240 @@ impl Renderer {
             .renderCommandEncoderWithDescriptor(&rpd);
     }
 
+    fn execute_vram_to_vram(&mut self, params: VramToVramTransferParams) {
+        let texture_descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::RGBA8Unorm,
+                params.width as usize,
+                params.height as usize,
+                false,
+            )
+        };
+
+        texture_descriptor.setStorageMode(MTLStorageMode::Shared);
+        texture_descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+
+        let read_texture = self
+            .device
+            .newTextureWithDescriptor(&texture_descriptor)
+            .unwrap();
+        let write_texture = self
+            .device
+            .newTextureWithDescriptor(&texture_descriptor)
+            .unwrap();
+
+        let command_buffer = self.command_queue.commandBuffer().unwrap();
+        let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
+
+        let source_origin = MTLOrigin {
+            x: params.source_start_x as usize,
+            y: params.source_start_y as usize,
+            z: 0,
+        };
+
+        let destination_origin = MTLOrigin {
+            x: params.destination_start_x as usize,
+            y: params.destination_start_y as usize,
+            z: 0 as usize,
+        };
+
+        let size = MTLSize {
+            width: params.width as usize,
+            height: params.height as usize,
+            depth: 1,
+        };
+
+        unsafe {
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_write.as_ref().unwrap(),
+                0,
+                0,
+                source_origin,
+                size,
+                write_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                write_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                size,
+                self.vram_write.as_ref().unwrap(),
+                0,
+                0,
+                destination_origin,
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_read.as_ref().unwrap(),
+                0,
+                0,
+                source_origin,
+                size,
+                read_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                read_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                size,
+                self.vram_read.as_ref().unwrap(),
+                0,
+                0,
+                destination_origin,
+            );
+        }
+
+        blit_encoder.endEncoding();
+        command_buffer.commit();
+    }
+
+    fn execute_cpu_to_vram(&mut self, params: VRamTransferParams) {
+        let mut rgba8_buffer: Vec<u8> = Vec::new();
+
+        let mut i = 0;
+        for _ in 0..params.height {
+            for _ in 0..params.width {
+                let halfword = params.halfwords[i];
+
+                let mut r = halfword & 0x1f;
+                let mut g = (halfword >> 5) & 0x1f;
+                let mut b = (halfword >> 10) & 0x1f;
+                let a = 0;
+
+                r = r << 3 | r >> 2;
+                g = g << 3 | g >> 2;
+                b = b << 3 | b >> 2;
+
+                rgba8_buffer.push(r as u8);
+                rgba8_buffer.push(g as u8);
+                rgba8_buffer.push(b as u8);
+                rgba8_buffer.push(a as u8);
+
+                i += 1;
+            }
+        }
+
+        let region = MTLRegion {
+            origin: MTLOrigin {
+                x: params.start_x as usize,
+                y: params.start_y as usize,
+                z: 0,
+            },
+            size: MTLSize {
+                width: params.width as usize,
+                height: params.height as usize,
+                depth: 1,
+            },
+        };
+
+        if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                )
+            }
+        }
+
+        if let Some(texture) = &self.vram_read {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(params.halfwords.as_ptr() as *mut c_void).unwrap(),
+                    2 * params.width as usize,
+                )
+            }
+        }
+    }
+
+    fn execute_fill_vram(&mut self, params: FillVramParams) {
+        let mut halfwords: Vec<u16> = Vec::new();
+        let mut rgba8_bytes: Vec<u8> = Vec::new();
+
+        let mut r = (params.pixel & 0x1f) as u8;
+        let mut g = ((params.pixel >> 5) & 0x1f) as u8;
+        let mut b = ((params.pixel >> 10) & 0x1f) as u8;
+
+        r = r << 3 | r >> 2;
+        g = g << 3 | g >> 2;
+        b = b << 3 | b >> 2;
+
+        let a = 0;
+
+        for _ in 0..params.height {
+            for _ in 0..params.width {
+                rgba8_bytes.push(r);
+                rgba8_bytes.push(g);
+                rgba8_bytes.push(b);
+                rgba8_bytes.push(a);
+
+                halfwords.push(params.pixel);
+            }
+        }
+
+        let region = MTLRegion {
+            origin: MTLOrigin {
+                x: params.start_x as usize,
+                y: params.start_y as usize,
+                z: 0,
+            },
+            size: MTLSize {
+                width: params.width as usize,
+                height: params.height as usize,
+                depth: 1,
+            },
+        };
+
+        if let Some(texture) = &self.vram_read {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
+                    2 * params.width as usize,
+                );
+            }
+        }
+
+        if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                );
+            }
+        }
+    }
+
     pub fn process_commands(&mut self, gpu: &mut GPU) {
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
-                    let mut rgba8_buffer: Vec<u8> = Vec::new();
-
-                    let mut i = 0;
-                    for _ in 0..params.height {
-                        for _ in 0..params.width {
-                            let halfword = params.halfwords[i];
-
-                            let mut r = halfword & 0x1f;
-                            let mut g = (halfword >> 5) & 0x1f;
-                            let mut b = (halfword >> 10) & 0x1f;
-                            let a = 0;
-
-                            r = r << 3 | r >> 2;
-                            g = g << 3 | g >> 2;
-                            b = b << 3 | b >> 2;
-
-                            rgba8_buffer.push(r as u8);
-                            rgba8_buffer.push(g as u8);
-                            rgba8_buffer.push(b as u8);
-                            rgba8_buffer.push(a as u8);
-
-                            i += 1;
-                        }
-                    }
-
-                    let region = MTLRegion {
-                        origin: MTLOrigin {
-                            x: params.start_x as usize,
-                            y: params.start_y as usize,
-                            z: 0,
-                        },
-                        size: MTLSize {
-                            width: params.width as usize,
-                            height: params.height as usize,
-                            depth: 1,
-                        },
-                    };
-
-                    if let Some(texture) = &self.vram_write {
-                        unsafe {
-                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                                region,
-                                0,
-                                NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
-                                4 * params.width as usize,
-                            )
-                        }
-                    }
-
-                    if let Some(texture) = &self.vram_read {
-                        unsafe {
-                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                                region,
-                                0,
-                                NonNull::new(params.halfwords.as_ptr() as *mut c_void).unwrap(),
-                                2 * params.width as usize,
-                            )
-                        }
-                    }
+                    self.execute_cpu_to_vram(params);
                 }
                 GPUCommand::VRAMtoCPU(params) => {
                     gpu.transfer_params = Some(params);
                 }
                 GPUCommand::VramToVram(params) => {
-                    let texture_descriptor = unsafe {
-                        MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-                            MTLPixelFormat::RGBA8Unorm,
-                            params.width as usize,
-                            params.height as usize,
-                            false,
-                        )
-                    };
-
-                    texture_descriptor.setStorageMode(MTLStorageMode::Shared);
-                    texture_descriptor
-                        .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
-
-                    let read_texture = self
-                        .device
-                        .newTextureWithDescriptor(&texture_descriptor)
-                        .unwrap();
-                    let write_texture = self
-                        .device
-                        .newTextureWithDescriptor(&texture_descriptor)
-                        .unwrap();
-
-                    let command_buffer = self.command_queue.commandBuffer().unwrap();
-                    let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
-
-                    let source_origin = MTLOrigin {
-                        x: params.source_start_x as usize,
-                        y: params.source_start_y as usize,
-                        z: 0,
-                    };
-
-                    let destination_origin = MTLOrigin {
-                        x: params.destination_start_x as usize,
-                        y: params.destination_start_y as usize,
-                        z: 0 as usize,
-                    };
-
-                    let size = MTLSize {
-                        width: params.width as usize,
-                        height: params.height as usize,
-                        depth: 1,
-                    };
-
-                    unsafe {
-                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                            self.vram_write.as_ref().unwrap(),
-                            0,
-                            0,
-                            source_origin,
-                            size,
-                            write_texture.as_ref(),
-                            0,
-                            0,
-                            MTLOrigin { x: 0, y: 0, z: 0 },
-                        );
-
-                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                            write_texture.as_ref(),
-                            0,
-                            0,
-                            MTLOrigin { x: 0, y: 0, z: 0 },
-                            size,
-                            self.vram_write.as_ref().unwrap(),
-                            0,
-                            0,
-                            destination_origin,
-                        );
-
-                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                            self.vram_read.as_ref().unwrap(),
-                            0,
-                            0,
-                            source_origin,
-                            size,
-                            read_texture.as_ref(),
-                            0,
-                            0,
-                            MTLOrigin { x: 0, y: 0, z: 0 },
-                        );
-
-                        blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                            read_texture.as_ref(),
-                            0,
-                            0,
-                            MTLOrigin { x: 0, y: 0, z: 0 },
-                            size,
-                            self.vram_read.as_ref().unwrap(),
-                            0,
-                            0,
-                            destination_origin,
-                        );
-                    }
-
-                    blit_encoder.endEncoding();
-                    command_buffer.commit();
+                    self.execute_vram_to_vram(params);
                 }
                 GPUCommand::FillVRAM(params) => {
-                    let mut halfwords: Vec<u16> = Vec::new();
-                    let mut rgba8_bytes: Vec<u8> = Vec::new();
-
-                    let mut r = (params.pixel & 0x1f) as u8;
-                    let mut g = ((params.pixel >> 5) & 0x1f) as u8;
-                    let mut b = ((params.pixel >> 10) & 0x1f) as u8;
-
-                    r = r << 3 | r >> 2;
-                    g = g << 3 | g >> 2;
-                    b = b << 3 | b >> 2;
-
-                    let a = 0;
-
-                    for _ in 0..params.height {
-                        for _ in 0..params.width {
-                            rgba8_bytes.push(r);
-                            rgba8_bytes.push(g);
-                            rgba8_bytes.push(b);
-                            rgba8_bytes.push(a);
-
-                            halfwords.push(params.pixel);
-                        }
-                    }
-
-                    let region = MTLRegion {
-                        origin: MTLOrigin {
-                            x: params.start_x as usize,
-                            y: params.start_y as usize,
-                            z: 0,
-                        },
-                        size: MTLSize {
-                            width: params.width as usize,
-                            height: params.height as usize,
-                            depth: 1,
-                        },
-                    };
-
-                    if let Some(texture) = &self.vram_read {
-                        unsafe {
-                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                                region,
-                                0,
-                                NonNull::new(halfwords.as_ptr() as *mut c_void).unwrap(),
-                                2 * params.width as usize,
-                            );
-                        }
-                    }
-
-                    if let Some(texture) = &self.vram_write {
-                        unsafe {
-                            texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                                region,
-                                0,
-                                NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
-                                4 * params.width as usize,
-                            );
-                        }
-                    }
+                    self.execute_fill_vram(params);
                 }
             }
         }
