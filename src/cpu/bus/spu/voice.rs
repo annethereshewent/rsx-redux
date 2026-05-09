@@ -105,7 +105,7 @@ pub enum AdsrPhase {
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 struct Envelope {
     counter: u32,
-    increment: u16,
+    increment: u32,
     step: i16,
     rate: u8,
     direction: EnvelopeDirection,
@@ -725,13 +725,12 @@ impl Voice {
             }
         }
 
+        let left_sample = SPU::apply_volume(sample, self.left_volume.current_level as i32);
+        let right_sample = SPU::apply_volume(sample, self.right_volume.current_level as i32);
         self.left_volume.tick();
         self.right_volume.tick();
 
-        (
-            SPU::apply_volume(sample, self.left_volume.current_level as i32),
-            SPU::apply_volume(sample, self.right_volume.current_level as i32),
-        )
+        (left_sample, right_sample)
     }
 
     fn decode_block(&mut self, block: ADPCMBlock) {
