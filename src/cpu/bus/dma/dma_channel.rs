@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "new_spu")]
 use crate::cpu::bus::spu::SPU;
-#[cfg(feature = "old_spu")]
-use crate::cpu::bus::spu_legacy::SPU;
 use crate::cpu::bus::{
     cdrom::CDRom, gpu::GPU, mdec::Mdec, registers::interrupt_register::InterruptRegister,
 };
@@ -299,7 +296,6 @@ impl DmaChannel {
             current_address += 4;
         }
 
-        #[cfg(feature = "new_spu")]
         spu.update_dma_request();
     }
 

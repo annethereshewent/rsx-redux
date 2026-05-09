@@ -5,10 +5,7 @@ use mdec::Mdec;
 use registers::{delay_register::DelayRegister, interrupt_register::InterruptRegister};
 use scheduler::Scheduler;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "new_spu")]
 use spu::SPU;
-#[cfg(feature = "old_spu")]
-use spu_legacy::SPU;
 use timer::Timer;
 
 use crate::cpu::bus::{
@@ -28,10 +25,7 @@ pub mod mdec;
 pub mod peripherals;
 pub mod registers;
 pub mod scheduler;
-#[cfg(feature = "new_spu")]
 pub mod spu;
-#[cfg(feature = "old_spu")]
-pub mod spu_legacy;
 pub mod timer;
 
 #[derive(Serialize, Deserialize)]
@@ -417,9 +411,6 @@ impl Bus {
             0x1f801120 => self.timers[2].write_counter(value as u32),
             0x1f801124 => self.timers[2].write_counter_register(value),
             0x1f801128 => self.timers[2].counter_target = value,
-            #[cfg(feature = "old_spu")]
-            0x1f801c00..=0x1f801e7f => self.spu.write16(address, value),
-            #[cfg(feature = "new_spu")]
             0x1f801c00..=0x1f801e7f => self.spu.write16(address, value, &mut self.interrupt_stat),
             _ => todo!("(mem_write16) address: 0x{:x}", address),
         }

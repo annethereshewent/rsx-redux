@@ -41,8 +41,11 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
 
 // TODO: actually implement CLUT
 float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
-    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+    uint u = uint(in.uv.x) & 0xffu;
+    uint v = uint(in.uv.y) & 0xffu;
+
+    uint u = u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    uint v = v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
     uint offsetU = uniforms.page[0] + u;
     uint offsetV = uniforms.page[1] + v;
@@ -98,8 +101,11 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
 }
 
 float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms, uint2 clut) {
-    uint u = (uint(in.uv[0]) & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-    uint v = (uint(in.uv[1]) & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+    uint u = uint(in.uv.x) & 0xffu;
+    uint v = uint(in.uv.y) & 0xffu;
+
+    uint u = u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    uint v = v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
     uint offsetU = uniforms.page[0] + u / 2;
     uint offsetV = uniforms.page[1] + v;

@@ -4,15 +4,9 @@ use memmap2::Mmap;
 use registers::HntmaskRegister;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "new_spu")]
 use crate::cpu::bus::spu::{
     SPU,
     voice::{NEG_FILTER_TABLE, POS_FILTER_TABLE},
-};
-#[cfg(feature = "old_spu")]
-use crate::cpu::bus::spu_legacy::{
-    SPU,
-    voices::{NEG_ADPCM_TABLE, POS_ADPCM_TABLE},
 };
 
 use super::{
@@ -941,14 +935,7 @@ impl CDRom {
             shift = 9;
         }
 
-        #[cfg(feature = "old_spu")]
-        let f0 = POS_ADPCM_TABLE[filter as usize];
-        #[cfg(feature = "old_spu")]
-        let f1 = NEG_ADPCM_TABLE[filter as usize];
-
-        #[cfg(feature = "new_spu")]
         let f0 = POS_FILTER_TABLE[filter as usize] as i32;
-        #[cfg(feature = "new_spu")]
         let f1 = NEG_FILTER_TABLE[filter as usize] as i32;
 
         let mut sample = ((nibble << 12) >> shift) as i32;
