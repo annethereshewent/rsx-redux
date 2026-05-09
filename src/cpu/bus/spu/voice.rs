@@ -392,9 +392,8 @@ impl Adsr {
     pub fn get_next_phase(&mut self) -> AdsrPhase {
         match self.phase {
             AdsrPhase::Attack => AdsrPhase::Decay,
-            AdsrPhase::Release => AdsrPhase::Idle,
+            AdsrPhase::Release | AdsrPhase::Idle => AdsrPhase::Idle,
             AdsrPhase::Sustain | AdsrPhase::Decay => AdsrPhase::Sustain,
-            AdsrPhase::Idle => AdsrPhase::Idle,
         }
     }
 }

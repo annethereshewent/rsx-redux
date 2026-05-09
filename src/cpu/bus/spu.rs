@@ -345,12 +345,8 @@ impl SPU {
             0x1f801d8a => self.keyon = (self.keyon & 0xffff) | (value as u32) << 16,
             0x1f801d8c => self.keyoff = (self.keyoff & 0xffff0000) | value as u32,
             0x1f801d8e => self.keyoff = (self.keyoff & 0xffff) | (value as u32) << 16,
-            0x1f801d90 => {
-                self.sound_modulation = (self.sound_modulation & 0xffff000) | value as u32
-            }
-            0x1f801d92 => {
-                self.sound_modulation = (self.sound_modulation & 0xffff) | (value as u32) << 16
-            }
+            0x1f801d90 => self.sound_modulation = (self.sound_modulation & 0xffff000) | value as u32,
+            0x1f801d92 => self.sound_modulation = (self.sound_modulation & 0xffff) | (value as u32) << 16,
             0x1f801d94 => self.noise_enable = (self.noise_enable & 0xffff000) | value as u32,
             0x1f801d96 => self.noise_enable = (self.noise_enable & 0xffff) | (value as u32) << 16,
             0x1f801d98 => self.echo_on = (self.echo_on & 0xffff000) | value as u32,
@@ -488,7 +484,7 @@ impl SPU {
             }
         }
 
-        if !self.spucnt.contains(SpuControlRegister::MUTE_SPU) {
+        if !self.spucnt.contains(SpuControlRegister::SPU_UNMUTE) {
             output_left = 0;
             output_right = 0;
             reverb_in_left = 0;

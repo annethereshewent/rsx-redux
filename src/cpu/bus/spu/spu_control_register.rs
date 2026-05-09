@@ -31,7 +31,7 @@ bitflags! {
         const EXTERNAL_AUDIO_REVER = 1 << 3;
         const IRQ9_ENABLE = 1 << 6;
         const REVERB_MASTER_ENABLE = 1 << 7;
-        const MUTE_SPU = 1 << 14;
+        const SPU_UNMUTE = 1 << 14;
         const SPU_ENABLE = 1 << 15;
     }
 }
