@@ -721,6 +721,11 @@ impl CDRom {
 
     fn getloc_p(&mut self) {
         self.controller_response_fifo
+            .push_back(self.subchannel_q.track);
+        self.controller_response_fifo
+            .push_back(self.subchannel_q.index);
+
+        self.controller_response_fifo
             .push_back(Self::u8_to_bcd(self.subchannel_q.mm));
         self.controller_response_fifo
             .push_back(Self::u8_to_bcd(self.subchannel_q.ss));
@@ -1042,9 +1047,6 @@ impl CDRom {
         msf.asect = self.msf.asect;
 
         self.current_msf = msf;
-
-        self.subchannel_q.track = 1;
-        self.subchannel_q.index = 1;
 
         self.subchannel_q.track = 1;
         self.subchannel_q.index = 1;

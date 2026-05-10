@@ -1,3 +1,6 @@
+#[cfg(feature = "debug")]
+use crate::cpu::{OriginKind, OriginNode, ram_off};
+
 use super::{CPU, ExceptionType, RA_REGISTER};
 pub struct Instruction(pub u32);
 
@@ -303,6 +306,32 @@ impl CPU {
 
         let value = self.load8(address) as i8 as i16 as i32 as u32;
 
+        #[cfg(feature = "debug")]
+        if address >> 16 == 0x1f80 {
+            let id = self.add_origin(OriginNode {
+                pc: self.previous_pc,
+                opcode: instruction.0,
+                value,
+                kind: OriginKind::MmioRead { addr: address },
+            });
+
+            self.reg_origin[instruction.rt()] = id;
+        } else {
+            let mem_origin = self.ram_origin[ram_off(address)];
+
+            let id = self.add_origin(OriginNode {
+                pc: self.previous_pc,
+                opcode: instruction.0,
+                value,
+                kind: OriginKind::Load {
+                    addr: address,
+                    mem: mem_origin,
+                },
+            });
+
+            self.reg_origin[instruction.rt()] = id;
+        }
+
         self.update_load(instruction.rt(), value);
 
         2
@@ -312,6 +341,33 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
         if address & 1 == 0 {
             let value = self.load16(address) as i16 as i32 as u32;
+
+            #[cfg(feature = "debug")]
+            if address >> 16 == 0x1f80 {
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value,
+                    kind: OriginKind::MmioRead { addr: address },
+                });
+
+                self.reg_origin[instruction.rt()] = id;
+            } else {
+                let mem_origin = self.ram_origin[ram_off(address)];
+
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value,
+                    kind: OriginKind::Load {
+                        addr: address,
+                        mem: mem_origin,
+                    },
+                });
+
+                self.reg_origin[instruction.rt()] = id;
+            }
+
             self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
@@ -350,6 +406,33 @@ impl CPU {
 
         if address & 0x3 == 0 {
             let value = self.load32(address);
+
+            #[cfg(feature = "debug")]
+            if address >> 16 == 0x1f80 {
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value,
+                    kind: OriginKind::MmioRead { addr: address },
+                });
+
+                self.reg_origin[instruction.rt()] = id;
+            } else {
+                let mem_origin = self.ram_origin[ram_off(address)];
+
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value,
+                    kind: OriginKind::Load {
+                        addr: address,
+                        mem: mem_origin,
+                    },
+                });
+
+                self.reg_origin[instruction.rt()] = id;
+            }
+
             self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
@@ -363,6 +446,33 @@ impl CPU {
         let address = (self.r[instruction.rs()] as i32 + instruction.signed_immediate16()) as u32;
 
         let value = self.load8(address);
+
+        #[cfg(feature = "debug")]
+        if address >> 16 == 0x1f80 {
+            let id = self.add_origin(OriginNode {
+                pc: self.previous_pc,
+                opcode: instruction.0,
+                value,
+                kind: OriginKind::MmioRead { addr: address },
+            });
+
+            self.reg_origin[instruction.rt()] = id;
+        } else {
+            let mem_origin = self.ram_origin[ram_off(address)];
+
+            let id = self.add_origin(OriginNode {
+                pc: self.previous_pc,
+                opcode: instruction.0,
+                value,
+                kind: OriginKind::Load {
+                    addr: address,
+                    mem: mem_origin,
+                },
+            });
+
+            self.reg_origin[instruction.rt()] = id;
+        }
+
         self.update_load(instruction.rt(), value);
 
         2
@@ -373,6 +483,32 @@ impl CPU {
 
         if address & 1 == 0 {
             let value = self.load16(address);
+
+            #[cfg(feature = "debug")]
+            if address >> 16 == 0x1f80 {
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value,
+                    kind: OriginKind::MmioRead { addr: address },
+                });
+
+                self.reg_origin[instruction.rt()] = id;
+            } else {
+                let mem_origin = self.ram_origin[ram_off(address)];
+
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value,
+                    kind: OriginKind::Load {
+                        addr: address,
+                        mem: mem_origin,
+                    },
+                });
+
+                self.reg_origin[instruction.rt()] = id;
+            }
             self.update_load(instruction.rt(), value);
         } else {
             self.cop0.bad_addr = address;
@@ -415,6 +551,23 @@ impl CPU {
 
         self.store8(address, value);
 
+        #[cfg(feature = "debug")]
+        {
+            let src_origin = self.reg_origin[instruction.rt()];
+
+            let id = self.add_origin(OriginNode {
+                pc: self.previous_pc,
+                opcode: instruction.0,
+                value: value as u32,
+                kind: OriginKind::Store {
+                    addr: address,
+                    src: src_origin,
+                },
+            });
+
+            self.ram_origin[ram_off(address)] = id;
+        }
+
         2
     }
 
@@ -423,6 +576,23 @@ impl CPU {
 
         if address & 1 == 0 {
             self.store16(address, self.r[instruction.rt()] as u16);
+
+            #[cfg(feature = "debug")]
+            {
+                let src_origin = self.reg_origin[instruction.rt()];
+
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value: self.r[instruction.rt()] as u16 as u32,
+                    kind: OriginKind::Store {
+                        addr: address,
+                        src: src_origin,
+                    },
+                });
+
+                self.ram_origin[ram_off(address)] = id;
+            }
         } else {
             self.cop0.bad_addr = address;
             self.enter_exception(ExceptionType::StoreAddressError);
@@ -457,6 +627,23 @@ impl CPU {
             let value = self.r[instruction.rt()];
 
             self.store32(address, value);
+
+            #[cfg(feature = "debug")]
+            {
+                let src_origin = self.reg_origin[instruction.rt()];
+
+                let id = self.add_origin(OriginNode {
+                    pc: self.previous_pc,
+                    opcode: instruction.0,
+                    value,
+                    kind: OriginKind::Store {
+                        addr: address,
+                        src: src_origin,
+                    },
+                });
+
+                self.ram_origin[ram_off(address)] = id;
+            }
         } else {
             self.cop0.bad_addr = address;
             self.enter_exception(ExceptionType::StoreAddressError);

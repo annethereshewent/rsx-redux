@@ -276,25 +276,27 @@ impl SPU {
 
     pub fn read16(&self, address: usize) -> u16 {
         match address {
-            0x1f801c00..=0x1f801d7f => self.read_voices(address),
+            0x1f80_1c00..=0x1f80_1d7f => self.read_voices(address),
             0x1f80_1d84 => self.reverb_volume.0,
             0x1f80_1d86 => self.reverb_volume.1,
-            0x1f801d88 => self.keyon as u16,
-            0x1f801d8a => (self.keyon >> 16) as u16,
-            0x1f801d8c => self.keyoff as u16,
-            0x1f801d8e => (self.keyoff >> 16) as u16,
+            0x1f80_1d88 => self.keyon as u16,
+            0x1f80_1d8a => (self.keyon >> 16) as u16,
+            0x1f80_1d8c => self.keyoff as u16,
+            0x1f80_1d8e => (self.keyoff >> 16) as u16,
             0x1f80_1d90 => self.sound_modulation as u16,
             0x1f80_1d92 => (self.sound_modulation >> 16) as u16,
             0x1f80_1d94 => self.noise_enable as u16,
             0x1f80_1d96 => (self.noise_enable >> 16) as u16,
             0x1f80_1d98 => self.echo_on as u16,
             0x1f80_1d9a => (self.echo_on >> 16) as u16,
-            0x1f801da6 => (self.sound_ram_address / 8) as u16,
-            0x1f801daa => self.spucnt.bits(),
-            0x1f801dac => self.sound_ram_transfer_type,
-            0x1f801dae => self.read_stat(),
-            0x1f801db8 => self.current_volume.0,
-            0x1f801dba => self.current_volume.1,
+            0x1f80_1d9c => self.endx as u16,
+            0x1f80_1d9e => (self.endx >> 16) as u16,
+            0x1f80_1da6 => (self.sound_ram_address / 8) as u16,
+            0x1f80_1daa => self.spucnt.bits(),
+            0x1f80_1dac => self.sound_ram_transfer_type,
+            0x1f80_1dae => self.read_stat(),
+            0x1f80_1db8 => self.current_volume.0,
+            0x1f80_1dba => self.current_volume.1,
             _ => todo!("SPU address 0x{:x}", address),
         }
     }
@@ -338,26 +340,27 @@ impl SPU {
         interrupt_register: &mut InterruptRegister,
     ) {
         match address {
-            0x1f801c00..=0x1f801d7f => self.write_voices(address, value),
-            0x1f801d80 => self.main_volume_left = value,
-            0x1f801d82 => self.main_volume_right = value,
-            0x1f801d84 => self.reverb_volume.0 = value,
-            0x1f801d86 => self.reverb_volume.1 = value,
-            0x1f801d88 => self.keyon = (self.keyon & 0xffff0000) | value as u32,
-            0x1f801d8a => self.keyon = (self.keyon & 0xffff) | (value as u32) << 16,
-            0x1f801d8c => self.keyoff = (self.keyoff & 0xffff0000) | value as u32,
-            0x1f801d8e => self.keyoff = (self.keyoff & 0xffff) | (value as u32) << 16,
-            0x1f801d90 => {
+            0x1f80_1c00..=0x1f80_1d7f => self.write_voices(address, value),
+            0x1f80_1d80 => self.main_volume_left = value,
+            0x1f80_1d82 => self.main_volume_right = value,
+            0x1f80_1d84 => self.reverb_volume.0 = value,
+            0x1f80_1d86 => self.reverb_volume.1 = value,
+            0x1f80_1d88 => self.keyon = (self.keyon & 0xffff0000) | value as u32,
+            0x1f80_1d8a => self.keyon = (self.keyon & 0xffff) | (value as u32) << 16,
+            0x1f80_1d8c => self.keyoff = (self.keyoff & 0xffff0000) | value as u32,
+            0x1f80_1d8e => self.keyoff = (self.keyoff & 0xffff) | (value as u32) << 16,
+            0x1f80_1d90 => {
                 self.sound_modulation = (self.sound_modulation & 0xffff000) | value as u32
             }
-            0x1f801d92 => {
+            0x1f80_1d92 => {
                 self.sound_modulation = (self.sound_modulation & 0xffff) | (value as u32) << 16
             }
-            0x1f801d94 => self.noise_enable = (self.noise_enable & 0xffff000) | value as u32,
-            0x1f801d96 => self.noise_enable = (self.noise_enable & 0xffff) | (value as u32) << 16,
-            0x1f801d98 => self.echo_on = (self.echo_on & 0xffff000) | value as u32,
-            0x1f801d9a => self.echo_on = (self.echo_on & 0xffff) | (value as u32) << 16,
-            0x1f801da4 => {
+            0x1f80_1d94 => self.noise_enable = (self.noise_enable & 0xffff000) | value as u32,
+            0x1f80_1d96 => self.noise_enable = (self.noise_enable & 0xffff) | (value as u32) << 16,
+            0x1f80_1d98 => self.echo_on = (self.echo_on & 0xffff000) | value as u32,
+            0x1f80_1d9a => self.echo_on = (self.echo_on & 0xffff) | (value as u32) << 16,
+            0x1f80_1d9c..=0x1f80_1d9e => (),
+            0x1f80_1da4 => {
                 self.irq_address = value as u32 * 8;
 
                 if self.is_irq_triggerable() && self.irq_address == self.current_ram_address {
@@ -365,7 +368,7 @@ impl SPU {
                     self.spustat.insert(SpuStatRegister::IRQ9_FLAG);
                 }
             }
-            0x1f801da6 => {
+            0x1f80_1da6 => {
                 self.sound_ram_address = value as u32 * 8;
                 self.current_ram_address = self.sound_ram_address;
 
@@ -374,8 +377,8 @@ impl SPU {
                     interrupt_register.insert(InterruptRegister::SPU);
                 }
             }
-            0x1f801da8 => self.manual_transfer_write(value, interrupt_register),
-            0x1f801daa => {
+            0x1f80_1da8 => self.manual_transfer_write(value, interrupt_register),
+            0x1f80_1daa => {
                 let previous_enable = self.spucnt.contains(SpuControlRegister::SPU_ENABLE);
                 self.spucnt = SpuControlRegister::from_bits_retain(value);
 
@@ -416,12 +419,12 @@ impl SPU {
 
                 self.update_dma_request();
             }
-            0x1f801dac => self.sound_ram_transfer_type = value,
-            0x1f801db0 => self.cd_volume.0 = value,
-            0x1f801db2 => self.cd_volume.1 = value,
-            0x1f801db4 => self.external_volume.0 = value,
-            0x1f801db6 => self.external_volume.1 = value,
-            0x1f801dc0..=0x1f801dfe | 0x1f801da2 => self.reverb.write16(address, value),
+            0x1f80_1dac => self.sound_ram_transfer_type = value,
+            0x1f80_1db0 => self.cd_volume.0 = value,
+            0x1f80_1db2 => self.cd_volume.1 = value,
+            0x1f80_1db4 => self.external_volume.0 = value,
+            0x1f80_1db6 => self.external_volume.1 = value,
+            0x1f80_1dc0..=0x1f80_1dfe | 0x1f80_1da2 => self.reverb.write16(address, value),
             _ => panic!(
                 "invalid address given to control spu control registers: 0x{:x}",
                 address
