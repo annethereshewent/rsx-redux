@@ -651,7 +651,7 @@ impl GPU {
                 self.is_semitransparent = (word >> 25) & 1 == 1;
 
                 if self.is_polyline {
-                    2
+                    3
                 } else {
                     if self.is_shaded { 4 } else { 3 }
                 }
@@ -1396,7 +1396,7 @@ impl GPU {
                 vertices: vec![vertex0, vertex1],
                 is_line: true,
                 is_shaded: self.is_shaded,
-                semitransparent: false,
+                semitransparent: self.is_semitransparent,
                 textured: false,
                 texpage: None,
                 modulate: false,
@@ -1490,11 +1490,8 @@ impl GPU {
         self.words_left -= 1;
 
         if self.words_left == 0 {
-            // TODO: actually implement draw_polyline
-            self.words_left = if self.is_shaded { 2 } else { 1 };
             self.draw_polyline();
-
-            self.current_command_buffer = VecDeque::new();
+            self.words_left = if self.is_shaded { 2 } else { 1 };
         }
     }
 
@@ -1696,10 +1693,6 @@ impl GPU {
 
         if self.words_left == 0 {
             self.words_left = self.get_words_left(word);
-
-            if self.is_polyline {
-                return;
-            }
         }
         if self.words_left == 1 {
             let word = self.current_command_buffer[0];

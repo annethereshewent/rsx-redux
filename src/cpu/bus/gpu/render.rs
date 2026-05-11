@@ -15,6 +15,10 @@ struct Coordinate2d {
 
 impl GPU {
     pub fn rasterize_line(&mut self, polygon: &Polygon) {
+        if self.debug_on {
+            return;
+        }
+
         let vertices = &polygon.vertices;
         let start_x = vertices[0].x;
         let start_y = vertices[0].y;
@@ -40,25 +44,30 @@ impl GPU {
             // line is either horizontal or diagonal
             let dydx = diff_y as f32 / diff_x as f32;
 
-            for x in start_x..end_x {
+            let going_left = start_x > end_x;
+
+            let diff_x = diff_x.abs();
+
+            for x in 0..=diff_x {
+                let curr_x = if going_left { start_x - x } else { x + start_x };
                 let y_fp = x as f32 * dydx;
 
                 let curr_y = start_y + y_fp as i32;
 
-                if curr_y < end_y {
-                    let mut output = vertices[0].color.clone();
-                    let coordinates = Coordinate2d { x, y: curr_y };
-                    self.render_pixel(polygon, &mut output, &coordinates);
-                } else {
-                    // we've finished drawing the line
-                    break;
-                }
+                let mut output = vertices[0].color.clone();
+                let coordinates = Coordinate2d { x: curr_x, y: curr_y };
+                self.render_pixel(polygon, &mut output, &coordinates);
             }
         } else {
             // line is vertical
+            let diff_y = diff_y.abs();
 
-            for y in start_y..end_y {
-                let coordinates = Coordinate2d { x: start_x, y };
+            let going_up = start_y > end_y;
+
+            for y in 0..=diff_y {
+                let curr_y = if going_up { start_y - y } else { y + start_y };
+
+                let coordinates = Coordinate2d { x: start_x, y: curr_y };
                 let mut output = vertices[0].color.clone();
 
                 self.render_pixel(polygon, &mut output, &coordinates);
