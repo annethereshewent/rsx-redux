@@ -1341,13 +1341,21 @@ impl GPU {
     }
 
     fn process_polyline(&mut self, word: u32) {
+        if (word & 0xf000f000) == 0x50005000 {
+            self.is_polyline = false;
+            self.words_left = 0;
+            return;
+        }
+
         self.current_command_buffer.push_back(word);
         self.words_left -= 1;
 
         if self.words_left == 0 {
             // TODO: actually implement draw_polyline
-            self.current_command_buffer = VecDeque::new();
+            self.words_left = if self.is_shaded { 2 } else { 1 };
             self.draw_line();
+
+            self.current_command_buffer = VecDeque::new();
         }
     }
 
@@ -1540,36 +1548,20 @@ impl GPU {
         }
 
         if self.is_polyline {
-            if (word & 0xf000f000) == 0x50005000 {
-                self.is_polyline = false;
-            }
-
             self.process_polyline(word);
 
             return;
         }
 
-        let upper = word >> 29;
-
         self.current_command_buffer.push_back(word);
 
         if self.words_left == 0 {
-            if upper == 0x2 {
-                if (word >> 27) & 1 == 1 {
-                    self.is_polyline = true;
-                }
-            } else {
-                self.words_left = self.get_words_left(word);
+            self.words_left = self.get_words_left(word);
+
+            if self.is_polyline {
+                return;
             }
         }
-
-        if self.words_left == 0 && upper == 0x2 {
-            self.draw_line();
-            self.current_command_buffer = VecDeque::new();
-
-            return;
-        }
-
         if self.words_left == 1 {
             let word = self.current_command_buffer[0];
 
