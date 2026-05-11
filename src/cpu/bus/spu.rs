@@ -297,6 +297,17 @@ impl SPU {
             0x1f80_1dae => self.read_stat(),
             0x1f80_1db8 => self.current_volume.0,
             0x1f80_1dba => self.current_volume.1,
+            0x1f80_1e00..=0x1f801e5f => {
+                let voice = (address - 0x1f80_1e00) / 4;
+
+                let is_left = address & 0x2 == 0;
+
+                if is_left {
+                    self.voices[voice].left_volume.current_level as u16
+                } else {
+                    self.voices[voice].right_volume.current_level as u16
+                }
+            }
             _ => todo!("SPU address 0x{:x}", address),
         }
     }
@@ -425,6 +436,7 @@ impl SPU {
             0x1f80_1db4 => self.external_volume.0 = value,
             0x1f80_1db6 => self.external_volume.1 = value,
             0x1f80_1dc0..=0x1f80_1dfe | 0x1f80_1da2 => self.reverb.write16(address, value),
+            0x1f80_1e00..=0x1f801e5f => println!("[WARN]Writing to internal registers of SPU voices. should not happen."),
             _ => panic!(
                 "invalid address given to control spu control registers: 0x{:x}",
                 address

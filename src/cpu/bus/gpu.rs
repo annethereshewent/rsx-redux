@@ -610,75 +610,80 @@ impl GPU {
     fn get_words_left(&mut self, word: u32) -> usize {
         let upper_bits = word >> 29;
 
-        if upper_bits == 0x1 {
-            // render polygon command
-            let is_textured = (word >> 26) & 1 == 1;
-            let is_semitransparent = (word >> 25) & 1 == 1;
-            let is_shaded = (word >> 28) & 1 == 1;
-            let modulate = (word >> 24) & 1 == 0;
+        match upper_bits {
+            0x1 => {
+                // render polygon command
+                let is_textured = (word >> 26) & 1 == 1;
+                let is_semitransparent = (word >> 25) & 1 == 1;
+                let is_shaded = (word >> 28) & 1 == 1;
+                let modulate = (word >> 24) & 1 == 0;
 
-            let num_vertices = if (word >> 27) & 1 == 1 { 4 } else { 3 };
+                let num_vertices = if (word >> 27) & 1 == 1 { 4 } else { 3 };
 
-            let mut multiplier = 1;
+                let mut multiplier = 1;
 
-            if is_shaded {
-                multiplier += 1;
+                if is_shaded {
+                    multiplier += 1;
+                }
+                if is_textured {
+                    multiplier += 1;
+                }
+
+                self.num_vertices = num_vertices;
+                self.is_shaded = is_shaded;
+                self.is_textured = is_textured;
+                self.is_semitransparent = is_semitransparent;
+                self.modulate = modulate;
+
+                if !is_shaded {
+                    return num_vertices * multiplier + 1;
+                }
+
+                num_vertices * multiplier
             }
-            if is_textured {
-                multiplier += 1;
+            0x2 => {
+                self.is_shaded = (word >> 28) & 1 == 1;
+                self.is_polyline = (word >> 27) & 1 == 1;
+                self.is_semitransparent = (word >> 25) & 1 == 1;
+
+                if self.is_shaded {
+                    2
+                } else {
+                    1
+                }
             }
+            0x3 => {
+                let mut num_words = 2;
+                self.is_textured = (word >> 26) & 1 == 1;
+                self.is_semitransparent = (word >> 25) & 1 == 1;
+                self.modulate = (word >> 24) & 1 == 0;
 
-            self.num_vertices = num_vertices;
-            self.is_shaded = is_shaded;
-            self.is_textured = is_textured;
-            self.is_semitransparent = is_semitransparent;
-            self.modulate = modulate;
+                self.rectangle_size = match (word >> 27) & 0x3 {
+                    0 => RectangleSize::Variable,
+                    1 => RectangleSize::Single,
+                    2 => RectangleSize::EightxEight,
+                    3 => RectangleSize::SixteenxSixteen,
+                    _ => unreachable!(),
+                };
 
-            if !is_shaded {
-                return num_vertices * multiplier + 1;
+                if self.is_textured {
+                    num_words += 1;
+                }
+
+                if self.rectangle_size == RectangleSize::Variable {
+                    num_words += 1;
+                }
+
+                num_words
             }
-
-            return num_vertices * multiplier;
-        }
-
-        if upper_bits == 0x3 {
-            let mut num_words = 2;
-            self.is_textured = (word >> 26) & 1 == 1;
-            self.is_semitransparent = (word >> 25) & 1 == 1;
-            self.modulate = (word >> 24) & 1 == 0;
-
-            self.rectangle_size = match (word >> 27) & 0x3 {
-                0 => RectangleSize::Variable,
-                1 => RectangleSize::Single,
-                2 => RectangleSize::EightxEight,
-                3 => RectangleSize::SixteenxSixteen,
-                _ => unreachable!(),
-            };
-
-            if self.is_textured {
-                num_words += 1;
+            0x4 => 4,
+            5 | 6 => 3,
+            _ => if (word >> 24) == 0x2 {
+                3
+            } else {
+                1
             }
-
-            if self.rectangle_size == RectangleSize::Variable {
-                num_words += 1;
-            }
-
-            return num_words;
         }
-
-        if upper_bits == 0x4 {
-            return 4;
-        }
-
-        if [5, 6].contains(&upper_bits) {
-            return 3;
-        }
-
-        if (word >> 24) == 0x2 {
-            return 3;
-        }
-
-        1
     }
 
     fn parse_texpage(word: u32) -> Texpage {
@@ -1309,7 +1314,7 @@ impl GPU {
 
         match upper {
             1 => self.push_polygon(),
-            2 => unreachable!("shouldn't happen"),
+            2 => self.draw_line(),
             3 => self.push_rectangle(),
             4 => self.vram_to_vram_transfer(),
             5 => self.cpu_to_vram_transfer(),
@@ -1333,9 +1338,20 @@ impl GPU {
         }
     }
 
-    fn draw_line(&mut self) {}
+    fn draw_line(&mut self) {
+        // TODO: implement this soon!
+    }
 
-    fn draw_polyline(&mut self) {}
+    fn process_polyline(&mut self, word: u32) {
+        self.current_command_buffer.push_back(word);
+        self.words_left -= 1;
+
+        if self.words_left == 0 {
+            // TODO: actually implement draw_polyline
+            self.current_command_buffer = VecDeque::new();
+            self.draw_line();
+        }
+    }
 
     fn transfer_to_vram(&mut self, halfword: u16) {
         #[cfg(feature = "software_gpu")]
@@ -1524,6 +1540,17 @@ impl GPU {
                 return;
             }
         }
+
+        if self.is_polyline {
+            if (word & 0xf000f000) == 0x50005000 {
+                self.is_polyline = false;
+            }
+
+            self.process_polyline(word);
+
+            return;
+        }
+
         let upper = word >> 29;
 
         self.current_command_buffer.push_back(word);
@@ -1538,19 +1565,9 @@ impl GPU {
             }
         }
 
-        if self.words_left == 0 && upper == 0x2 || self.is_polyline {
-            if self.is_polyline {
-                if (word & 0xf000f000) == 0x50005000 {
-                    self.is_polyline = false;
-
-                    self.draw_polyline();
-
-                    self.current_command_buffer = VecDeque::new();
-                }
-            } else {
-                self.draw_line();
-                self.current_command_buffer = VecDeque::new();
-            }
+        if self.words_left == 0 && upper == 0x2 {
+            self.draw_line();
+            self.current_command_buffer = VecDeque::new();
 
             return;
         }
