@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Serialize, Deserialize)]
 pub struct Controller {
     state: usize,
-    digital_mode: bool,
+    pub digital_mode: bool,
     buttons: u16,
     left_joy_x: u8,
     left_joy_y: u8,
@@ -38,6 +38,22 @@ impl Controller {
 
     pub fn reset(&mut self) {
         self.state = 0;
+    }
+
+    pub fn set_leftx(&mut self, value: u8) {
+        self.left_joy_x = value;
+    }
+
+    pub fn set_lefty(&mut self, value: u8) {
+        self.left_joy_y = value;
+    }
+
+    pub fn set_rightx(&mut self, value: u8) {
+        self.right_joy_x = value;
+    }
+
+    pub fn set_righty(&mut self, value: u8) {
+        self.right_joy_y = value;
     }
 
     pub fn reply(&mut self, command: u8) -> u8 {
