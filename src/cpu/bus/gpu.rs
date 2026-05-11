@@ -267,6 +267,8 @@ pub struct GPU {
     pub gpuread: u32,
     words_left: usize,
     is_polyline: bool,
+    previous_line_vertex: Option<Vertex>,
+    previous_line_color: Option<Color>,
     pub x1: u32,
     pub x2: u32,
     pub y1: u32,
@@ -437,6 +439,8 @@ impl GPU {
             vram_read_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2].into_boxed_slice(),
             #[cfg(feature = "hardware_gpu")]
             vram_write_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 4].into_boxed_slice(),
+            previous_line_vertex: None,
+            previous_line_color: None,
         }
     }
 
@@ -646,7 +650,11 @@ impl GPU {
                 self.is_polyline = (word >> 27) & 1 == 1;
                 self.is_semitransparent = (word >> 25) & 1 == 1;
 
-                if self.is_shaded { 2 } else { 1 }
+                if self.is_polyline {
+                    2
+                } else {
+                    if self.is_shaded { 4 } else { 3 }
+                }
             }
             0x3 => {
                 let mut num_words = 2;
@@ -753,11 +761,10 @@ impl GPU {
 
             let word = self.current_command_buffer[command_index];
 
-            let x = word as i16 as i32;
-            let y = (word >> 16) as i16 as i32;
+            let (x, y) = self.parse_position(word);
 
-            vertex.x = x + self.x_offset;
-            vertex.y = y + self.y_offset;
+            vertex.x = x;
+            vertex.y = y;
 
             command_index += 1;
 
@@ -940,6 +947,19 @@ impl GPU {
         (x as usize, y as usize)
     }
 
+    fn parse_position(&self, word: u32) -> (i32, i32) {
+        let mut x = (word & 0xffff) as i32;
+        let mut y = (word >> 16) as i32;
+
+        x = (x << 21) >> 21;
+        y = (y << 21) >> 21;
+
+        x += self.x_offset;
+        y += self.y_offset;
+
+        (x, y)
+    }
+
     fn push_rectangle(&mut self) {
         #[cfg(feature = "hardware_gpu")]
         {
@@ -952,14 +972,7 @@ impl GPU {
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
-        let mut x = (word & 0xffff) as i32;
-        let mut y = (word >> 16) as i32;
-
-        x = (x << 21) >> 21;
-        y = (y << 21) >> 21;
-
-        x += self.x_offset;
-        y += self.y_offset;
+        let (x, y) = self.parse_position(word);
 
         let mut u = 0;
         let mut v = 0;
@@ -1336,14 +1349,140 @@ impl GPU {
         }
     }
 
+    fn draw_polyline(&mut self) {
+        let color0 = if let Some(color0) = self.previous_line_color {
+            color0
+        } else {
+            Self::parse_color(self.current_command_buffer.pop_front().unwrap())
+        };
+
+        let vertex0 = if let Some(vertex0) = self.previous_line_vertex {
+            vertex0
+        } else {
+            let word = self.current_command_buffer.pop_front().unwrap();
+
+            let (x, y) = self.parse_position(word);
+
+            Vertex {
+                x,
+                y,
+                u: 0,
+                v: 0,
+                color: color0
+            }
+        };
+
+        let mut color1 = color0;
+
+        if self.is_shaded {
+            color1 = Self::parse_color(self.current_command_buffer.pop_front().unwrap());
+        }
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let (x, y) = self.parse_position(word);
+
+        let vertex1 = Vertex {
+            x,
+            y,
+            u: 0,
+            v: 0,
+            color: color1
+        };
+
+        #[cfg(feature = "software_gpu")]
+        {
+            let polygon = Polygon {
+                vertices: vec![vertex0, vertex1],
+                is_line: true,
+                is_shaded: self.is_shaded,
+                semitransparent: false,
+                textured: false,
+                texpage: None,
+                modulate: false,
+                transparent_mode: 0,
+                clut: (0, 0),
+                texture_mask_x: 0,
+                texture_mask_y: 0,
+                texture_offset_x: 0,
+                texture_offset_y: 0
+            };
+
+            self.rasterize_line(&polygon);
+        }
+        #[cfg(feature = "hardware_gpu")]
+        {
+            // TODO
+        }
+
+        self.previous_line_color = Some(color1);
+        self.previous_line_vertex = Some(vertex1);
+    }
+
     fn draw_line(&mut self) {
-        // TODO: implement this soon!
+        let color0 = Self::parse_color(self.current_command_buffer.pop_front().unwrap());
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let (x0, y0) = self.parse_position(word);
+
+        let mut color1 = color0;
+
+        if self.is_shaded {
+            color1 = Self::parse_color(self.current_command_buffer.pop_front().unwrap());
+        }
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let (x1, y1) = self.parse_position(word);
+
+        let vertex0 = Vertex {
+            x: x0,
+            y: y0,
+            u: 0,
+            v: 0,
+            color: color0
+        };
+        let vertex1 = Vertex {
+            x: x1,
+            y: y1,
+            u: 0,
+            v: 0,
+            color: color1
+        };
+
+        #[cfg(feature = "software_gpu")]
+        {
+            let polygon = Polygon {
+                vertices: vec![vertex0, vertex1],
+                is_line: true,
+                is_shaded: self.is_shaded,
+                semitransparent: false,
+                textured: false,
+                texpage: None,
+                modulate: false,
+                transparent_mode: 0,
+                clut: (0, 0),
+                texture_mask_x: 0,
+                texture_mask_y: 0,
+                texture_offset_x: 0,
+                texture_offset_y: 0
+            };
+
+            self.rasterize_line(&polygon);
+        }
+
+        #[cfg(feature = "hardware_gpu")] {
+            // TODO
+        }
     }
 
     fn process_polyline(&mut self, word: u32) {
         if (word & 0xf000f000) == 0x50005000 {
             self.is_polyline = false;
             self.words_left = 0;
+            self.previous_line_color = None;
+            self.previous_line_vertex = None;
             return;
         }
 
@@ -1353,7 +1492,7 @@ impl GPU {
         if self.words_left == 0 {
             // TODO: actually implement draw_polyline
             self.words_left = if self.is_shaded { 2 } else { 1 };
-            self.draw_line();
+            self.draw_polyline();
 
             self.current_command_buffer = VecDeque::new();
         }

@@ -14,6 +14,57 @@ struct Coordinate2d {
 }
 
 impl GPU {
+    pub fn rasterize_line(&mut self, polygon: &Polygon) {
+        let vertices = &polygon.vertices;
+        let start_x = vertices[0].x;
+        let start_y = vertices[0].y;
+
+        let end_x = vertices[1].x;
+        let end_y = vertices[1].y;
+
+        let diff_x = end_x - start_x;
+        let diff_y = end_y - start_y;
+
+        if start_x < 0 ||
+            end_x >= 1024||
+            start_y < 0 ||
+            end_y >= 512 ||
+            start_y >= 512 ||
+            start_y < 0 ||
+            start_x >= 1024
+        {
+            return;
+        }
+
+        if diff_x != 0 {
+            // line is either horizontal or diagonal
+            let dydx = diff_y as f32 / diff_x as f32;
+
+            for x in start_x..end_x {
+                let y_fp = x as f32 * dydx;
+
+                let curr_y = start_y + y_fp as i32;
+
+                if curr_y < end_y {
+                    let mut output = vertices[0].color.clone();
+                    let coordinates = Coordinate2d { x, y: curr_y };
+                    self.render_pixel(polygon, &mut output, &coordinates);
+                } else {
+                    // we've finished drawing the line
+                    break;
+                }
+            }
+        } else {
+            // line is vertical
+
+            for y in start_y..end_y {
+                let coordinates = Coordinate2d { x: start_x, y };
+                let mut output = vertices[0].color.clone();
+
+                self.render_pixel(polygon, &mut output, &coordinates);
+            }
+        }
+    }
     pub fn rasterize_triangle(&mut self, polygon: &mut Polygon) {
         polygon.vertices.sort_by(|a, b| a.y.cmp(&b.y));
 
