@@ -14,6 +14,7 @@ struct Coordinate2d {
 }
 
 impl GPU {
+    // TODO: add shaded line support. should be pretty straightforward
     pub fn rasterize_line(&mut self, polygon: &Polygon) {
         if self.debug_on {
             return;
