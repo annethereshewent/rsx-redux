@@ -650,6 +650,9 @@ impl GPU {
                 self.is_polyline = (word >> 27) & 1 == 1;
                 self.is_semitransparent = (word >> 25) & 1 == 1;
 
+                self.previous_line_color = None;
+                self.previous_line_vertex = None;
+
                 if self.is_polyline {
                     3
                 } else {
