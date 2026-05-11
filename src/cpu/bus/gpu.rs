@@ -646,11 +646,7 @@ impl GPU {
                 self.is_polyline = (word >> 27) & 1 == 1;
                 self.is_semitransparent = (word >> 25) & 1 == 1;
 
-                if self.is_shaded {
-                    2
-                } else {
-                    1
-                }
+                if self.is_shaded { 2 } else { 1 }
             }
             0x3 => {
                 let mut num_words = 2;
@@ -678,10 +674,12 @@ impl GPU {
             }
             0x4 => 4,
             5 | 6 => 3,
-            _ => if (word >> 24) == 0x2 {
-                3
-            } else {
-                1
+            _ => {
+                if (word >> 24) == 0x2 {
+                    3
+                } else {
+                    1
+                }
             }
         }
     }

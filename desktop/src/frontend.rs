@@ -18,7 +18,6 @@ use sdl2::render::Canvas;
 #[cfg(feature = "hardware_gpu")]
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
-use sdl2_sys::SDL_GameControllerButton;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::ops::DerefMut;
@@ -378,8 +377,12 @@ impl Frontend {
                     if let Some(index) = self.button_map.get(&button) {
                         cpu.bus.peripherals.controller.update_input(*index, false);
                     } else if button == Button::Touchpad {
-                        println!("setting digital mode to {}", !cpu.bus.peripherals.controller.digital_mode);
-                        cpu.bus.peripherals.controller.digital_mode = !cpu.bus.peripherals.controller.digital_mode
+                        println!(
+                            "setting digital mode to {}",
+                            !cpu.bus.peripherals.controller.digital_mode
+                        );
+                        cpu.bus.peripherals.controller.digital_mode =
+                            !cpu.bus.peripherals.controller.digital_mode
                     }
                 }
                 Event::ControllerAxisMotion { axis, value, .. } => {
@@ -397,7 +400,7 @@ impl Frontend {
                             Axis::LeftY => controller.set_lefty(normalized_value),
                             Axis::RightX => controller.set_rightx(normalized_value),
                             Axis::RightY => controller.set_righty(normalized_value),
-                            _ => ()
+                            _ => (),
                         }
                     }
                 }

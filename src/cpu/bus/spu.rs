@@ -436,7 +436,9 @@ impl SPU {
             0x1f80_1db4 => self.external_volume.0 = value,
             0x1f80_1db6 => self.external_volume.1 = value,
             0x1f80_1dc0..=0x1f80_1dfe | 0x1f80_1da2 => self.reverb.write16(address, value),
-            0x1f80_1e00..=0x1f801e5f => println!("[WARN]Writing to internal registers of SPU voices. should not happen."),
+            0x1f80_1e00..=0x1f801e5f => {
+                println!("[WARN]Writing to internal registers of SPU voices. should not happen.")
+            }
             _ => panic!(
                 "invalid address given to control spu control registers: 0x{:x}",
                 address
