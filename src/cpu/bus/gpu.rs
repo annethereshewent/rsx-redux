@@ -653,11 +653,7 @@ impl GPU {
                 self.previous_line_color = None;
                 self.previous_line_vertex = None;
 
-                if self.is_polyline {
-                    3
-                } else {
-                    if self.is_shaded { 4 } else { 3 }
-                }
+                if self.is_shaded { 4 } else { 3 }
             }
             0x3 => {
                 let mut num_words = 2;
@@ -1486,6 +1482,7 @@ impl GPU {
             self.words_left = 0;
             self.previous_line_color = None;
             self.previous_line_vertex = None;
+
             return;
         }
 
