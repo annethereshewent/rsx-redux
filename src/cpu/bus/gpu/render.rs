@@ -47,29 +47,115 @@ impl GPU {
 
             let going_left = start_x > end_x;
 
+            let (mut drdx, mut dgdx, mut dbdx) = if self.is_shaded {
+                (
+                    (vertices[1].color.r as f32 - vertices[0].color.r as f32) / diff_x as f32,
+                    (vertices[1].color.g as f32 - vertices[0].color.g as f32) / diff_x as f32,
+                    (vertices[1].color.b as f32 - vertices[0].color.b as f32) / diff_x as f32,
+                )
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+
+            if going_left {
+                drdx *= -1.0;
+                dgdx *= -1.0;
+                dbdx *= -1.0;
+            }
+
+            let mut r_fp = vertices[0].color.r as f32;
+            let mut g_fp = vertices[0].color.g as f32;
+            let mut b_fp = vertices[0].color.b as f32;
+
             let diff_x = diff_x.abs();
+
+            let mut color = vertices[0].color.clone();
 
             for x in 0..=diff_x {
                 let curr_x = if going_left { start_x - x } else { x + start_x };
                 let y_fp = x as f32 * dydx;
 
+                if polygon.is_shaded {
+                    color.r = r_fp as u8;
+                    color.g = g_fp as u8;
+                    color.b = b_fp as u8;
+
+                    r_fp += drdx;
+                    g_fp += dgdx;
+                    b_fp += dbdx;
+                }
+
                 let curr_y = start_y + y_fp as i32;
 
-                let mut output = vertices[0].color.clone();
-                let coordinates = Coordinate2d { x: curr_x, y: curr_y };
+                if curr_x < self.x1 as i32 || curr_x >= self.x2 as i32 || curr_y < self.y1 as i32 || curr_y >= self.y2 as i32 {
+                    continue;
+                }
+
+                let mut coordinates = Coordinate2d { x: curr_x, y: curr_y };
+
+                let mut output = color.clone();
+
+                if self.texpage.dither {
+                    self.dither(&coordinates, &mut output);
+                }
+
                 self.render_pixel(polygon, &mut output, &coordinates);
+
+                // if y_fp is not an integer, then there will be gaps in the diagonal line.
+                // to counteract this, draw an extra pixel to make the line look "fuller"
+                if y_fp.ceil() != y_fp {
+                    coordinates.y += 1;
+                    self.render_pixel(polygon, &mut output, &coordinates);
+                }
             }
         } else {
             // line is vertical
+            let (mut drdy, mut dgdy, mut dbdy) = if polygon.is_shaded {
+                (
+                    (vertices[1].color.r as f32 - vertices[0].color.r as f32) / diff_y as f32,
+                    (vertices[1].color.g as f32 - vertices[0].color.g as f32) / diff_y as f32,
+                    (vertices[1].color.b as f32 - vertices[0].color.b as f32) / diff_y as f32,
+                )
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+
             let diff_y = diff_y.abs();
 
             let going_up = start_y > end_y;
 
+            if going_up {
+                drdy *= -1.0;
+                dgdy *= -1.0;
+                dbdy *= -1.0;
+            }
+
+            let mut color = vertices[0].color.clone();
+
+            let mut r_fp = vertices[0].color.r as f32;
+            let mut g_fp = vertices[0].color.g as f32;
+            let mut b_fp = vertices[0].color.b as f32;
+
             for y in 0..=diff_y {
                 let curr_y = if going_up { start_y - y } else { y + start_y };
 
+                if polygon.is_shaded {
+                    color.r = r_fp as u8;
+                    color.g = g_fp as u8;
+                    color.b = b_fp as u8;
+
+                    r_fp += drdy;
+                    g_fp += dgdy;
+                    b_fp += dbdy;
+                }
+
                 let coordinates = Coordinate2d { x: start_x, y: curr_y };
-                let mut output = vertices[0].color.clone();
+
+                let mut output = color.clone();
+
+                if self.texpage.dither {
+                    self.dither(&coordinates, &mut output);
+                }
 
                 self.render_pixel(polygon, &mut output, &coordinates);
             }
