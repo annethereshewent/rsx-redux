@@ -21,11 +21,11 @@ impl GPU {
         }
 
         let vertices = &polygon.vertices;
-        let start_x = vertices[0].x;
-        let start_y = vertices[0].y;
+        let start_x = vertices[0].x.max(self.x1 as i32);
+        let start_y = vertices[0].y.max(self.y1 as i32);
 
-        let end_x = vertices[1].x;
-        let end_y = vertices[1].y;
+        let end_x = vertices[1].x.min(self.x2 as i32);
+        let end_y = vertices[1].y.min(self.y2 as i32);
 
         let diff_x = end_x - start_x;
         let diff_y = end_y - start_y;
