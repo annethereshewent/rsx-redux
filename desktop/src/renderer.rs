@@ -875,9 +875,16 @@ impl Renderer {
                 Self::get_drawing_area(polygon)
             } else {
                 if let Some(params) = params {
-                    (params.start_x as usize, params.start_y as usize, params.width as usize, params.height as usize)
+                    (
+                        params.start_x as usize,
+                        params.start_y as usize,
+                        params.width as usize,
+                        params.height as usize,
+                    )
                 } else {
-                    println!("[WARN]: neither polygon or CPUTransferParams passed, defaulting to 0s");
+                    println!(
+                        "[WARN]: neither polygon or CPUTransferParams passed, defaulting to 0s"
+                    );
                     (0, 0, 0, 0)
                 }
             };

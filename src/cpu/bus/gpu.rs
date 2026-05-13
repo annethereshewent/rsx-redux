@@ -1405,7 +1405,7 @@ impl GPU {
                 y,
                 u: 0,
                 v: 0,
-                color: color0
+                color: color0,
             }
         };
 
@@ -1424,7 +1424,7 @@ impl GPU {
             y,
             u: 0,
             v: 0,
-            color: color1
+            color: color1,
         };
 
         #[cfg(feature = "software_gpu")]
@@ -1475,14 +1475,14 @@ impl GPU {
             y: y0,
             u: 0,
             v: 0,
-            color: color0
+            color: color0,
         };
         let vertex1 = Vertex {
             x: x1,
             y: y1,
             u: 0,
             v: 0,
-            color: color1
+            color: color1,
         };
 
         #[cfg(feature = "software_gpu")]
@@ -1503,7 +1503,8 @@ impl GPU {
             self.rasterize_line(&polygon);
         }
 
-        #[cfg(feature = "hardware_gpu")] {
+        #[cfg(feature = "hardware_gpu")]
+        {
             self.push_line(vertex0, vertex1);
         }
     }
@@ -1526,8 +1527,20 @@ impl GPU {
 
         let v0 = vertex0;
         let v1 = vertex1;
-        let v2 = Vertex { x: vertex0.x + ox, y: vertex0.y + oy, u: 0, v: 0, color: color0 };
-        let v3 = Vertex { x: vertex1.x + ox, y: vertex1.y + oy, u: 0, v: 0, color: color1 };
+        let v2 = Vertex {
+            x: vertex0.x + ox,
+            y: vertex0.y + oy,
+            u: 0,
+            v: 0,
+            color: color0,
+        };
+        let v3 = Vertex {
+            x: vertex1.x + ox,
+            y: vertex1.y + oy,
+            u: 0,
+            v: 0,
+            color: color1,
+        };
 
         let vertices0 = vec![v0, v1, v2];
         let vertices1 = vec![v1, v2, v3];

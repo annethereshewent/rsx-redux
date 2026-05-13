@@ -21,22 +21,22 @@ impl GPU {
         }
 
         let vertices = &polygon.vertices;
-        let start_x = vertices[0].x.max(self.x1 as i32);
-        let start_y = vertices[0].y.max(self.y1 as i32);
+        let start_x = vertices[0].x;
+        let start_y = vertices[0].y;
 
-        let end_x = vertices[1].x.min(self.x2 as i32);
-        let end_y = vertices[1].y.min(self.y2 as i32);
+        let end_x = vertices[1].x;
+        let end_y = vertices[1].y;
 
         let diff_x = end_x - start_x;
         let diff_y = end_y - start_y;
 
-        if start_x < 0 ||
-            end_x >= 1024||
-            start_y < 0 ||
-            end_y >= 512 ||
-            start_y >= 512 ||
-            start_y < 0 ||
-            start_x >= 1024
+        if start_x < 0
+            || end_x >= 1024
+            || start_y < 0
+            || end_y >= 512
+            || start_y >= 512
+            || start_y < 0
+            || start_x >= 1024
         {
             return;
         }
@@ -87,11 +87,18 @@ impl GPU {
 
                 let curr_y = start_y + y_fp as i32;
 
-                if curr_x < self.x1 as i32 || curr_x >= self.x2 as i32 || curr_y < self.y1 as i32 || curr_y >= self.y2 as i32 {
+                if curr_x < self.x1 as i32
+                    || curr_x >= self.x2 as i32
+                    || curr_y < self.y1 as i32
+                    || curr_y >= self.y2 as i32
+                {
                     continue;
                 }
 
-                let mut coordinates = Coordinate2d { x: curr_x, y: curr_y };
+                let mut coordinates = Coordinate2d {
+                    x: curr_x,
+                    y: curr_y,
+                };
 
                 let mut output = color.clone();
 
@@ -136,8 +143,16 @@ impl GPU {
             let mut g_fp = vertices[0].color.g as f32;
             let mut b_fp = vertices[0].color.b as f32;
 
+            if start_x < self.x1 as i32 || start_x >= self.x2 {
+                return;
+            }
+
             for y in 0..=diff_y {
                 let curr_y = if going_up { start_y - y } else { y + start_y };
+
+                if curr_y < self.y1 as i32 || curr_y >= self.y2 as i32 {
+                    continue;
+                }
 
                 if polygon.is_shaded {
                     color.r = r_fp as u8;
@@ -149,7 +164,10 @@ impl GPU {
                     b_fp += dbdy;
                 }
 
-                let coordinates = Coordinate2d { x: start_x, y: curr_y };
+                let coordinates = Coordinate2d {
+                    x: start_x,
+                    y: curr_y,
+                };
 
                 let mut output = color.clone();
 
