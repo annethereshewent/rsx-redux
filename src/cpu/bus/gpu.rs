@@ -141,7 +141,7 @@ pub enum TexturePageColors {
     Bit15 = 2,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,
@@ -156,6 +156,12 @@ pub struct Polygon {
     pub texture_mask_y: u32,
     pub texture_offset_x: u32,
     pub texture_offset_y: u32,
+    pub x1: u32,
+    pub x2: u32,
+    pub y1: u32,
+    pub y2: u32,
+    pub force_mask_bit: bool,
+    pub preserve_masked_pixels: bool,
 }
 
 impl Polygon {
@@ -170,10 +176,7 @@ impl Polygon {
             clut: (0, 0),
             transparent_mode: 0,
             modulate: false,
-            texture_mask_x: 0,
-            texture_mask_y: 0,
-            texture_offset_x: 0,
-            texture_offset_y: 0,
+            ..Default::default()
         }
     }
 }
@@ -813,6 +816,12 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    x1: self.x1,
+                    x2: self.x2,
+                    y1: self.y1,
+                    y2: self.y2,
+                    force_mask_bit: self.force_mask_bit,
+                    preserve_masked_pixels: self.preserve_masked_pixels,
                 });
 
                 polygons.push(Polygon {
@@ -833,6 +842,12 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    x1: self.x1,
+                    x2: self.x2,
+                    y1: self.y1,
+                    y2: self.y2,
+                    force_mask_bit: self.force_mask_bit,
+                    preserve_masked_pixels: self.preserve_masked_pixels,
                 });
             } else {
                 polygons.push(Polygon {
@@ -853,6 +868,12 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    x1: self.x1,
+                    x2: self.x2,
+                    y1: self.y1,
+                    y2: self.y2,
+                    force_mask_bit: self.force_mask_bit,
+                    preserve_masked_pixels: self.preserve_masked_pixels,
                 });
             }
 
@@ -884,6 +905,7 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    ..Default::default()
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -908,6 +930,7 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    ..Default::default()
                 };
 
                 self.rasterize_triangle(&mut polygon2);
@@ -930,6 +953,7 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    ..Default::default()
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -1052,6 +1076,12 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                x1: self.x1,
+                x2: self.x2,
+                y1: self.y1,
+                y2: self.y2,
+                force_mask_bit: self.force_mask_bit,
+                preserve_masked_pixels: self.preserve_masked_pixels,
             });
             self.polygons.push(Polygon {
                 vertices: vertices2,
@@ -1071,6 +1101,12 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                x1: self.x1,
+                x2: self.x2,
+                y1: self.y1,
+                y2: self.y2,
+                force_mask_bit: self.force_mask_bit,
+                preserve_masked_pixels: self.preserve_masked_pixels,
             });
         }
         #[cfg(feature = "software_gpu")]
@@ -1093,6 +1129,7 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                ..Default::default()
             };
 
             self.rasterize_triangle(&mut polygon1);
@@ -1115,6 +1152,7 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                ..Default::default()
             };
 
             self.rasterize_triangle(&mut polygon2);
@@ -1401,10 +1439,7 @@ impl GPU {
                 modulate: false,
                 transparent_mode: self.texpage.semi_transparency as u32,
                 clut: (0, 0),
-                texture_mask_x: 0,
-                texture_mask_y: 0,
-                texture_offset_x: 0,
-                texture_offset_y: 0
+                ..Default::default()
             };
 
             self.rasterize_line(&polygon);
@@ -1462,10 +1497,7 @@ impl GPU {
                 modulate: false,
                 transparent_mode: self.texpage.semi_transparency as u32,
                 clut: (0, 0),
-                texture_mask_x: 0,
-                texture_mask_y: 0,
-                texture_offset_x: 0,
-                texture_offset_y: 0
+                ..Default::default()
             };
 
             self.rasterize_line(&polygon);
@@ -1510,10 +1542,13 @@ impl GPU {
             modulate: false,
             transparent_mode: self.texpage.semi_transparency as u32,
             clut: (0, 0),
-            texture_mask_x: 0,
-            texture_mask_y: 0,
-            texture_offset_x: 0,
-            texture_offset_y: 0
+            x1: self.x1,
+            x2: self.x2,
+            y1: self.y1,
+            y2: self.y2,
+            force_mask_bit: self.force_mask_bit,
+            preserve_masked_pixels: self.preserve_masked_pixels,
+            ..Default::default()
         });
 
         self.polygons.push(Polygon {
@@ -1526,10 +1561,13 @@ impl GPU {
             modulate: false,
             transparent_mode: self.texpage.semi_transparency as u32,
             clut: (0, 0),
-            texture_mask_x: 0,
-            texture_mask_y: 0,
-            texture_offset_x: 0,
-            texture_offset_y: 0
+            x1: self.x1,
+            x2: self.x2,
+            y1: self.y1,
+            y2: self.y2,
+            force_mask_bit: self.force_mask_bit,
+            preserve_masked_pixels: self.preserve_masked_pixels,
+            ..Default::default()
         });
 
         self.commands_ready = true;
