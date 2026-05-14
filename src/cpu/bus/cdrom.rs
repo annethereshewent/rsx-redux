@@ -916,7 +916,14 @@ impl CDRom {
         for block in 0..8 {
             let header = section[4 + block];
             for i in 0..28 {
-                let nibble = section[block_start + block / 2 + i * 4];
+                let byte = section[block_start + block / 2 + i * 4];
+
+                let nibble = if block & 1 == 0 {
+                    byte & 0xf
+                } else {
+                    (byte >> 4) & 0xf
+                };
+
                 let channel_index =
                     if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
                         block & 1

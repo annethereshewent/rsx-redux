@@ -516,26 +516,23 @@ impl SPU {
 
         if self.spucnt.contains(SpuControlRegister::CD_AUDIO_ENABLE) {
             if let Some(cd_left_sample) = self.cd_left_samples.pop_front() {
-                cd_audio_left = cd_left_sample;
-                let cd_volume_left =
-                    Self::apply_volume(cd_left_sample as i32, self.cd_volume.0 as i32);
+                cd_audio_left = Self::apply_volume(cd_left_sample as i32, self.cd_volume.0 as i32);
 
                 if self.spucnt.contains(SpuControlRegister::CD_AUDIO_REVERB) {
-                    reverb_in_left += cd_volume_left;
+                    reverb_in_left += cd_audio_left;
                 }
 
-                output_left += cd_volume_left;
+                output_left += cd_audio_left;
             }
             if let Some(cd_right_sample) = self.cd_right_samples.pop_front() {
-                cd_audio_right = cd_right_sample;
-                let cd_volume_right =
+                cd_audio_right =
                     Self::apply_volume(cd_right_sample as i32, self.cd_volume.1 as i32);
 
                 if self.spucnt.contains(SpuControlRegister::CD_AUDIO_REVERB) {
-                    reverb_in_right += cd_volume_right;
+                    reverb_in_right += cd_audio_right;
                 }
 
-                output_right += cd_volume_right;
+                output_right += cd_audio_right;
             }
         }
 
