@@ -143,7 +143,7 @@ impl GPU {
             let mut g_fp = vertices[0].color.g as f32;
             let mut b_fp = vertices[0].color.b as f32;
 
-            if start_x < self.x1 as i32 || start_x >= self.x2 {
+            if start_x < self.x1 as i32 || start_x >= self.x2 as i32 {
                 return;
             }
 
