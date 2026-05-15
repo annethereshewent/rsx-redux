@@ -111,6 +111,9 @@ impl Timer {
         }
     }
 
+    /// Handles sync behavior when this timer's associated blanking interval occurs.
+    /// Timer 0: HBlank
+    /// Timer 1: VBlank
     pub fn handle_xblank_sync(&mut self) {
         match self.counter_register.sync_mode() {
             0 => self.is_active = false,
