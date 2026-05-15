@@ -18,6 +18,7 @@ enum BlockType {
 }
 
 const NUM_COLORS: usize = 256;
+const MDEC_FIFO_SIZE_HALFWORDS: usize = 64;
 
 const ZIGZAG_TABLE: [usize; 64] = [
     0, 1, 5, 6, 14, 15, 27, 28, 2, 4, 7, 13, 16, 26, 29, 42, 3, 8, 12, 17, 25, 30, 41, 43, 9, 11,
@@ -126,8 +127,12 @@ impl Mdec {
 
     pub fn read_out_fifo(&mut self) -> u32 {
         let mut value = 0;
-        for i in 0..4 {
-            value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)
+
+
+        if self.out_fifo.len() >= 4 {
+            for i in 0..4 {
+                value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)
+            }
         }
 
         value
@@ -380,7 +385,7 @@ impl Mdec {
 
     fn read_status(&self) -> u32 {
         (self.out_fifo.is_empty() as u32) << 31
-            | (!(self.in_fifo.is_empty()) as u32) << 30
+            | ((self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS) as u32) << 30
             | (self.command.is_some() as u32) << 29
             | (self.dma_in_enable as u32) << 28
             | (self.dma_out_enable as u32) << 27

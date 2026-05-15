@@ -698,7 +698,7 @@ impl CDRom {
             0xd => self.setfilter(),
             0xe => self.set_mode(),
             0x11 => self.getloc_p(),
-            0x15 => self.seek(),
+            0x15 | 0x16 => self.seek(),
             0x19 => self.commandx19(),
             0x1a => self.get_id(),
             0x1e => self.toc(),
