@@ -1899,7 +1899,7 @@ impl GPU {
                 0 => timers[1].is_active = false,
                 1 | 2 => timers[1].counter = 0,
                 3 => {
-                    if timers[0].switch_free_run.take().is_some() {
+                    if timers[1].switch_free_run.take().is_some() {
                         timers[1].is_active = true;
                     } else {
                         timers[1].is_active = false;

@@ -1,1 +1,9 @@
-cargo run --release --no-default-features --features software_gpu "$1"
+#!/bin/bash
+
+FEATURES="software_gpu"
+
+if [[ "$2" == "--debug" ]]; then
+    FEATURES="$FEATURES,debug"
+fi
+
+cargo run --release --no-default-features --features "$FEATURES" "$1"

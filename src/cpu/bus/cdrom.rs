@@ -698,6 +698,8 @@ impl CDRom {
             0xd => self.setfilter(),
             0xe => self.set_mode(),
             0x11 => self.getloc_p(),
+            0x13 => self.gettn(),
+            0x14 => self.gettd(),
             0x15 | 0x16 => self.seek(),
             0x19 => self.commandx19(),
             0x1a => self.get_id(),
@@ -717,6 +719,20 @@ impl CDRom {
 
         self.filter_file = file;
         self.filter_channel = filter;
+    }
+
+    fn gettn(&mut self) {
+        self.stat();
+
+        self.controller_response_fifo.push_back(1);
+        self.controller_response_fifo.push_back(1);
+    }
+
+    fn gettd(&mut self) {
+        self.stat();
+
+        self.controller_response_fifo.push_back(0);
+        self.controller_response_fifo.push_back(0);
     }
 
     fn getloc_p(&mut self) {
