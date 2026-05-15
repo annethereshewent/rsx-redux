@@ -556,19 +556,7 @@ impl GPU {
             .counter_register
             .contains(CounterModeRegister::SYNC_ENABLE)
         {
-            match timers[0].counter_register.sync_mode() {
-                0 => timers[0].is_active = false,
-                1 | 2 => timers[0].counter = 0,
-                3 => {
-                    if timers[0].switch_free_run.take().is_some() {
-                        timers[0].is_active = true;
-                    } else {
-                        timers[0].is_active = false;
-                        timers[0].switch_free_run = Some(true);
-                    }
-                }
-                _ => unreachable!(),
-            }
+            timers[0].handle_xblank_sync();
         }
 
         let dotclock = self.get_dotclock();
@@ -1895,19 +1883,7 @@ impl GPU {
             .counter_register
             .contains(CounterModeRegister::SYNC_ENABLE)
         {
-            match timers[1].counter_register.sync_mode() {
-                0 => timers[1].is_active = false,
-                1 | 2 => timers[1].counter = 0,
-                3 => {
-                    if timers[1].switch_free_run.take().is_some() {
-                        timers[1].is_active = true;
-                    } else {
-                        timers[1].is_active = false;
-                        timers[1].switch_free_run = Some(true);
-                    }
-                }
-                _ => unreachable!(),
-            }
+            timers[1].handle_xblank_sync();
         }
 
         if self.current_line == NUM_SCANLINES {
