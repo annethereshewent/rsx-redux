@@ -123,9 +123,9 @@ impl Bus {
 
     pub fn translate_address(address: u32) -> usize {
         match address >> 28 {
-            0x8 | 0xa => (address & 0xfffffff) as usize,
+            0x8 | 0xa => (address & 0xfff_ffff) as usize,
             0xf => address as usize,
-            _ => (address & 0x1fffffff) as usize,
+            _ => (address & 0x1fff_ffff) as usize,
         }
     }
 
@@ -133,8 +133,8 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
-            0x00000000..=0x001fffff => unsafe {
-                *(&self.main_ram[address] as *const u8 as *const u32)
+            0x00000000..=0x007f_ffff => unsafe {
+                *(&self.main_ram[address & 0x1f_ffff] as *const u8 as *const u32)
             },
             0x1f800000..=0x1f8003ff => unsafe {
                 *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u32)
@@ -176,8 +176,8 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
-            0x00000000..=0x001fffff => unsafe {
-                *(&self.main_ram[address] as *const u8 as *const u16) as u32
+            0x00000000..=0x007f_ffff => unsafe {
+                *(&self.main_ram[address & 0x1f_ffff] as *const u8 as *const u16) as u32
             },
             0x1f800000..=0x1f8003ff => unsafe {
                 *(&self.scratchpad[address - 0x1f800000] as *const u8 as *const u16) as u32
@@ -229,7 +229,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
-            0x00000000..=0x001fffff => self.main_ram[address] as u32,
+            0x00000000..=0x007f_ffff => self.main_ram[address & 0x1f_ffff] as u32,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] as u32,
             0x1f801040 => self.peripherals.read_byte() as u32,
             0x1f801080..=0x1f8010f7 => {
@@ -276,8 +276,8 @@ impl Bus {
         }
 
         match address {
-            0x00000000..=0x001fffff => unsafe {
-                *(&mut self.main_ram[address] as *mut u8 as *mut u32) = value
+            0x00000000..=0x007f_ffff => unsafe {
+                *(&mut self.main_ram[address & 0x1f_ffff] as *mut u8 as *mut u32) = value
             },
             0x1f800000..=0x1f8003ff => unsafe {
                 *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u32) = value
@@ -379,8 +379,8 @@ impl Bus {
         }
 
         match address {
-            0x00000000..=0x001fffff => unsafe {
-                *(&mut self.main_ram[address] as *mut u8 as *mut u16) = value
+            0x00000000..=0x007f_ffff => unsafe {
+                *(&mut self.main_ram[address & 0x1f_ffff] as *mut u8 as *mut u16) = value
             },
             0x1f800000..=0x1f8003ff => unsafe {
                 *(&mut self.scratchpad[address - 0x1f800000] as *mut u8 as *mut u16) = value
@@ -420,7 +420,7 @@ impl Bus {
         let address = Self::translate_address(address);
 
         match address {
-            0x00000000..=0x001fffff => self.main_ram[address] = value,
+            0x00000000..=0x007f_ffff => self.main_ram[address & 0x1f_ffff] = value,
             0x1f800000..=0x1f8003ff => self.scratchpad[address - 0x1f800000] = value,
             0x1f801040 => self.peripherals.write_byte(value, &mut self.scheduler),
             0x1f801080..=0x1f8010f7 => {

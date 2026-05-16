@@ -128,7 +128,6 @@ impl Mdec {
     pub fn read_out_fifo(&mut self) -> u32 {
         let mut value = 0;
 
-
         if self.out_fifo.len() >= 4 {
             for i in 0..4 {
                 value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)

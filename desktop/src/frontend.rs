@@ -393,7 +393,7 @@ impl Frontend {
                         }
                     }
                 }
-                Event::KeyUp { keycode, ..} => {
+                Event::KeyUp { keycode, .. } => {
                     if let Some(keycode) = keycode {
                         if let Some(index) = self.key_map.get(&keycode) {
                             cpu.bus.peripherals.controller.update_input(*index, false);
