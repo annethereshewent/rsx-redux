@@ -152,7 +152,7 @@ impl CDSubheader {
             CDReadMode::Video
         } else if (bytes[2] >> 2) & 1 == 1 {
             CDReadMode::Audio
-        } else if ((bytes[2] >> 3) & 1 == 1) || bytes[2] == 0 {
+        } else if ((bytes[2] >> 3) & 1 == 1) || bytes[2] & 1 == 0 {
             CDReadMode::Data
         } else {
             panic!("unknown mode received")
