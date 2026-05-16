@@ -86,6 +86,7 @@ pub struct Frontend {
     device: AudioDevice<PsxAudioCallback>,
     button_map: HashMap<Button, usize>,
     button_map2: HashMap<Axis, usize>,
+    key_map: HashMap<Keycode, usize>,
 }
 
 impl Frontend {
@@ -193,6 +194,24 @@ impl Frontend {
 
         let button_map2 = HashMap::from([(Axis::TriggerLeft, 8), (Axis::TriggerRight, 9)]);
 
+        let key_map = HashMap::from([
+            (Keycode::Tab, 0),
+            (Keycode::LShift, 1),
+            (Keycode::RShift, 2),
+            (Keycode::Return, 3),
+            (Keycode::W, 4),
+            (Keycode::D, 5),
+            (Keycode::S, 6),
+            (Keycode::A, 7),
+            (Keycode::Num7, 8),
+            (Keycode::Num9, 9),
+            (Keycode::U, 10),
+            (Keycode::O, 11),
+            (Keycode::I, 12),
+            (Keycode::L, 13),
+            (Keycode::K, 14),
+            (Keycode::J, 15),
+        ]);
         Self {
             #[cfg(feature = "hardware_gpu")]
             _window: window,
@@ -208,6 +227,7 @@ impl Frontend {
             button_map2,
             controller_id: None,
             retry_attempts: 0,
+            key_map,
         }
     }
 
@@ -344,27 +364,39 @@ impl Frontend {
                 }
                 Event::KeyDown { keycode, .. } => {
                     if let Some(keycode) = keycode {
-                        if keycode == Keycode::G {
-                            cpu.debug_on = !cpu.debug_on;
-                            println!("setting debug on to {}", cpu.debug_on);
-                        } else if keycode == Keycode::F {
-                            cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
+                        if let Some(index) = self.key_map.get(&keycode) {
+                            cpu.bus.peripherals.controller.update_input(*index, true);
+                        } else {
+                            match keycode {
+                                #[cfg(feature = "debug")]
+                                Keycode::G => {
+                                    cpu.debug_on = !cpu.debug_on;
+                                    println!("setting debug on to {}", cpu.debug_on);
+                                }
+                                Keycode::F => {
+                                    cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
+                                }
+                                Keycode::F5 => {
+                                    #[cfg(feature = "software_gpu")]
+                                    Self::create_quick_state(cpu);
+                                    #[cfg(feature = "hardware_gpu")]
+                                    Self::create_quick_state(&mut self.renderer, cpu);
+                                }
+                                Keycode::F7 => {
+                                    #[cfg(feature = "software_gpu")]
+                                    Self::load_quick_state(cpu);
+                                    #[cfg(feature = "hardware_gpu")]
+                                    Self::load_quick_state(&mut self.renderer, cpu);
+                                }
+                                _ => (),
+                            }
                         }
-
-                        match keycode {
-                            Keycode::F5 => {
-                                #[cfg(feature = "software_gpu")]
-                                Self::create_quick_state(cpu);
-                                #[cfg(feature = "hardware_gpu")]
-                                Self::create_quick_state(&mut self.renderer, cpu);
-                            }
-                            Keycode::F7 => {
-                                #[cfg(feature = "software_gpu")]
-                                Self::load_quick_state(cpu);
-                                #[cfg(feature = "hardware_gpu")]
-                                Self::load_quick_state(&mut self.renderer, cpu);
-                            }
-                            _ => (),
+                    }
+                }
+                Event::KeyUp { keycode, ..} => {
+                    if let Some(keycode) = keycode {
+                        if let Some(index) = self.key_map.get(&keycode) {
+                            cpu.bus.peripherals.controller.update_input(*index, false);
                         }
                     }
                 }
