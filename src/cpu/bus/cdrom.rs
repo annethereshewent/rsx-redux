@@ -692,6 +692,7 @@ impl CDRom {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
             0x6 | 0x1b => self.cd_read_command(),
+            0x7 => self.motor_on(),
             0x9 => self.pause(),
             0xa => self.init(),
             0xb | 0xc => self.stat(),
@@ -711,6 +712,13 @@ impl CDRom {
         self.controller_cycles += 10;
 
         self.controller_param_fifo.clear();
+    }
+
+    fn motor_on(&mut self) {
+        self.stat();
+        self.controller_response_fifo.push_back(0x20);
+
+        self.irq_latch = 0x5;
     }
 
     fn setfilter(&mut self) {
