@@ -22,3 +22,4 @@ bincode = { version = "2.0.1", features = ["serde"]}
 default = ["software_gpu"]
 hardware_gpu = []
 software_gpu = []
+debug = []

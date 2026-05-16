@@ -23,6 +23,43 @@ pub const CPU_FREQUENCY: f64 = 33_868_800.0;
 
 const ICACHE_SIZE: usize = 0x1000;
 
+#[cfg(feature = "debug")]
+type OriginId = u32;
+#[cfg(feature = "debug")]
+const UNKNOWN_ORIGIN: OriginId = 0;
+
+#[cfg(feature = "debug")]
+#[derive(Clone, Copy, Debug)]
+pub enum OriginKind {
+    Unknown,
+
+    // register got immediate / constant-ish value
+    Imm,
+
+    // register loaded from RAM
+    Load { addr: u32, mem: OriginId },
+
+    // RAM written from register
+    Store { addr: u32, src: OriginId },
+
+    // register copied from another register
+    Copy { src: OriginId },
+
+    // ALU op
+    Alu { lhs: OriginId, rhs: OriginId },
+    // MMIORead
+    MmioRead { addr: u32 },
+}
+
+#[cfg(feature = "debug")]
+#[derive(Clone, Copy, Debug)]
+pub struct OriginNode {
+    pub pc: u32,
+    pub opcode: u32,
+    pub value: u32,
+    pub kind: OriginKind,
+}
+
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct Registers([u32; 32]);
 
@@ -140,6 +177,19 @@ pub struct CPU {
     should_transfer_load: bool,
     isolated_cache: IsolatedCache,
     pub game_path: String,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(feature = "debug")]
+    pub origins: Vec<OriginNode>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(feature = "debug")]
+    pub reg_origin: [OriginId; 32],
+    // one origin per RAM byte
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(feature = "debug")]
+    pub ram_origin: Box<[OriginId]>,
 }
 
 fn build_instructions() -> [fn(&mut CPU, Instruction) -> usize; 0x40] {
@@ -305,6 +355,17 @@ impl CPU {
         let instructions = build_instructions();
         let special_instructions = build_special_instructions();
 
+        #[cfg(feature = "debug")]
+        let mut origins = Vec::new();
+
+        #[cfg(feature = "debug")]
+        origins.push(OriginNode {
+            pc: 0,
+            opcode: 0,
+            value: 0,
+            kind: OriginKind::Unknown,
+        });
+
         Self {
             r: Registers([0; 32]),
             pc: 0xbfc00000,
@@ -328,6 +389,12 @@ impl CPU {
             should_transfer_load: false,
             isolated_cache: IsolatedCache::new(),
             game_path,
+            #[cfg(feature = "debug")]
+            origins,
+            #[cfg(feature = "debug")]
+            reg_origin: [0; 32],
+            #[cfg(feature = "debug")]
+            ram_origin: vec![0; 0x200000].into_boxed_slice(),
         }
     }
 
@@ -660,4 +727,57 @@ impl CPU {
             *self = cpu;
         }
     }
+
+    #[cfg(feature = "debug")]
+    pub fn add_origin(&mut self, node: OriginNode) -> OriginId {
+        let id = self.origins.len() as OriginId;
+        self.origins.push(node);
+        id
+    }
+
+    #[cfg(feature = "debug")]
+    pub fn dump_origin(&self, id: OriginId, depth: usize) {
+        if id == UNKNOWN_ORIGIN {
+            println!("{:indent$}UNKNOWN", "", indent = depth * 2);
+            return;
+        }
+
+        let node = &self.origins[id as usize];
+
+        println!(
+            "{:indent$}id={} pc={:08x} value={:08x} kind={:x?}",
+            "",
+            id,
+            node.pc,
+            node.value,
+            node.kind,
+            indent = depth * 2
+        );
+
+        match node.kind {
+            OriginKind::Load { mem, .. } => {
+                self.dump_origin(mem, depth + 1);
+            }
+
+            OriginKind::Store { src, .. } => {
+                self.dump_origin(src, depth + 1);
+            }
+
+            OriginKind::Copy { src } => {
+                self.dump_origin(src, depth + 1);
+            }
+
+            OriginKind::Alu { lhs, rhs } => {
+                self.dump_origin(lhs, depth + 1);
+                self.dump_origin(rhs, depth + 1);
+            }
+
+            _ => {}
+        }
+    }
+}
+
+#[cfg(feature = "debug")]
+fn ram_off(addr: u32) -> usize {
+    (addr & 0x1f_ffff) as usize
 }

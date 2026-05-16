@@ -141,7 +141,7 @@ pub enum TexturePageColors {
     Bit15 = 2,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Polygon {
     pub vertices: Vec<Vertex>,
     pub is_line: bool,
@@ -156,6 +156,12 @@ pub struct Polygon {
     pub texture_mask_y: u32,
     pub texture_offset_x: u32,
     pub texture_offset_y: u32,
+    pub x1: u32,
+    pub x2: u32,
+    pub y1: u32,
+    pub y2: u32,
+    pub force_mask_bit: bool,
+    pub preserve_masked_pixels: bool,
 }
 
 impl Polygon {
@@ -170,10 +176,7 @@ impl Polygon {
             clut: (0, 0),
             transparent_mode: 0,
             modulate: false,
-            texture_mask_x: 0,
-            texture_mask_y: 0,
-            texture_offset_x: 0,
-            texture_offset_y: 0,
+            ..Default::default()
         }
     }
 }
@@ -267,6 +270,8 @@ pub struct GPU {
     pub gpuread: u32,
     words_left: usize,
     is_polyline: bool,
+    previous_line_vertex: Option<Vertex>,
+    previous_line_color: Option<Color>,
     pub x1: u32,
     pub x2: u32,
     pub y1: u32,
@@ -437,6 +442,8 @@ impl GPU {
             vram_read_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2].into_boxed_slice(),
             #[cfg(feature = "hardware_gpu")]
             vram_write_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 4].into_boxed_slice(),
+            previous_line_vertex: None,
+            previous_line_color: None,
         }
     }
 
@@ -549,19 +556,7 @@ impl GPU {
             .counter_register
             .contains(CounterModeRegister::SYNC_ENABLE)
         {
-            match timers[0].counter_register.sync_mode() {
-                0 => timers[0].is_active = false,
-                1 | 2 => timers[0].counter = 0,
-                3 => {
-                    if timers[0].switch_free_run.take().is_some() {
-                        timers[0].is_active = true;
-                    } else {
-                        timers[0].is_active = false;
-                        timers[0].switch_free_run = Some(true);
-                    }
-                }
-                _ => unreachable!(),
-            }
+            timers[0].handle_xblank_sync();
         }
 
         let dotclock = self.get_dotclock();
@@ -610,75 +605,81 @@ impl GPU {
     fn get_words_left(&mut self, word: u32) -> usize {
         let upper_bits = word >> 29;
 
-        if upper_bits == 0x1 {
-            // render polygon command
-            let is_textured = (word >> 26) & 1 == 1;
-            let is_semitransparent = (word >> 25) & 1 == 1;
-            let is_shaded = (word >> 28) & 1 == 1;
-            let modulate = (word >> 24) & 1 == 0;
+        match upper_bits {
+            0x1 => {
+                // render polygon command
+                let is_textured = (word >> 26) & 1 == 1;
+                let is_semitransparent = (word >> 25) & 1 == 1;
+                let is_shaded = (word >> 28) & 1 == 1;
+                let modulate = (word >> 24) & 1 == 0;
 
-            let num_vertices = if (word >> 27) & 1 == 1 { 4 } else { 3 };
+                let num_vertices = if (word >> 27) & 1 == 1 { 4 } else { 3 };
 
-            let mut multiplier = 1;
+                let mut multiplier = 1;
 
-            if is_shaded {
-                multiplier += 1;
+                if is_shaded {
+                    multiplier += 1;
+                }
+                if is_textured {
+                    multiplier += 1;
+                }
+
+                self.num_vertices = num_vertices;
+                self.is_shaded = is_shaded;
+                self.is_textured = is_textured;
+                self.is_semitransparent = is_semitransparent;
+                self.modulate = modulate;
+
+                if !is_shaded {
+                    return num_vertices * multiplier + 1;
+                }
+
+                num_vertices * multiplier
             }
-            if is_textured {
-                multiplier += 1;
+            0x2 => {
+                self.is_shaded = (word >> 28) & 1 == 1;
+                self.is_polyline = (word >> 27) & 1 == 1;
+                self.is_semitransparent = (word >> 25) & 1 == 1;
+
+                self.previous_line_color = None;
+                self.previous_line_vertex = None;
+
+                if self.is_shaded { 4 } else { 3 }
             }
+            0x3 => {
+                let mut num_words = 2;
+                self.is_textured = (word >> 26) & 1 == 1;
+                self.is_semitransparent = (word >> 25) & 1 == 1;
+                self.modulate = (word >> 24) & 1 == 0;
 
-            self.num_vertices = num_vertices;
-            self.is_shaded = is_shaded;
-            self.is_textured = is_textured;
-            self.is_semitransparent = is_semitransparent;
-            self.modulate = modulate;
+                self.rectangle_size = match (word >> 27) & 0x3 {
+                    0 => RectangleSize::Variable,
+                    1 => RectangleSize::Single,
+                    2 => RectangleSize::EightxEight,
+                    3 => RectangleSize::SixteenxSixteen,
+                    _ => unreachable!(),
+                };
 
-            if !is_shaded {
-                return num_vertices * multiplier + 1;
+                if self.is_textured {
+                    num_words += 1;
+                }
+
+                if self.rectangle_size == RectangleSize::Variable {
+                    num_words += 1;
+                }
+
+                num_words
             }
-
-            return num_vertices * multiplier;
-        }
-
-        if upper_bits == 0x3 {
-            let mut num_words = 2;
-            self.is_textured = (word >> 26) & 1 == 1;
-            self.is_semitransparent = (word >> 25) & 1 == 1;
-            self.modulate = (word >> 24) & 1 == 0;
-
-            self.rectangle_size = match (word >> 27) & 0x3 {
-                0 => RectangleSize::Variable,
-                1 => RectangleSize::Single,
-                2 => RectangleSize::EightxEight,
-                3 => RectangleSize::SixteenxSixteen,
-                _ => unreachable!(),
-            };
-
-            if self.is_textured {
-                num_words += 1;
+            0x4 => 4,
+            5 | 6 => 3,
+            _ => {
+                if (word >> 24) == 0x2 {
+                    3
+                } else {
+                    1
+                }
             }
-
-            if self.rectangle_size == RectangleSize::Variable {
-                num_words += 1;
-            }
-
-            return num_words;
         }
-
-        if upper_bits == 0x4 {
-            return 4;
-        }
-
-        if [5, 6].contains(&upper_bits) {
-            return 3;
-        }
-
-        if (word >> 24) == 0x2 {
-            return 3;
-        }
-
-        1
     }
 
     fn parse_texpage(word: u32) -> Texpage {
@@ -750,11 +751,10 @@ impl GPU {
 
             let word = self.current_command_buffer[command_index];
 
-            let x = word as i16 as i32;
-            let y = (word >> 16) as i16 as i32;
+            let (x, y) = self.parse_position(word);
 
-            vertex.x = x + self.x_offset;
-            vertex.y = y + self.y_offset;
+            vertex.x = x;
+            vertex.y = y;
 
             command_index += 1;
 
@@ -804,6 +804,12 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    x1: self.x1,
+                    x2: self.x2,
+                    y1: self.y1,
+                    y2: self.y2,
+                    force_mask_bit: self.force_mask_bit,
+                    preserve_masked_pixels: self.preserve_masked_pixels,
                 });
 
                 polygons.push(Polygon {
@@ -824,6 +830,12 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    x1: self.x1,
+                    x2: self.x2,
+                    y1: self.y1,
+                    y2: self.y2,
+                    force_mask_bit: self.force_mask_bit,
+                    preserve_masked_pixels: self.preserve_masked_pixels,
                 });
             } else {
                 polygons.push(Polygon {
@@ -844,6 +856,12 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    x1: self.x1,
+                    x2: self.x2,
+                    y1: self.y1,
+                    y2: self.y2,
+                    force_mask_bit: self.force_mask_bit,
+                    preserve_masked_pixels: self.preserve_masked_pixels,
                 });
             }
 
@@ -875,6 +893,7 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    ..Default::default()
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -899,6 +918,7 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    ..Default::default()
                 };
 
                 self.rasterize_triangle(&mut polygon2);
@@ -921,6 +941,7 @@ impl GPU {
                     texture_mask_y: self.texture_window_mask_y,
                     texture_offset_x: self.texture_window_offset_x,
                     texture_offset_y: self.texture_window_offset_y,
+                    ..Default::default()
                 };
 
                 self.rasterize_triangle(&mut polygon);
@@ -937,6 +958,19 @@ impl GPU {
         (x as usize, y as usize)
     }
 
+    fn parse_position(&self, word: u32) -> (i32, i32) {
+        let mut x = (word & 0xffff) as i32;
+        let mut y = (word >> 16) as i32;
+
+        x = (x << 21) >> 21;
+        y = (y << 21) >> 21;
+
+        x += self.x_offset;
+        y += self.y_offset;
+
+        (x, y)
+    }
+
     fn push_rectangle(&mut self) {
         #[cfg(feature = "hardware_gpu")]
         {
@@ -949,14 +983,7 @@ impl GPU {
 
         let word = self.current_command_buffer.pop_front().unwrap();
 
-        let mut x = (word & 0xffff) as i32;
-        let mut y = (word >> 16) as i32;
-
-        x = (x << 21) >> 21;
-        y = (y << 21) >> 21;
-
-        x += self.x_offset;
-        y += self.y_offset;
+        let (x, y) = self.parse_position(word);
 
         let mut u = 0;
         let mut v = 0;
@@ -1037,6 +1064,12 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                x1: self.x1,
+                x2: self.x2,
+                y1: self.y1,
+                y2: self.y2,
+                force_mask_bit: self.force_mask_bit,
+                preserve_masked_pixels: self.preserve_masked_pixels,
             });
             self.polygons.push(Polygon {
                 vertices: vertices2,
@@ -1056,6 +1089,12 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                x1: self.x1,
+                x2: self.x2,
+                y1: self.y1,
+                y2: self.y2,
+                force_mask_bit: self.force_mask_bit,
+                preserve_masked_pixels: self.preserve_masked_pixels,
             });
         }
         #[cfg(feature = "software_gpu")]
@@ -1078,6 +1117,7 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                ..Default::default()
             };
 
             self.rasterize_triangle(&mut polygon1);
@@ -1100,6 +1140,7 @@ impl GPU {
                 texture_mask_y: self.texture_window_mask_y,
                 texture_offset_x: self.texture_window_offset_x,
                 texture_offset_y: self.texture_window_offset_y,
+                ..Default::default()
             };
 
             self.rasterize_triangle(&mut polygon2);
@@ -1309,7 +1350,7 @@ impl GPU {
 
         match upper {
             1 => self.push_polygon(),
-            2 => unreachable!("shouldn't happen"),
+            2 => self.draw_line(),
             3 => self.push_rectangle(),
             4 => self.vram_to_vram_transfer(),
             5 => self.cpu_to_vram_transfer(),
@@ -1333,9 +1374,224 @@ impl GPU {
         }
     }
 
-    fn draw_line(&mut self) {}
+    fn draw_polyline(&mut self) {
+        let color0 = if let Some(color0) = self.previous_line_color {
+            color0
+        } else {
+            Self::parse_color(self.current_command_buffer.pop_front().unwrap())
+        };
 
-    fn draw_polyline(&mut self) {}
+        let vertex0 = if let Some(vertex0) = self.previous_line_vertex {
+            vertex0
+        } else {
+            let word = self.current_command_buffer.pop_front().unwrap();
+
+            let (x, y) = self.parse_position(word);
+
+            Vertex {
+                x,
+                y,
+                u: 0,
+                v: 0,
+                color: color0,
+            }
+        };
+
+        let mut color1 = color0;
+
+        if self.is_shaded {
+            color1 = Self::parse_color(self.current_command_buffer.pop_front().unwrap());
+        }
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let (x, y) = self.parse_position(word);
+
+        let vertex1 = Vertex {
+            x,
+            y,
+            u: 0,
+            v: 0,
+            color: color1,
+        };
+
+        #[cfg(feature = "software_gpu")]
+        {
+            let polygon = Polygon {
+                vertices: vec![vertex0, vertex1],
+                is_line: true,
+                is_shaded: self.is_shaded,
+                semitransparent: self.is_semitransparent,
+                textured: false,
+                texpage: None,
+                modulate: false,
+                transparent_mode: self.texpage.semi_transparency as u32,
+                clut: (0, 0),
+                ..Default::default()
+            };
+
+            self.rasterize_line(&polygon);
+        }
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.push_line(vertex0, vertex1);
+        }
+
+        self.previous_line_color = Some(color1);
+        self.previous_line_vertex = Some(vertex1);
+    }
+
+    fn draw_line(&mut self) {
+        let color0 = Self::parse_color(self.current_command_buffer.pop_front().unwrap());
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let (x0, y0) = self.parse_position(word);
+
+        let mut color1 = color0;
+
+        if self.is_shaded {
+            color1 = Self::parse_color(self.current_command_buffer.pop_front().unwrap());
+        }
+
+        let word = self.current_command_buffer.pop_front().unwrap();
+
+        let (x1, y1) = self.parse_position(word);
+
+        let vertex0 = Vertex {
+            x: x0,
+            y: y0,
+            u: 0,
+            v: 0,
+            color: color0,
+        };
+        let vertex1 = Vertex {
+            x: x1,
+            y: y1,
+            u: 0,
+            v: 0,
+            color: color1,
+        };
+
+        #[cfg(feature = "software_gpu")]
+        {
+            let polygon = Polygon {
+                vertices: vec![vertex0, vertex1],
+                is_line: true,
+                is_shaded: self.is_shaded,
+                semitransparent: false,
+                textured: false,
+                texpage: None,
+                modulate: false,
+                transparent_mode: self.texpage.semi_transparency as u32,
+                clut: (0, 0),
+                ..Default::default()
+            };
+
+            self.rasterize_line(&polygon);
+        }
+
+        #[cfg(feature = "hardware_gpu")]
+        {
+            self.push_line(vertex0, vertex1);
+        }
+    }
+
+    #[cfg(feature = "hardware_gpu")]
+    fn push_line(&mut self, vertex0: Vertex, vertex1: Vertex) {
+        let dx = vertex1.x - vertex0.x;
+        let dy = vertex1.y - vertex0.y;
+
+        let color0 = vertex0.color;
+        let color1 = vertex1.color;
+
+        let (ox, oy) = if dx.abs() >= dy.abs() {
+            // shallow line: make it 1 pixel tall
+            (0, 1)
+        } else {
+            // steep line: make it 1 pixel wide
+            (1, 0)
+        };
+
+        let v0 = vertex0;
+        let v1 = vertex1;
+        let v2 = Vertex {
+            x: vertex0.x + ox,
+            y: vertex0.y + oy,
+            u: 0,
+            v: 0,
+            color: color0,
+        };
+        let v3 = Vertex {
+            x: vertex1.x + ox,
+            y: vertex1.y + oy,
+            u: 0,
+            v: 0,
+            color: color1,
+        };
+
+        let vertices0 = vec![v0, v1, v2];
+        let vertices1 = vec![v1, v2, v3];
+
+        self.polygons.push(Polygon {
+            vertices: vertices0,
+            is_line: true,
+            is_shaded: self.is_shaded,
+            semitransparent: self.is_semitransparent,
+            textured: false,
+            texpage: None,
+            modulate: false,
+            transparent_mode: self.texpage.semi_transparency as u32,
+            clut: (0, 0),
+            x1: self.x1,
+            x2: self.x2,
+            y1: self.y1,
+            y2: self.y2,
+            force_mask_bit: self.force_mask_bit,
+            preserve_masked_pixels: self.preserve_masked_pixels,
+            ..Default::default()
+        });
+
+        self.polygons.push(Polygon {
+            vertices: vertices1,
+            is_line: true,
+            is_shaded: self.is_shaded,
+            semitransparent: self.is_semitransparent,
+            textured: false,
+            texpage: None,
+            modulate: false,
+            transparent_mode: self.texpage.semi_transparency as u32,
+            clut: (0, 0),
+            x1: self.x1,
+            x2: self.x2,
+            y1: self.y1,
+            y2: self.y2,
+            force_mask_bit: self.force_mask_bit,
+            preserve_masked_pixels: self.preserve_masked_pixels,
+            ..Default::default()
+        });
+
+        self.commands_ready = true;
+    }
+
+    fn process_polyline(&mut self, word: u32) {
+        if (word & 0xf000f000) == 0x50005000 {
+            self.is_polyline = false;
+            self.words_left = 0;
+            self.previous_line_color = None;
+            self.previous_line_vertex = None;
+
+            return;
+        }
+
+        self.current_command_buffer.push_back(word);
+        self.words_left -= 1;
+
+        if self.words_left == 0 {
+            self.draw_polyline();
+            self.words_left = if self.is_shaded { 2 } else { 1 };
+        }
+    }
 
     fn transfer_to_vram(&mut self, halfword: u16) {
         #[cfg(feature = "software_gpu")]
@@ -1524,37 +1780,18 @@ impl GPU {
                 return;
             }
         }
-        let upper = word >> 29;
 
-        self.current_command_buffer.push_back(word);
-
-        if self.words_left == 0 {
-            if upper == 0x2 {
-                if (word >> 27) & 1 == 1 {
-                    self.is_polyline = true;
-                }
-            } else {
-                self.words_left = self.get_words_left(word);
-            }
-        }
-
-        if self.words_left == 0 && upper == 0x2 || self.is_polyline {
-            if self.is_polyline {
-                if (word & 0xf000f000) == 0x50005000 {
-                    self.is_polyline = false;
-
-                    self.draw_polyline();
-
-                    self.current_command_buffer = VecDeque::new();
-                }
-            } else {
-                self.draw_line();
-                self.current_command_buffer = VecDeque::new();
-            }
+        if self.is_polyline {
+            self.process_polyline(word);
 
             return;
         }
 
+        self.current_command_buffer.push_back(word);
+
+        if self.words_left == 0 {
+            self.words_left = self.get_words_left(word);
+        }
         if self.words_left == 1 {
             let word = self.current_command_buffer[0];
 
@@ -1646,19 +1883,7 @@ impl GPU {
             .counter_register
             .contains(CounterModeRegister::SYNC_ENABLE)
         {
-            match timers[1].counter_register.sync_mode() {
-                0 => timers[1].is_active = false,
-                1 | 2 => timers[1].counter = 0,
-                3 => {
-                    if timers[0].switch_free_run.take().is_some() {
-                        timers[1].is_active = true;
-                    } else {
-                        timers[1].is_active = false;
-                        timers[1].switch_free_run = Some(true);
-                    }
-                }
-                _ => unreachable!(),
-            }
+            timers[1].handle_xblank_sync();
         }
 
         if self.current_line == NUM_SCANLINES {

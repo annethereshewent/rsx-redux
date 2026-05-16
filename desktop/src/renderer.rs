@@ -334,8 +334,8 @@ impl Renderer {
     }
 
     fn setup_encoder(
-        gpu: &GPU,
-        encoder_ref: &mut Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>,
+        polygon: &Polygon,
+        encoder_ref: &Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>,
     ) {
         encoder_ref.setCullMode(MTLCullMode::None);
         encoder_ref.setFrontFacingWinding(MTLWinding::Clockwise);
@@ -351,11 +351,19 @@ impl Renderer {
 
         encoder_ref.setViewport(vp);
 
-        let drawing_area = Self::clip_drawing_area(gpu);
+        let drawing_area = Self::clip_drawing_area(polygon);
         encoder_ref.setScissorRect(drawing_area);
     }
 
-    pub fn render_polygon(&mut self, gpu: &mut GPU, polygon: &Polygon) {
+    pub fn render_polygon(&mut self, polygon: &Polygon) {
+        if self.encoder.is_none() {
+            self.create_encoder();
+        }
+
+        if let Some(encoder_ref) = &self.encoder {
+            Self::setup_encoder(&polygon, encoder_ref);
+        }
+
         let mut vertices: Vec<MetalVertex> = vec![MetalVertex::new(); polygon.vertices.len()];
 
         let depth = if let Some(texpage) = polygon.texpage {
@@ -472,7 +480,7 @@ impl Renderer {
 
             encoder.setRenderPipelineState(&self.pipeline_state);
 
-            let stencil_state = match (gpu.force_mask_bit, gpu.preserve_masked_pixels) {
+            let stencil_state = match (polygon.force_mask_bit, polygon.preserve_masked_pixels) {
                 (false, false) => &self.no_mask,
                 (true, false) => &self.set_only,
                 (false, true) => &self.check_only,
@@ -481,7 +489,7 @@ impl Renderer {
 
             unsafe {
                 encoder.setDepthStencilState(Some(stencil_state));
-                encoder.setStencilReferenceValue(if gpu.force_mask_bit { 1 } else { 0 });
+                encoder.setStencilReferenceValue(if polygon.force_mask_bit { 1 } else { 0 });
                 encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
             }
@@ -496,9 +504,9 @@ impl Renderer {
             self.leftover_polygons.drain(..).collect()
         };
         for (index, polygon) in polygons.iter().enumerate() {
-            self.render_polygon(gpu, polygon);
+            self.render_polygon(polygon);
             if self.has_semitransparent_polys {
-                self.vram_writeback(gpu);
+                self.vram_writeback(Some(polygon), None);
 
                 self.leftover_polygons = polygons[index..].to_vec();
 
@@ -809,8 +817,8 @@ impl Renderer {
         halfwords
     }
 
-    fn clip_drawing_area(gpu: &GPU) -> MTLScissorRect {
-        let (x, y, width, height) = Self::get_drawing_area(gpu);
+    fn clip_drawing_area(polygon: &Polygon) -> MTLScissorRect {
+        let (x, y, width, height) = Self::get_drawing_area(polygon);
 
         MTLScissorRect {
             x,
@@ -820,11 +828,11 @@ impl Renderer {
         }
     }
 
-    fn get_drawing_area(gpu: &GPU) -> (usize, usize, usize, usize) {
-        let width = (gpu.x2 - gpu.x1 + 1) as usize;
-        let height = (gpu.y2 - gpu.y1 + 1) as usize;
+    fn get_drawing_area(polygon: &Polygon) -> (usize, usize, usize, usize) {
+        let width = (polygon.x2 - polygon.x1 + 1) as usize;
+        let height = (polygon.y2 - polygon.y1 + 1) as usize;
 
-        (gpu.x1 as usize, gpu.y1 as usize, width, height)
+        (polygon.x1 as usize, polygon.y1 as usize, width, height)
     }
 
     pub fn process(&mut self, gpu: &mut GPU) {
@@ -839,14 +847,10 @@ impl Renderer {
                     self.create_encoder();
                 }
 
-                if let Some(encoder_ref) = &mut self.encoder {
-                    Self::setup_encoder(gpu, encoder_ref);
-
-                    self.render_polygons(gpu);
-                }
+                self.render_polygons(gpu);
             }
             if let Some(params) = &gpu.transfer_params.take() {
-                self.vram_writeback(gpu);
+                self.vram_writeback(None, Some(params));
 
                 let halfwords = self.handle_cpu_transfer(params);
 
@@ -856,17 +860,34 @@ impl Renderer {
             }
         }
     }
-
-    fn vram_writeback(&mut self, gpu: &mut GPU) {
+    // TODO: this whole method is a mess. I need to fix this up quite a bit eventually to get it working right
+    fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
         if let (Some(encoder), Some(command_buffer)) =
-            (&mut self.encoder.take(), &mut self.command_buffer.take())
+            (&self.encoder.take(), &mut self.command_buffer.take())
         {
             encoder.endEncoding();
 
             let compute_encoder = command_buffer.computeCommandEncoder().unwrap();
             compute_encoder.setComputePipelineState(&self.compute_pipeline_state);
 
-            let (x, y, width, height) = Self::get_drawing_area(gpu);
+            // this code is most definitely wrong, TODO: fix this up
+            let (x, y, width, height) = if let Some(polygon) = polygon {
+                Self::get_drawing_area(polygon)
+            } else {
+                if let Some(params) = params {
+                    (
+                        params.start_x as usize,
+                        params.start_y as usize,
+                        params.width as usize,
+                        params.height as usize,
+                    )
+                } else {
+                    println!(
+                        "[WARN]: neither polygon or CPUTransferParams passed, defaulting to 0s"
+                    );
+                    (0, 0, 0, 0)
+                }
+            };
 
             unsafe {
                 compute_encoder.setTexture_atIndex(self.vram_write.as_deref(), 0);
@@ -898,12 +919,6 @@ impl Renderer {
             }
 
             command_buffer.commit();
-
-            self.create_encoder();
-
-            if let Some(encoder_ref) = &mut self.encoder {
-                Self::setup_encoder(gpu, encoder_ref);
-            }
         }
     }
 
@@ -911,7 +926,7 @@ impl Renderer {
         let drawable = self.metal_layer.nextDrawable();
 
         if let (Some(encoder), Some(command_buffer)) =
-            (&mut self.encoder.take(), &mut self.command_buffer.take())
+            (&self.encoder.take(), &self.command_buffer.take())
         {
             encoder.endEncoding();
             command_buffer.commit();

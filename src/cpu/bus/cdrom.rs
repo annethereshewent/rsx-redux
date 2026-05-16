@@ -152,7 +152,7 @@ impl CDSubheader {
             CDReadMode::Video
         } else if (bytes[2] >> 2) & 1 == 1 {
             CDReadMode::Audio
-        } else if ((bytes[2] >> 3) & 1 == 1) || bytes[2] == 0 {
+        } else if ((bytes[2] >> 3) & 1 == 1) || bytes[2] & 1 == 0 {
             CDReadMode::Data
         } else {
             panic!("unknown mode received")
@@ -698,7 +698,9 @@ impl CDRom {
             0xd => self.setfilter(),
             0xe => self.set_mode(),
             0x11 => self.getloc_p(),
-            0x15 => self.seek(),
+            0x13 => self.gettn(),
+            0x14 => self.gettd(),
+            0x15 | 0x16 => self.seek(),
             0x19 => self.commandx19(),
             0x1a => self.get_id(),
             0x1e => self.toc(),
@@ -719,7 +721,26 @@ impl CDRom {
         self.filter_channel = filter;
     }
 
+    fn gettn(&mut self) {
+        self.stat();
+
+        self.controller_response_fifo.push_back(1);
+        self.controller_response_fifo.push_back(1);
+    }
+
+    fn gettd(&mut self) {
+        self.stat();
+
+        self.controller_response_fifo.push_back(0);
+        self.controller_response_fifo.push_back(0);
+    }
+
     fn getloc_p(&mut self) {
+        self.controller_response_fifo
+            .push_back(self.subchannel_q.track);
+        self.controller_response_fifo
+            .push_back(self.subchannel_q.index);
+
         self.controller_response_fifo
             .push_back(Self::u8_to_bcd(self.subchannel_q.mm));
         self.controller_response_fifo
@@ -852,8 +873,6 @@ impl CDRom {
     }
 
     fn resample(&mut self, spu: &mut SPU) {
-        let mut sixstep = self.sixstep;
-
         let is_stereo = self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo;
 
         let repeat = if self.subheader.coding_info.sample_rate == 37800 {
@@ -869,10 +888,10 @@ impl CDRom {
                 for p in 0..self.sample_buffer[channel].len() {
                     self.ringbuffer[channel][p & 0x1f] = self.sample_buffer[channel][p];
 
-                    sixstep -= 1;
+                    self.sixstep -= 1;
 
-                    if sixstep == 0 {
-                        sixstep = 6;
+                    if self.sixstep == 0 {
+                        self.sixstep = 6;
 
                         for i in 0..7 {
                             let sample = self.zigzag_interpolate(p, i, self.ringbuffer[channel]);
@@ -895,8 +914,6 @@ impl CDRom {
 
         self.sample_buffer[0].clear();
         self.sample_buffer[1].clear();
-
-        self.sixstep = sixstep;
     }
 
     fn zigzag_interpolate(&mut self, p: usize, table: usize, ringbuffer: [i16; 32]) -> i16 {
@@ -915,7 +932,14 @@ impl CDRom {
         for block in 0..8 {
             let header = section[4 + block];
             for i in 0..28 {
-                let nibble = section[block_start + block / 2 + i * 4];
+                let byte = section[block_start + block / 2 + i * 4];
+
+                let nibble = if block & 1 == 0 {
+                    byte & 0xf
+                } else {
+                    (byte >> 4) & 0xf
+                };
+
                 let channel_index =
                     if self.subheader.coding_info.speaker_output == SpeakerOutput::Stereo {
                         block & 1
@@ -1018,18 +1042,21 @@ impl CDRom {
     }
 
     fn cd_stat(&mut self) {
-        assert!(self.irqs == 0);
+        if self.irqs == 0 {
+            self.stat();
 
-        self.stat();
+            self.irq_latch = 0x2;
 
-        self.irq_latch = 0x2;
+            self.controller_cycles += 10;
+            self.controller_mode = ControllerMode::ClearResponseFifo;
 
-        self.controller_cycles += 10;
-        self.controller_mode = ControllerMode::ClearResponseFifo;
+            self.drive_mode = DriveMode::Idle;
 
-        self.drive_mode = DriveMode::Idle;
-
-        self.subresponse_mode = SubresponseMode::Disabled;
+            self.subresponse_mode = SubresponseMode::Disabled;
+        } else {
+            println!("[WARN]irqs are pending in cd_stat");
+            self.drive_cycles += 1;
+        }
     }
 
     fn seek_cd(&mut self) {
@@ -1046,9 +1073,6 @@ impl CDRom {
         self.subchannel_q.track = 1;
         self.subchannel_q.index = 1;
 
-        self.subchannel_q.track = 1;
-        self.subchannel_q.index = 1;
-
         self.subchannel_q.mm = self.msf.amm;
         self.subchannel_q.ss = self.msf.ass - 2;
         self.subchannel_q.sect = self.msf.asect;
@@ -1057,19 +1081,19 @@ impl CDRom {
         self.subchannel_q.ass = self.msf.ass;
         self.subchannel_q.asect = self.msf.asect;
 
+        self.is_seeking = false;
+        self.is_playing = false;
+        self.is_reading = false;
+
         if let Some(mode) = self.next_mode.take() {
             self.drive_mode = mode;
             match mode {
                 DriveMode::Play => {
                     self.is_playing = true;
-                    self.is_seeking = false;
-                    self.is_reading = false;
                     self.drive_cycles += self.get_drive_cycles();
                 }
                 DriveMode::Read => {
                     self.is_reading = true;
-                    self.is_seeking = false;
-                    self.is_playing = false;
                     self.drive_cycles += self.get_drive_cycles();
                 }
                 _ => self.drive_cycles += 10,
@@ -1110,23 +1134,26 @@ impl CDRom {
     }
 
     fn read_id(&mut self) {
-        assert!(self.irqs == 0);
+        if self.irqs == 0 {
+            self.irq_latch = 0x2;
 
-        self.irq_latch = 0x2;
+            let bytes = "SCEA".as_bytes();
 
-        let bytes = "SCEA".as_bytes();
+            self.controller_response_fifo.push_back(0x2);
+            self.controller_response_fifo.push_back(0x0);
+            self.controller_response_fifo.push_back(0x20);
+            self.controller_response_fifo.push_back(0x0);
+            for byte in bytes {
+                self.controller_response_fifo.push_back(*byte);
+            }
 
-        self.controller_response_fifo.push_back(0x2);
-        self.controller_response_fifo.push_back(0x0);
-        self.controller_response_fifo.push_back(0x20);
-        self.controller_response_fifo.push_back(0x0);
-        for byte in bytes {
-            self.controller_response_fifo.push_back(*byte);
+            self.controller_mode = ControllerMode::ClearResponseFifo;
+
+            self.subresponse_mode = SubresponseMode::Disabled;
+        } else {
+            println!("[WARN]: irqs are pending in read_id");
+            self.subresponse_cycles += 1;
         }
-
-        self.controller_mode = ControllerMode::ClearResponseFifo;
-
-        self.subresponse_mode = SubresponseMode::Disabled;
         self.controller_cycles += 10;
     }
 

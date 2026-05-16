@@ -21,3 +21,4 @@ zstd = "0.13"
 default = ["software_gpu"]
 software_gpu = ["rsx-redux/software_gpu"]
 hardware_gpu = ["rsx-redux/hardware_gpu"]
+debug = ["rsx-redux/debug"]

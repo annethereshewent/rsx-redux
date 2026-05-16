@@ -111,6 +111,25 @@ impl Timer {
         }
     }
 
+    /// Handles sync behavior when this timer's associated blanking interval occurs.
+    /// Timer 0: HBlank
+    /// Timer 1: VBlank
+    pub fn handle_xblank_sync(&mut self) {
+        match self.counter_register.sync_mode() {
+            0 => self.is_active = false,
+            1 | 2 => self.counter = 0,
+            3 => {
+                if self.switch_free_run.take().is_some() {
+                    self.is_active = true;
+                } else {
+                    self.is_active = false;
+                    self.switch_free_run = Some(true);
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
     fn trigger_irq(&mut self, interrupt_stat: &mut InterruptRegister) {
         if !self.one_shot_fired {
             if !self

@@ -422,10 +422,10 @@ impl ADPCMBlock {
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
-struct VolumeSweep {
+pub struct VolumeSweep {
     register: VolumeRegister,
     envelope: Envelope,
-    current_level: i16,
+    pub current_level: i16,
     envelope_active: bool,
 }
 
@@ -513,8 +513,8 @@ pub struct Voice {
     current_samples: [i16; NUM_BLOCK_SAMPLES + 3],
     current_block: ADPCMBlock,
     pub last_volume: i32,
-    left_volume: VolumeSweep,
-    right_volume: VolumeSweep,
+    pub left_volume: VolumeSweep,
+    pub right_volume: VolumeSweep,
     using_left_envelope: bool,
     using_right_envelope: bool,
     ignore_loop_address: bool,
