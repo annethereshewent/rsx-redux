@@ -1081,19 +1081,19 @@ impl CDRom {
         self.subchannel_q.ass = self.msf.ass;
         self.subchannel_q.asect = self.msf.asect;
 
+        self.is_seeking = false;
+        self.is_playing = false;
+        self.is_reading = false;
+
         if let Some(mode) = self.next_mode.take() {
             self.drive_mode = mode;
             match mode {
                 DriveMode::Play => {
                     self.is_playing = true;
-                    self.is_seeking = false;
-                    self.is_reading = false;
                     self.drive_cycles += self.get_drive_cycles();
                 }
                 DriveMode::Read => {
                     self.is_reading = true;
-                    self.is_seeking = false;
-                    self.is_playing = false;
                     self.drive_cycles += self.get_drive_cycles();
                 }
                 _ => self.drive_cycles += 10,
