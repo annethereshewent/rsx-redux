@@ -440,8 +440,8 @@ impl GPU {
     fn read_4bit_clut(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
         let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
 
-        let offset_u = 2 * tex_x_base + uv.0 as u32 / 2;
-        let offset_v = (tex_y_base + uv.1 as u32) as u32;
+        let offset_u = (2 * tex_x_base + uv.0 as u32 / 2) & 2047;
+        let offset_v = ((tex_y_base + uv.1 as u32) as u32) & 511;
 
         let clut_index_address = offset_u + offset_v * 2048;
 
@@ -463,8 +463,8 @@ impl GPU {
     fn read_8bit_clut(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
         let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
 
-        let offset_u = 2 * tex_x_base + uv.0 as u32;
-        let offset_v = tex_y_base + uv.1 as u32;
+        let offset_u = (2 * tex_x_base + uv.0 as u32) & 2047;
+        let offset_v = (tex_y_base + uv.1 as u32) & 511;
 
         let clut_index_address = offset_u + offset_v * 2048;
 
@@ -484,8 +484,8 @@ impl GPU {
     fn read_15bit_clut(&self, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
         let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
 
-        let offset_u = tex_x_base + uv.0 as u32;
-        let offset_v = tex_y_base + uv.1 as u32;
+        let offset_u = (tex_x_base + uv.0 as u32) & 2047;
+        let offset_v = (tex_y_base + uv.1 as u32) & 511;
 
         let texture_address = 2 * (offset_u + 1024 * offset_v);
 
