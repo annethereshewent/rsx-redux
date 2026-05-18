@@ -337,7 +337,11 @@ impl Bus {
                     dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec)
                 }
                 DMA_MDEC_OUT => {
-                    dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec)
+                    let completed = dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec);
+
+                    if !completed {
+                        return;
+                    }
                 }
                 DMA_GPU => match dma_channel.control.sync_mode() {
                     SyncMode::LinkedList => {

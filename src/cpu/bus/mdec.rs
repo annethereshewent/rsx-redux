@@ -132,6 +132,8 @@ impl Mdec {
             for i in 0..4 {
                 value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)
             }
+        } else {
+            panic!("mdec out fifo is empty!");
         }
 
         value
@@ -382,12 +384,16 @@ impl Mdec {
         self.words_remaining = 32;
     }
 
-    fn read_status(&self) -> u32 {
-        (self.out_fifo.is_empty() as u32) << 31
-            | ((self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS) as u32) << 30
+    pub fn read_status(&self) -> u32 {
+        let in_full = self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS;
+        let out_empty = self.out_fifo.len() < 4;
+        let data_in_request = self.dma_in_enable && !in_full;
+        let data_out_request = self.dma_out_enable && !out_empty;
+        (out_empty as u32) << 31
+            | (in_full as u32) << 30
             | (self.command.is_some() as u32) << 29
-            | (self.dma_in_enable as u32) << 28
-            | (self.dma_out_enable as u32) << 27
+            | (data_in_request as u32) << 28
+            | (data_out_request as u32) << 27
             | (self.output_depth as u32) << 25
             | (self.is_signed as u32) << 24
             | (self.output_bit15 as u32) << 23

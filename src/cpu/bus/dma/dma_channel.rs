@@ -102,13 +102,17 @@ impl DmaChannel {
         }
     }
 
-    pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
+    pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) -> bool {
         assert!(self.control.sync_mode() == SyncMode::Slice);
         assert!(
             !self
                 .control
                 .contains(DmaChannelControlRegister::TRANSFER_DIR)
         );
+
+        if mdec.read_status() >> 27 & 1 == 0 {
+            return false;
+        }
 
         let mut current_address = self.base_address & 0x1fffff;
         let block_size = self.block_size;
@@ -127,6 +131,8 @@ impl DmaChannel {
                 current_address += 4;
             }
         }
+
+        true
     }
 
     pub fn start_gpu_transfer(&mut self, ram: &mut [u8], gpu: &mut GPU) -> u32 {
