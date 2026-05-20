@@ -28,6 +28,14 @@ pub mod scheduler;
 pub mod spu;
 pub mod timer;
 
+#[derive(Default)]
+pub struct MdecTransferResult {
+    pub mdec_in_completed: bool,
+    pub mdec_out_completed: bool,
+    pub mdec_in_words: usize,
+    pub mdec_out_words: usize,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Bus {
     bios: Vec<u8>,
@@ -305,7 +313,12 @@ impl Bus {
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.process_gp0_commands(value),
             0x1f801814 => self.gpu.process_gp1_commands(value),
-            0x1f801820..=0x1f801824 => self.mdec.write(address, value),
+            0x1f801820..=0x1f801824 => {
+                self.mdec.write(address, value);
+                let result = self.dma.start_mdec_transfer(&mut self.main_ram, &mut self.mdec);
+
+                self.process_mdec_result(result);
+            },
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
@@ -334,14 +347,22 @@ impl Bus {
 
             match channel {
                 DMA_MDEC_IN => {
-                    dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec)
+                    dma_channel.init_mdec_params();
+
+                    let result = self.dma.start_mdec_transfer(&mut self.main_ram, &mut self.mdec);
+
+                    self.process_mdec_result(result);
+
+                    return;
                 }
                 DMA_MDEC_OUT => {
-                    let completed = dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec);
+                    dma_channel.init_mdec_params();
 
-                    if !completed {
-                        return;
-                    }
+                    let result = self.dma.start_mdec_transfer(&mut self.main_ram, &mut self.mdec);
+
+                    self.process_mdec_result(result);
+
+                    return;
                 }
                 DMA_GPU => match dma_channel.control.sync_mode() {
                     SyncMode::LinkedList => {
@@ -446,6 +467,16 @@ impl Bus {
                 self.exp1_post = value;
             }
             _ => todo!("(mem_write8) address: 0x{:x}", address),
+        }
+    }
+
+    fn process_mdec_result(&mut self, result: MdecTransferResult) {
+        if result.mdec_in_completed {
+            self.scheduler.schedule(EventType::DmaFinished(DMA_MDEC_IN), result.mdec_in_words);
+        }
+
+        if result.mdec_out_completed {
+            self.scheduler.schedule(EventType::DmaFinished(DMA_MDEC_OUT), result.mdec_out_words);
         }
     }
 }

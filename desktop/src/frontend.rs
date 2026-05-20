@@ -368,7 +368,6 @@ impl Frontend {
                             cpu.bus.peripherals.controller.update_input(*index, true);
                         } else {
                             match keycode {
-                                #[cfg(feature = "debug")]
                                 Keycode::G => {
                                     cpu.debug_on = !cpu.debug_on;
                                     println!("setting debug on to {}", cpu.debug_on);

@@ -18,7 +18,8 @@ enum BlockType {
 }
 
 const NUM_COLORS: usize = 256;
-const MDEC_FIFO_SIZE_HALFWORDS: usize = 64;
+const MDEC_IN_FIFO_SIZE_HALFWORDS: usize = 64;
+const MDEC_OUT_FIFO_SIZE_BYTES: usize = 32 * 4; // 32 words, 32 * 4 = number in bytes
 
 const ZIGZAG_TABLE: [usize; 64] = [
     0, 1, 5, 6, 14, 15, 27, 28, 2, 4, 7, 13, 16, 26, 29, 42, 3, 8, 12, 17, 25, 30, 41, 43, 9, 11,
@@ -44,6 +45,8 @@ pub struct Mdec {
     output_bit15: bool,
     blocks: [Box<[i16]>; 3],
     zagzig_table: Box<[usize]>,
+    output: Box<[u8]>,
+    output_index: usize,
 }
 
 impl Default for Mdec {
@@ -55,8 +58,8 @@ impl Default for Mdec {
 impl Mdec {
     pub fn new() -> Self {
         Self {
-            in_fifo: VecDeque::new(),
-            out_fifo: VecDeque::new(),
+            in_fifo: VecDeque::with_capacity(MDEC_IN_FIFO_SIZE_HALFWORDS),
+            out_fifo: VecDeque::with_capacity(MDEC_OUT_FIFO_SIZE_BYTES),
             luminance_quant_table: vec![0; 64].into_boxed_slice(),
             color_quant_table: vec![0; 64].into_boxed_slice(),
             scale_table: vec![0; 64].into_boxed_slice(),
@@ -71,6 +74,8 @@ impl Mdec {
             output_bit15: false,
             blocks: from_fn(|_| vec![0; 64].into_boxed_slice()),
             zagzig_table: Self::populate_zagzig_table(),
+            output: vec![0; 768].into_boxed_slice(),
+            output_index: 0,
         }
     }
 
@@ -94,7 +99,15 @@ impl Mdec {
             0x1f801820 => self.write_command(value),
             0x1f801824 => self.write_control(value),
             _ => todo!("(write)mdec address: 0x{:x}", address),
-        }
+        };
+    }
+
+    pub fn can_accept_input_word(&self) -> bool {
+        self.in_fifo.len() + 2 <= MDEC_IN_FIFO_SIZE_HALFWORDS
+    }
+
+    pub fn can_read_output_word(&self) -> bool {
+        self.out_fifo.len() >= 4
     }
 
     pub fn write_command(&mut self, value: u32) {
@@ -106,7 +119,7 @@ impl Mdec {
 
             if self.words_remaining == 0 {
                 match command {
-                    0x1 => self.decode_macroblocks(),
+                    0x1 => { self.decode_macroblocks(); },
                     0x2 => self.populate_quant_table(),
                     0x3 => self.populate_scale_table(),
                     _ => todo!("mdec command 0x{:x}", command),
@@ -132,15 +145,53 @@ impl Mdec {
             for i in 0..4 {
                 value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)
             }
-        } else {
-            panic!("mdec out fifo is empty!");
         }
 
         value
     }
 
-    fn decode_macroblocks(&mut self) {
-        let mut output = [0; 768];
+    fn drain_output(&mut self, output: &Box<[u8]>, clone_output: bool) -> (bool, usize) {
+        let num_bytes = match self.output_depth {
+            OutputDepth::Bit24 => 3 * NUM_COLORS,
+            OutputDepth::Bit15 => 2 * NUM_COLORS,
+            _ => todo!("output depth: {:?}", self.output_depth),
+        };
+
+        let mut bytes_written = 0;
+
+        let end = num_bytes;
+
+        while self.output_index < end {
+            if self.out_fifo.len() >= MDEC_OUT_FIFO_SIZE_BYTES {
+                if clone_output {
+                    self.output = output.clone();
+                }
+                return (true, bytes_written); // still blocked
+            }
+
+            self.out_fifo.push_back(output[self.output_index]);
+            self.output_index += 1;
+            bytes_written += 1;
+        }
+
+        self.output_index = 0;
+        (false, bytes_written)
+    }
+
+    pub fn decode_macroblocks(&mut self) -> bool {
+        let mut progressed = false;
+
+        if self.output_index != 0 {
+            let output = self.output.clone();
+
+            let (fifo_full, bytes_written) = self.drain_output(&output, false);
+
+            if fifo_full {
+                return bytes_written > 0;
+            }
+        }
+
+        let mut output = vec![0; 768].into_boxed_slice();
 
         while !self.in_fifo.is_empty() {
             if self.current_block > 1 {
@@ -156,26 +207,26 @@ impl Mdec {
 
                 self.decode_block(BlockType::Yb);
                 self.yuv_to_rgb(&mut output, xx, yy);
+                progressed = true;
 
                 if is_final_block {
-                    let multiplier = match self.output_depth {
-                        OutputDepth::Bit24 => 3,
-                        OutputDepth::Bit15 => 2,
-                        _ => todo!("output depth: {:?}", self.output_depth),
-                    };
+                    let (fifo_full, _) = self.drain_output(&output, true);
 
-                    let num_bytes = multiplier * NUM_COLORS;
-
-                    for byte in output.iter().take(num_bytes) {
-                        self.out_fifo.push_back(*byte);
+                    if fifo_full {
+                        return progressed;
                     }
+
                 }
             } else if self.current_block == 0 {
                 self.decode_block(BlockType::Cr);
+                progressed = true;
             } else {
                 self.decode_block(BlockType::Cb);
+                progressed = true;
             }
         }
+
+        progressed
     }
 
     fn yuv_to_rgb(&mut self, output: &mut [u8], xx: usize, yy: usize) {
@@ -385,7 +436,7 @@ impl Mdec {
     }
 
     pub fn read_status(&self) -> u32 {
-        let in_full = self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS;
+        let in_full = self.in_fifo.len() >= MDEC_IN_FIFO_SIZE_HALFWORDS;
         let out_empty = self.out_fifo.len() < 4;
         let data_in_request = self.dma_in_enable && !in_full;
         let data_out_request = self.dma_out_enable && !out_empty;
