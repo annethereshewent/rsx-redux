@@ -344,7 +344,7 @@ impl Bus {
                         num_words =
                             dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu)
                     }
-                    SyncMode::Burst | SyncMode::Slice => {
+                    SyncMode::Manual | SyncMode::Request => {
                         dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu);
                     }
                 },

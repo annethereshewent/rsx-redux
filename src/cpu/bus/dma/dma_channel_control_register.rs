@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SyncMode {
-    Burst = 0,
-    Slice = 1,
+    Manual = 0,
+    Request = 1,
     LinkedList = 2,
 }
 
@@ -24,8 +24,8 @@ bitflags! {
 impl DmaChannelControlRegister {
     pub fn sync_mode(&self) -> SyncMode {
         match (self.bits() >> 9) & 0x3 {
-            0 => SyncMode::Burst,
-            1 => SyncMode::Slice,
+            0 => SyncMode::Manual,
+            1 => SyncMode::Request,
             2 => SyncMode::LinkedList,
             _ => panic!("reserved mode: {}", (self.bits() >> 9) & 0x3),
         }

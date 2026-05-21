@@ -59,8 +59,8 @@ impl DmaChannel {
         match register {
             0 => self.base_address,
             4 => match self.control.sync_mode() {
-                SyncMode::Burst => self.block_size,
-                SyncMode::Slice => self.block_size & 0xffff | (self.num_blocks & 0xffff) << 16,
+                SyncMode::Manual => self.block_size,
+                SyncMode::Request => self.block_size & 0xffff | (self.num_blocks & 0xffff) << 16,
                 SyncMode::LinkedList => 0,
             },
             8 => self.control.bits(),
@@ -70,14 +70,14 @@ impl DmaChannel {
 
     pub fn get_num_words(&self) -> u32 {
         match self.control.sync_mode() {
-            SyncMode::Burst => self.block_size,
-            SyncMode::Slice => self.block_size * self.num_blocks,
+            SyncMode::Manual => self.block_size,
+            SyncMode::Request => self.block_size * self.num_blocks,
             SyncMode::LinkedList => 0, // calculate this after the end of the linked list transfer
         }
     }
 
     pub fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
-        assert_eq!(self.control.sync_mode(), SyncMode::Slice);
+        assert_eq!(self.control.sync_mode(), SyncMode::Request);
         assert!(
             self.control
                 .contains(DmaChannelControlRegister::TRANSFER_DIR)
@@ -103,7 +103,7 @@ impl DmaChannel {
     }
 
     pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
-        assert!(self.control.sync_mode() == SyncMode::Slice);
+        assert!(self.control.sync_mode() == SyncMode::Request);
         assert!(
             !self
                 .control
@@ -134,7 +134,7 @@ impl DmaChannel {
             .control
             .contains(DmaChannelControlRegister::TRANSFER_DIR)
         {
-            if self.control.sync_mode() == SyncMode::Slice {
+            if self.control.sync_mode() == SyncMode::Request {
                 let mut current_address = self.base_address & 0x1ffffc;
 
                 for _ in 0..self.num_blocks {
@@ -195,7 +195,7 @@ impl DmaChannel {
 
                     return total_word_count;
                 }
-                SyncMode::Burst => {
+                SyncMode::Manual => {
                     let mut current_address = self.base_address & 0x1fffff;
 
                     let num_words = self.block_size;
@@ -212,7 +212,7 @@ impl DmaChannel {
                         }
                     }
                 }
-                SyncMode::Slice => {
+                SyncMode::Request => {
                     let block_size = if self.block_size == 0 {
                         0x10000
                     } else {
@@ -245,7 +245,7 @@ impl DmaChannel {
     }
 
     pub fn start_cdrom_transfer(&mut self, ram: &mut [u8], cdrom: &mut CDRom) {
-        assert!(self.control.sync_mode() == SyncMode::Burst);
+        assert!(self.control.sync_mode() == SyncMode::Manual);
 
         let mut current_address = self.base_address;
 
@@ -277,7 +277,7 @@ impl DmaChannel {
     ) {
         let mut current_address = self.base_address;
 
-        assert_eq!(self.control.sync_mode(), SyncMode::Slice);
+        assert_eq!(self.control.sync_mode(), SyncMode::Request);
 
         if !self
             .control
@@ -304,7 +304,7 @@ impl DmaChannel {
     }
 
     pub fn start_otc_transfer(&mut self, ram: &mut [u8]) {
-        assert!(self.control.sync_mode() == SyncMode::Burst);
+        assert!(self.control.sync_mode() == SyncMode::Manual);
 
         let mut current_address = self.base_address & 0x1ffffc;
 
