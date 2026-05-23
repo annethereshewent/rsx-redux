@@ -17,6 +17,12 @@ enum BlockType {
     Yb = 2,
 }
 
+#[derive(Debug)]
+pub struct MdecDma {
+    pub dma_in: bool,
+    pub dma_out: bool
+}
+
 const NUM_COLORS: usize = 256;
 const MDEC_FIFO_SIZE_HALFWORDS: usize = 64;
 
@@ -28,7 +34,7 @@ const ZIGZAG_TABLE: [usize; 64] = [
 
 #[derive(Serialize, Deserialize)]
 pub struct Mdec {
-    pub in_fifo: VecDeque<u16>,
+    in_fifo: VecDeque<u16>,
     out_fifo: VecDeque<u8>,
     dma_in_enable: bool,
     dma_out_enable: bool,
@@ -89,55 +95,100 @@ impl Mdec {
         }
     }
 
-    pub fn write(&mut self, address: usize, value: u32) {
+    pub fn write(&mut self, address: usize, value: u32) -> MdecDma {
         match address {
-            0x1f801820 => self.write_command(value),
+            0x1f801820 => { self.write_command(value); },
             0x1f801824 => self.write_control(value),
             _ => todo!("(write)mdec address: 0x{:x}", address),
         }
+
+        self.update_status()
     }
 
-    pub fn write_command(&mut self, value: u32) {
-        if let Some(command) = self.command {
-            self.in_fifo.push_back(value as u16);
-            self.in_fifo.push_back((value >> 16) as u16);
+    fn write_command(&mut self, value: u32) {
+        self.in_fifo.push_back(value as u16);
+        self.in_fifo.push_back((value >> 16) as u16);
 
-            self.words_remaining -= 1;
+        self.words_remaining -= 1;
 
-            if self.words_remaining == 0 {
+        self.execute();
+    }
+
+    pub fn dma_write(&mut self, value: u32) {
+        self.in_fifo.push_back(value as u16);
+        self.in_fifo.push_back((value >> 16) as u16);
+
+        self.words_remaining -= 1;
+    }
+
+    pub fn execute(&mut self) -> MdecDma {
+        while !self.in_fifo.is_empty() {
+            if let Some(command) = self.command {
                 match command {
-                    0x1 => self.decode_macroblocks(),
-                    0x2 => self.populate_quant_table(),
-                    0x3 => self.populate_scale_table(),
-                    _ => todo!("mdec command 0x{:x}", command),
+                    0x1 => {
+                        if !self.decode_macroblocks() {
+                            break;
+                        }
+                    }
+                    0x2 => if self.words_remaining == 0 {
+                        self.populate_quant_table();
+                    } else {
+                        println!("[WARN]: attempting to populate quant table but words remaining is non-zero");
+                        break;
+                    }
+                    0x3 => if self.words_remaining == 0 {
+                        self.populate_scale_table();
+                    } else {
+                        println!("[WARN]: attempting to populate scale table but words remaining is non-zero");
+                        break;
+                    }
+                    _ => panic!("invalid mdec command 0x{command:x}")
                 }
-                self.command = None;
-            }
-        } else {
-            self.command = Some((value >> 29) & 0x7);
 
-            match (value >> 29) & 0x7 {
-                0x1 => self.set_decode_macroblocks_params(value),
-                0x2 => self.set_quant_table_word_size(value),
-                0x3 => self.set_scale_table_word_size(value),
-                _ => todo!("mdec command 0x{:x}", self.command.unwrap()),
+                if self.words_remaining == 0 && self.in_fifo.is_empty() {
+                    self.command = None;
+                }
+            } else {
+                let word = self.in_fifo.pop_front().unwrap() as u32 | (self.in_fifo.pop_front().unwrap() as u32) << 16;
+                self.command = Some((word >> 29) & 0x7);
+
+                match self.command.unwrap() {
+                    0x1 => self.set_decode_macroblocks_params(word),
+                    0x2 => self.set_quant_table_word_size(word),
+                    0x3 => self.set_scale_table_word_size(word),
+                    _ => panic!("invalid mdec command 0x{:x}", self.command.unwrap()),
+                }
+
+
             }
+        }
+
+        self.update_status()
+    }
+
+    pub fn update_status(&self) -> MdecDma {
+        // let in_full = self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS;
+        let out_empty = self.out_fifo.len() < 4;
+        let data_in_request = self.dma_in_enable;
+        let data_out_request = self.dma_out_enable && !out_empty;
+
+        MdecDma {
+            dma_in: data_in_request,
+            dma_out: data_out_request
         }
     }
 
     pub fn read_out_fifo(&mut self) -> u32 {
         let mut value = 0;
 
-        if self.out_fifo.len() >= 4 {
-            for i in 0..4 {
-                value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)
-            }
+        for i in 0..4 {
+            value |= (self.out_fifo.pop_front().unwrap() as u32) << (i * 8)
         }
 
         value
     }
 
-    fn decode_macroblocks(&mut self) {
+    fn decode_macroblocks(&mut self) -> bool {
         let mut output = [0; 768];
 
         while !self.in_fifo.is_empty() {
@@ -152,7 +203,9 @@ impl Mdec {
 
                 let is_final_block = self.current_block == 5;
 
-                self.decode_block(BlockType::Yb);
+                if !self.decode_block(BlockType::Yb) {
+                    return false;
+                }
                 self.yuv_to_rgb(&mut output, xx, yy);
 
                 if is_final_block {
@@ -169,11 +222,21 @@ impl Mdec {
                     }
                 }
             } else if self.current_block == 0 {
-                self.decode_block(BlockType::Cr);
+                if !self.decode_block(BlockType::Cr) {
+                    return false;
+                }
             } else {
-                self.decode_block(BlockType::Cb);
+                if !self.decode_block(BlockType::Cb) {
+                    return false;
+                }
             }
         }
+
+        if self.in_fifo.is_empty() && self.words_remaining > 0 {
+            return false;
+        }
+
+        true
     }
 
     fn yuv_to_rgb(&mut self, output: &mut [u8], xx: usize, yy: usize) {
@@ -228,7 +291,11 @@ impl Mdec {
         }
     }
 
-    fn decode_block(&mut self, block_type: BlockType) {
+    fn decode_block(&mut self, block_type: BlockType) -> bool {
+        let saved_fifo = self.in_fifo.clone();
+        let saved_block = self.blocks[block_type as usize].clone();
+        let saved_current_block = self.current_block;
+
         let mut halfword = self.in_fifo.pop_front().unwrap();
 
         let block = &mut self.blocks[block_type as usize];
@@ -239,10 +306,15 @@ impl Mdec {
 
         while halfword == 0xfe00 {
             if self.in_fifo.is_empty() {
-                return;
+                self.in_fifo = saved_fifo;
+                self.blocks[block_type as usize] = saved_block;
+                self.current_block = saved_current_block;
+
+                return false;
             }
 
             halfword = self.in_fifo.pop_front().unwrap();
+
         }
 
         let mut k = 0;
@@ -271,7 +343,11 @@ impl Mdec {
             halfword = if let Some(next) = self.in_fifo.pop_front() {
                 next
             } else {
-                return;
+                self.in_fifo = saved_fifo;
+                self.blocks[block_type as usize] = saved_block;
+                self.current_block = saved_current_block;
+
+                return false;
             };
 
             k += (((halfword as usize) >> 10) & 0x3f) + 1;
@@ -292,6 +368,8 @@ impl Mdec {
         if self.current_block == 6 {
             self.current_block = 0;
         }
+
+        true
     }
 
     fn idct_core(&mut self, block_type: BlockType) {
@@ -383,11 +461,16 @@ impl Mdec {
     }
 
     fn read_status(&self) -> u32 {
-        (self.out_fifo.is_empty() as u32) << 31
-            | ((self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS) as u32) << 30
+        let in_full = self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS;
+        let out_empty = self.out_fifo.len() < 4;
+        let data_in_request = self.dma_in_enable && !in_full;
+        let data_out_request = self.dma_out_enable && !out_empty;
+
+        (out_empty as u32) << 31
+            | (in_full as u32) << 30
             | (self.command.is_some() as u32) << 29
-            | (self.dma_in_enable as u32) << 28
-            | (self.dma_out_enable as u32) << 27
+            | (data_in_request as u32) << 28
+            | (data_out_request as u32) << 27
             | (self.output_depth as u32) << 25
             | (self.is_signed as u32) << 24
             | (self.output_bit15 as u32) << 23
@@ -398,6 +481,7 @@ impl Mdec {
     fn write_control(&mut self, value: u32) {
         if (value >> 31) & 1 == 1 {
             self.out_fifo.clear();
+            self.in_fifo.clear();
             self.current_block = 0;
             self.words_remaining = 0;
             self.command = None;

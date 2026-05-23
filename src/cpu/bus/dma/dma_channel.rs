@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::cpu::bus::mdec::MdecDma;
+use crate::cpu::bus::scheduler::{EventType, Scheduler};
 use crate::cpu::bus::spu::SPU;
 use crate::cpu::bus::{
     cdrom::CDRom, gpu::GPU, mdec::Mdec, registers::interrupt_register::InterruptRegister,
@@ -19,12 +21,18 @@ pub const DMA_SPU: usize = 4;
 pub const DMA_PIO: usize = 5;
 pub const DMA_OTC: usize = 6;
 
+pub const DMA_TICKS_REMAINING: usize = 100;
+pub const DMA_HALT_TICKS: usize = 100;
+pub const DMA_TICKS_PER_BLOCK: usize = 34;
+
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct DmaChannel {
     pub base_address: u32,
     pub block_size: u32,
     pub num_blocks: u32,
+    pub blocks_remaining: u32,
     pub control: DmaChannelControlRegister,
+    halted: bool
 }
 
 impl Default for DmaChannel {
@@ -39,7 +47,9 @@ impl DmaChannel {
             base_address: 0,
             block_size: 0,
             num_blocks: 0,
+            blocks_remaining: 0,
             control: DmaChannelControlRegister::from_bits_retain(0),
+            halted: false,
         }
     }
 
@@ -76,33 +86,62 @@ impl DmaChannel {
         }
     }
 
-    pub fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
+    pub fn init_mdec_params(&mut self) {
+        self.blocks_remaining = self.num_blocks;
+    }
+
+    fn handle_dma_request(&mut self, channel_id: usize, scheduler: &mut Scheduler, mut callback: impl FnMut(u32)) {
+        self.halted = false;
+
+        let mut current_address = self.base_address & 0x1fffff;
+        let num_words = self.block_size;
+        let mut ticks_remaining = DMA_TICKS_REMAINING;
+        let mut words_transferred = 0;
+
+        while ticks_remaining > 0 && self.num_blocks > 0 {
+            for _ in 0..num_words {
+                callback(current_address);
+
+                if self.control.contains(DmaChannelControlRegister::DECREMENT) {
+                    current_address -= 4;
+                } else {
+                    current_address += 4;
+                }
+
+                words_transferred += 1;
+            }
+
+            self.num_blocks -= 1;
+            ticks_remaining = ticks_remaining.saturating_sub(DMA_TICKS_PER_BLOCK);
+        }
+
+        self.base_address = current_address;
+
+        if self.num_blocks > 0 {
+            self.halted = true;
+            scheduler.schedule(EventType::UnhaltDma(channel_id), DMA_HALT_TICKS);
+        } else {
+            scheduler.schedule(EventType::DmaFinished(channel_id), words_transferred);
+        }
+    }
+
+    pub fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec, scheduler: &mut Scheduler) -> MdecDma {
         assert_eq!(self.control.sync_mode(), SyncMode::Request);
         assert!(
             self.control
                 .contains(DmaChannelControlRegister::TRANSFER_DIR)
         );
 
-        let mut current_address = self.base_address & 0x1fffff;
-        let block_size = self.block_size;
-        let num_blocks = self.num_blocks;
-
-        let num_words = block_size * num_blocks;
-
-        for _ in 0..num_words {
+        self.handle_dma_request(DMA_MDEC_IN, scheduler,  |current_address| {
             let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
 
-            mdec.write_command(word);
+            mdec.dma_write(word);
+        });
 
-            if self.control.contains(DmaChannelControlRegister::DECREMENT) {
-                current_address -= 4;
-            } else {
-                current_address += 4;
-            }
-        }
+        mdec.execute()
     }
 
-    pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec) {
+    pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec, scheduler: &mut Scheduler) -> MdecDma {
         assert!(self.control.sync_mode() == SyncMode::Request);
         assert!(
             !self
@@ -110,23 +149,13 @@ impl DmaChannel {
                 .contains(DmaChannelControlRegister::TRANSFER_DIR)
         );
 
-        let mut current_address = self.base_address & 0x1fffff;
-        let block_size = self.block_size;
-        let num_blocks = self.num_blocks;
-
-        let num_words = block_size * num_blocks;
-
-        for _ in 0..num_words {
+        self.handle_dma_request(DMA_MDEC_OUT, scheduler, |current_address| {
             let word = mdec.read_out_fifo();
 
             unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = word };
+        });
 
-            if self.control.contains(DmaChannelControlRegister::DECREMENT) {
-                current_address -= 4;
-            } else {
-                current_address += 4;
-            }
-        }
+        mdec.update_status()
     }
 
     pub fn start_gpu_transfer(&mut self, ram: &mut [u8], gpu: &mut GPU) -> u32 {
@@ -361,6 +390,28 @@ impl Dma {
                 _ => panic!("invalid dma address given: 0x{address:x}"),
             }
         }
+    }
+
+    pub fn process_mdec_dma(&mut self, mdec_dma: MdecDma, ram: &mut [u8], mdec: &mut Mdec, scheduler: &mut Scheduler) {
+        if mdec_dma.dma_in && self.can_transfer_dma(DMA_MDEC_IN) {
+            self.channels[DMA_MDEC_IN].start_mdec_in_transfer(ram, mdec, scheduler);
+        }
+
+        if mdec_dma.dma_out && self.can_transfer_dma(DMA_MDEC_OUT) {
+            self.channels[DMA_MDEC_OUT].start_mdec_out_transfer(ram, mdec, scheduler);
+        }
+    }
+
+    pub fn can_transfer_dma(&self, channel: usize) -> bool {
+        let dma_channel = &self.channels[channel];
+
+        let shift = channel * 4 + 3;
+
+        dma_channel
+            .control
+            .contains(DmaChannelControlRegister::START_TRANSFER)
+            && !dma_channel.halted
+            && (self.dma_control.bits() >> shift) & 0x1 == 1
     }
 
     pub fn finish_transfer(&mut self, channel: usize, interrupt_stat: &mut InterruptRegister) {

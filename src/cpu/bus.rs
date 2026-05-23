@@ -305,12 +305,33 @@ impl Bus {
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.process_gp0_commands(value),
             0x1f801814 => self.gpu.process_gp1_commands(value),
-            0x1f801820..=0x1f801824 => self.mdec.write(address, value),
+            0x1f801820..=0x1f801824 => {
+                let mdec_dma = self.mdec.write(address, value);
+
+                self.dma.process_mdec_dma(mdec_dma, &mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+            }
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
             }
             _ => todo!("(mem_write32) address: 0x{:x}", address),
+        }
+    }
+
+    pub fn unhalt_dma(&mut self, channel: usize) {
+        let dma_channel = &mut self.dma.channels[channel];
+        match channel {
+            DMA_MDEC_IN => {
+                let mdec_dma = dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+
+                self.dma.process_mdec_dma(mdec_dma, &mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+            },
+            DMA_MDEC_OUT => {
+                let mdec_dma = dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+
+                self.dma.process_mdec_dma(mdec_dma, &mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+            }
+            _ => println!("[WARN]: got dma channel {channel}, currently unimplemented unhalting behavior for that channel"),
         }
     }
 
@@ -334,10 +355,20 @@ impl Bus {
 
             match channel {
                 DMA_MDEC_IN => {
-                    dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec)
+                    dma_channel.init_mdec_params();
+                    let mdec_dma = dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+
+                    self.dma.process_mdec_dma(mdec_dma, &mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+
+                    return;
                 }
                 DMA_MDEC_OUT => {
-                    dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec)
+                    dma_channel.init_mdec_params();
+                    let mdec_dma = dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+
+                    self.dma.process_mdec_dma(mdec_dma, &mut self.main_ram, &mut self.mdec, &mut self.scheduler);
+
+                    return;
                 }
                 DMA_GPU => match dma_channel.control.sync_mode() {
                     SyncMode::LinkedList => {
