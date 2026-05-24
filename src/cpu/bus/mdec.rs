@@ -52,6 +52,7 @@ pub struct Mdec {
     zagzig_table: Box<[usize]>,
     k: usize,
     q_scale: u16,
+    output: Box<[u8]>
 }
 
 impl Default for Mdec {
@@ -81,6 +82,7 @@ impl Mdec {
             zagzig_table: Self::populate_zagzig_table(),
             k: 64,
             q_scale: 0,
+            output: vec![0; 768].into_boxed_slice(),
         }
     }
 
@@ -148,9 +150,7 @@ impl Mdec {
                     }
                     _ => panic!("invalid mdec command 0x{command:x}")
                 }
-                if self.words_remaining == 0 {
-                    self.command = None;
-                }
+
             } else {
                 let word = self.in_fifo.pop_front().unwrap() as u32 | (self.in_fifo.pop_front().unwrap() as u32) << 16;
                 self.command = Some((word >> 29) & 0x7);
@@ -162,6 +162,10 @@ impl Mdec {
                     _ => panic!("invalid mdec command 0x{:x}", self.command.unwrap()),
                 }
             }
+        }
+
+        if self.words_remaining == 0 {
+            self.command = None;
         }
 
         self.update_status()
@@ -190,8 +194,6 @@ impl Mdec {
     }
 
     fn decode_macroblocks(&mut self) -> bool {
-        let mut output = [0; 768];
-
         while !self.in_fifo.is_empty() {
             if self.current_block > 1 {
                 let index = self.current_block - 2;
@@ -205,10 +207,9 @@ impl Mdec {
                 let is_final_block = self.current_block == 5;
 
                 if !self.decode_block(BlockType::Yb) {
-                    println!("returning false at current_block > 1");
                     return false;
                 }
-                self.yuv_to_rgb(&mut output, xx, yy);
+                self.yuv_to_rgb( xx, yy);
 
                 if is_final_block {
                     let multiplier = match self.output_depth {
@@ -219,29 +220,25 @@ impl Mdec {
 
                     let num_bytes = multiplier * NUM_COLORS;
 
-                    for byte in output.iter().take(num_bytes) {
+                    for byte in self.output.iter().take(num_bytes) {
                         self.out_fifo.push_back(*byte);
                     }
                 }
             } else if self.current_block == 0 {
                 if !self.decode_block(BlockType::Cr) {
-                    println!("returning false at current block == 0");
                     return false;
                 }
             } else {
                 if !self.decode_block(BlockType::Cb) {
-                    println!("returning false at current block != 0");
                     return false;
                 }
             }
         }
 
-        println!("returning back true!");
-
         true
     }
 
-    fn yuv_to_rgb(&mut self, output: &mut [u8], xx: usize, yy: usize) {
+    fn yuv_to_rgb(&mut self, xx: usize, yy: usize) {
         for y in 0..8 {
             for x in 0..8 {
                 let index = ((x + xx) / 2) + ((y + yy) / 2) * 8;
@@ -277,15 +274,15 @@ impl Mdec {
                             output15 |= 1 << 15;
                         }
 
-                        output[offset] = output15 as u8;
-                        output[offset + 1] = (output15 >> 8) as u8;
+                        self.output[offset] = output15 as u8;
+                        self.output[offset + 1] = (output15 >> 8) as u8;
                     }
                     OutputDepth::Bit24 => {
                         let offset = ((x + xx) + (y + yy) * 16) * 3;
 
-                        output[offset] = r as u8;
-                        output[offset + 1] = g as u8;
-                        output[offset + 2] = b as u8;
+                        self.output[offset] = r as u8;
+                        self.output[offset + 1] = g as u8;
+                        self.output[offset + 2] = b as u8;
                     }
                     _ => todo!("output depth: {:?}", self.output_depth),
                 }
