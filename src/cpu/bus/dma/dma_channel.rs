@@ -402,7 +402,7 @@ impl Dma {
         }
     }
 
-    pub fn can_transfer_dma(&self, channel: usize) -> bool {
+    fn can_transfer_dma(&self, channel: usize) -> bool {
         let dma_channel = &self.channels[channel];
 
         let shift = channel * 4 + 3;

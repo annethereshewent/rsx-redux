@@ -145,7 +145,7 @@ impl Mdec {
                     _ => panic!("invalid mdec command 0x{command:x}")
                 }
 
-                if self.words_remaining == 0 && self.in_fifo.is_empty() {
+                if self.words_remaining == 0 {
                     self.command = None;
                 }
             } else {
@@ -167,7 +167,7 @@ impl Mdec {
     }
 
     pub fn update_status(&self) -> MdecDma {
-        // let in_full = self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS;
+        let in_full = self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS;
         let out_empty = self.out_fifo.len() < 4;
         let data_in_request = self.dma_in_enable;
         let data_out_request = self.dma_out_enable && !out_empty;
@@ -230,10 +230,6 @@ impl Mdec {
                     return false;
                 }
             }
-        }
-
-        if self.in_fifo.is_empty() && self.words_remaining > 0 {
-            return false;
         }
 
         true
