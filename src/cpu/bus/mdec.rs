@@ -50,6 +50,8 @@ pub struct Mdec {
     output_bit15: bool,
     blocks: [Box<[i16]>; 3],
     zagzig_table: Box<[usize]>,
+    k: usize,
+    q_scale: u16,
 }
 
 impl Default for Mdec {
@@ -77,6 +79,8 @@ impl Mdec {
             output_bit15: false,
             blocks: from_fn(|_| vec![0; 64].into_boxed_slice()),
             zagzig_table: Self::populate_zagzig_table(),
+            k: 64,
+            q_scale: 0,
         }
     }
 
@@ -144,7 +148,6 @@ impl Mdec {
                     }
                     _ => panic!("invalid mdec command 0x{command:x}")
                 }
-
                 if self.words_remaining == 0 {
                     self.command = None;
                 }
@@ -158,8 +161,6 @@ impl Mdec {
                     0x3 => self.set_scale_table_word_size(word),
                     _ => panic!("invalid mdec command 0x{:x}", self.command.unwrap()),
                 }
-
-
             }
         }
 
@@ -169,7 +170,7 @@ impl Mdec {
     pub fn update_status(&self) -> MdecDma {
         let in_full = self.in_fifo.len() >= MDEC_FIFO_SIZE_HALFWORDS;
         let out_empty = self.out_fifo.len() < 4;
-        let data_in_request = self.dma_in_enable;
+        let data_in_request = self.dma_in_enable && !in_full;
         let data_out_request = self.dma_out_enable && !out_empty;
 
         MdecDma {
@@ -204,6 +205,7 @@ impl Mdec {
                 let is_final_block = self.current_block == 5;
 
                 if !self.decode_block(BlockType::Yb) {
+                    println!("returning false at current_block > 1");
                     return false;
                 }
                 self.yuv_to_rgb(&mut output, xx, yy);
@@ -223,14 +225,18 @@ impl Mdec {
                 }
             } else if self.current_block == 0 {
                 if !self.decode_block(BlockType::Cr) {
+                    println!("returning false at current block == 0");
                     return false;
                 }
             } else {
                 if !self.decode_block(BlockType::Cb) {
+                    println!("returning false at current block != 0");
                     return false;
                 }
             }
         }
+
+        println!("returning back true!");
 
         true
     }
@@ -288,32 +294,7 @@ impl Mdec {
     }
 
     fn decode_block(&mut self, block_type: BlockType) -> bool {
-        let saved_fifo = self.in_fifo.clone();
-        let saved_block = self.blocks[block_type as usize].clone();
-        let saved_current_block = self.current_block;
-
-        let mut halfword = self.in_fifo.pop_front().unwrap();
-
         let block = &mut self.blocks[block_type as usize];
-
-        for element in block.iter_mut().take(64) {
-            *element = 0;
-        }
-
-        while halfword == 0xfe00 {
-            if self.in_fifo.is_empty() {
-                self.in_fifo = saved_fifo;
-                self.blocks[block_type as usize] = saved_block;
-                self.current_block = saved_current_block;
-
-                return false;
-            }
-
-            halfword = self.in_fifo.pop_front().unwrap();
-
-        }
-
-        let mut k = 0;
 
         let quant_table = if block_type == BlockType::Yb {
             &self.luminance_quant_table
@@ -321,41 +302,65 @@ impl Mdec {
             &self.color_quant_table
         };
 
-        let q_scale = (halfword >> 10) & 0x3f;
-        let mut val = Self::sign_extend_i10(halfword & 0x3ff) * quant_table[k] as i16;
-
-        while k < 64 {
-            if q_scale == 0 {
-                val = Self::sign_extend_i10(halfword & 0x3ff) * 2;
+        if self.k == 64 {
+            for element in block.iter_mut().take(64) {
+                *element = 0;
             }
-            val = val.clamp(-0x400, 0x3ff);
+            let mut halfword = self.in_fifo.pop_front().unwrap();
+            while halfword == 0xfe00 {
+                if self.in_fifo.is_empty() {
+                    return false;
+                }
 
-            if q_scale > 0 {
-                block[self.zagzig_table[k]] = val;
-            } else {
-                block[k] = val;
+                halfword = self.in_fifo.pop_front().unwrap();
+
             }
 
-            halfword = if let Some(next) = self.in_fifo.pop_front() {
+            self.k = 0;
+            self.q_scale = (halfword >> 10) & 0x3f;
+
+            if self.q_scale == 0 {
+                let val = (Self::sign_extend_i10(halfword & 0x3ff) * 2).clamp(-0x400, 0x3ff);
+                block[self.k] = val;
+            }  else {
+                let val = (Self::sign_extend_i10(halfword & 0x3ff) * quant_table[self.k] as i16).clamp(-0x400, 0x3ff);
+                block[self.zagzig_table[self.k]] = val;
+            }
+        }
+
+        loop {
+            let halfword = if let Some(next) = self.in_fifo.pop_front() {
                 next
             } else {
-                self.in_fifo = saved_fifo;
-                self.blocks[block_type as usize] = saved_block;
-                self.current_block = saved_current_block;
-
                 return false;
             };
 
-            k += (((halfword as usize) >> 10) & 0x3f) + 1;
+            self.k += (((halfword as usize) >> 10) & 0x3f) + 1;
 
-            if k < 64 {
-                val = (Self::sign_extend_i10(halfword & 0x3ff)
-                    * quant_table[k] as i16
-                    * q_scale as i16
+            if self.k < 64 {
+                let mut val = if self.q_scale == 0 {
+                    Self::sign_extend_i10(halfword & 0x3ff) * 2
+                } else {(Self::sign_extend_i10(halfword & 0x3ff)
+                    * quant_table[self.k] as i16
+                    * self.q_scale as i16
                     + 4)
-                    / 8;
+                    / 8
+                };
+                val = val.clamp(-0x400, 0x3ff);
+
+                if self.q_scale > 0 {
+                    block[self.zagzig_table[self.k]] = val;
+                } else {
+                    block[self.k] = val;
+                }
+            }
+
+            if self.k >= 63 {
+                break;
             }
         }
+
+        self.k = 64;
 
         self.idct_core(block_type);
 
