@@ -134,6 +134,8 @@ impl Mdec {
                     0x1 => {
                         if !self.decode_macroblocks() {
                             break;
+                        } else if self.words_remaining == 0 {
+                            self.command = None;
                         }
                     }
                     0x2 => if self.words_remaining == 0 {
@@ -162,10 +164,6 @@ impl Mdec {
                     _ => panic!("invalid mdec command 0x{:x}", self.command.unwrap()),
                 }
             }
-        }
-
-        if self.words_remaining == 0 {
-            self.command = None;
         }
 
         self.update_status()
