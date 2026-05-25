@@ -90,7 +90,13 @@ impl DmaChannel {
         self.blocks_remaining = self.num_blocks;
     }
 
-    fn handle_dma_request(&mut self, channel_id: usize, scheduler: &mut Scheduler, mut callback: impl FnMut(u32)) {
+    pub fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec, scheduler: &mut Scheduler) -> MdecDma {
+        assert_eq!(self.control.sync_mode(), SyncMode::Request);
+        assert!(
+            self.control
+                .contains(DmaChannelControlRegister::TRANSFER_DIR)
+        );
+
         self.halted = false;
 
         let mut current_address = self.base_address & 0x1fffff;
@@ -100,7 +106,9 @@ impl DmaChannel {
 
         while ticks_remaining > 0 && self.num_blocks > 0 {
             for _ in 0..num_words {
-                callback(current_address);
+                let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
+
+                mdec.dma_write(word);
 
                 if self.control.contains(DmaChannelControlRegister::DECREMENT) {
                     current_address -= 4;
@@ -111,6 +119,8 @@ impl DmaChannel {
                 words_transferred += 1;
             }
 
+            mdec.execute();
+
             self.num_blocks -= 1;
             ticks_remaining = ticks_remaining.saturating_sub(DMA_TICKS_PER_BLOCK);
         }
@@ -119,26 +129,12 @@ impl DmaChannel {
 
         if self.num_blocks > 0 {
             self.halted = true;
-            scheduler.schedule(EventType::UnhaltDma(channel_id), DMA_HALT_TICKS);
+            scheduler.schedule(EventType::UnhaltDma(DMA_MDEC_IN), DMA_HALT_TICKS);
         } else {
-            scheduler.schedule(EventType::DmaFinished(channel_id), words_transferred);
+            scheduler.schedule(EventType::DmaFinished(DMA_MDEC_IN), words_transferred);
         }
-    }
 
-    pub fn start_mdec_in_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec, scheduler: &mut Scheduler) -> MdecDma {
-        assert_eq!(self.control.sync_mode(), SyncMode::Request);
-        assert!(
-            self.control
-                .contains(DmaChannelControlRegister::TRANSFER_DIR)
-        );
-
-        self.handle_dma_request(DMA_MDEC_IN, scheduler,  |current_address| {
-            let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
-
-            mdec.dma_write(word);
-        });
-
-        mdec.execute()
+        mdec.update_status()
     }
 
     pub fn start_mdec_out_transfer(&mut self, ram: &mut [u8], mdec: &mut Mdec, scheduler: &mut Scheduler) -> MdecDma {
@@ -148,12 +144,44 @@ impl DmaChannel {
                 .control
                 .contains(DmaChannelControlRegister::TRANSFER_DIR)
         );
+        self.halted = false;
 
-        self.handle_dma_request(DMA_MDEC_OUT, scheduler, |current_address| {
-            let word = mdec.read_out_fifo();
+        let mut current_address = self.base_address & 0x1fffff;
+        let num_words = self.block_size;
+        let mut ticks_remaining = DMA_TICKS_REMAINING;
+        let mut words_transferred = 0;
 
-            unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = word };
-        });
+        while ticks_remaining > 0 && self.num_blocks > 0 {
+            for _ in 0..num_words {
+                let word = mdec.read_out_fifo();
+
+                unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = word };
+
+                if self.control.contains(DmaChannelControlRegister::DECREMENT) {
+                    current_address -= 4;
+                } else {
+                    current_address += 4;
+                }
+
+                words_transferred += 1;
+            }
+
+            if mdec.out_fifo.is_empty() {
+                mdec.execute();
+            }
+
+            self.num_blocks -= 1;
+            ticks_remaining = ticks_remaining.saturating_sub(DMA_TICKS_PER_BLOCK);
+        }
+
+        self.base_address = current_address;
+
+        if self.num_blocks > 0 {
+            self.halted = true;
+            scheduler.schedule(EventType::UnhaltDma(DMA_MDEC_OUT), DMA_HALT_TICKS);
+        } else {
+            scheduler.schedule(EventType::DmaFinished(DMA_MDEC_OUT), words_transferred);
+        }
 
         mdec.update_status()
     }

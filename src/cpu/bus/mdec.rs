@@ -23,6 +23,12 @@ pub struct MdecDma {
     pub dma_out: bool
 }
 
+#[derive(Serialize, Deserialize, PartialEq)]
+enum BlockStatus {
+    BlocksPending,
+    BlocksProcessed
+}
+
 const NUM_COLORS: usize = 256;
 const MDEC_FIFO_SIZE_HALFWORDS: usize = 64;
 
@@ -35,7 +41,7 @@ const ZIGZAG_TABLE: [usize; 64] = [
 #[derive(Serialize, Deserialize)]
 pub struct Mdec {
     in_fifo: VecDeque<u16>,
-    out_fifo: VecDeque<u8>,
+    pub out_fifo: VecDeque<u8>,
     dma_in_enable: bool,
     dma_out_enable: bool,
     words_remaining: u16,
@@ -52,7 +58,8 @@ pub struct Mdec {
     zagzig_table: Box<[usize]>,
     k: usize,
     q_scale: u16,
-    output: Box<[u8]>
+    output: Box<[u8]>,
+    block_status: BlockStatus,
 }
 
 impl Default for Mdec {
@@ -83,6 +90,7 @@ impl Mdec {
             k: 64,
             q_scale: 0,
             output: vec![0; 768].into_boxed_slice(),
+            block_status: BlockStatus::BlocksPending,
         }
     }
 
@@ -132,11 +140,19 @@ impl Mdec {
             if let Some(command) = self.command {
                 match command {
                     0x1 => {
-                        if !self.decode_macroblocks() {
-                            break;
-                        } else if self.words_remaining == 0 {
+                        if self.decode_macroblocks() {
+                            if self.words_remaining == 0 && self.in_fifo.is_empty() {
+                                self.command = None;
+
+                            }
+                        } else if self.words_remaining == 0 && self.block_status != BlockStatus::BlocksProcessed {
                             self.command = None;
+                            self.current_block = 0;
+                            self.q_scale = 0;
+                            self.k = 64;
                         }
+
+                        break;
                     }
                     0x2 => if self.words_remaining == 0 {
                         self.populate_quant_table();
@@ -221,6 +237,8 @@ impl Mdec {
                     for byte in self.output.iter().take(num_bytes) {
                         self.out_fifo.push_back(*byte);
                     }
+
+                    return true;
                 }
             } else if self.current_block == 0 {
                 if !self.decode_block(BlockType::Cr) {
@@ -289,6 +307,7 @@ impl Mdec {
     }
 
     fn decode_block(&mut self, block_type: BlockType) -> bool {
+        self.block_status = BlockStatus::BlocksPending;
         let block = &mut self.blocks[block_type as usize];
 
         let quant_table = if block_type == BlockType::Yb {
@@ -362,6 +381,7 @@ impl Mdec {
         self.current_block += 1;
 
         if self.current_block == 6 {
+            self.block_status = BlockStatus::BlocksProcessed;
             self.current_block = 0;
         }
 
