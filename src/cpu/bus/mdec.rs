@@ -156,12 +156,14 @@ impl Mdec {
                     }
                     0x2 => if self.words_remaining == 0 {
                         self.populate_quant_table();
+                        self.command = None;
                     } else {
                         println!("[WARN]: attempting to populate quant table but words remaining is non-zero");
                         break;
                     }
                     0x3 => if self.words_remaining == 0 {
                         self.populate_scale_table();
+                        self.command = None;
                     } else {
                         println!("[WARN]: attempting to populate scale table but words remaining is non-zero");
                         break;
