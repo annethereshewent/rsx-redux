@@ -41,7 +41,7 @@ const ZIGZAG_TABLE: [usize; 64] = [
 #[derive(Serialize, Deserialize)]
 pub struct Mdec {
     in_fifo: VecDeque<u16>,
-    pub out_fifo: VecDeque<u8>,
+    out_fifo: VecDeque<u8>,
     dma_in_enable: bool,
     dma_out_enable: bool,
     halfwords_remaining: u16,
@@ -131,6 +131,10 @@ impl Mdec {
     pub fn dma_write(&mut self, value: u32) {
         self.in_fifo.push_back(value as u16);
         self.in_fifo.push_back((value >> 16) as u16);
+    }
+
+    pub fn out_fifo_empty(&self) -> bool {
+        self.out_fifo.is_empty()
     }
 
     pub fn execute(&mut self) -> MdecDma {

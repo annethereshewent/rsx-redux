@@ -29,7 +29,6 @@ pub struct DmaChannel {
     pub base_address: u32,
     pub block_size: u32,
     pub num_blocks: u32,
-    pub blocks_remaining: u32,
     pub control: DmaChannelControlRegister,
     halted: bool,
     request: bool,
@@ -47,7 +46,6 @@ impl DmaChannel {
             base_address: 0,
             block_size: 0,
             num_blocks: 0,
-            blocks_remaining: 0,
             control: DmaChannelControlRegister::from_bits_retain(0),
             halted: false,
             request: false,
@@ -85,10 +83,6 @@ impl DmaChannel {
             SyncMode::Request => self.block_size * self.num_blocks,
             SyncMode::LinkedList => 0, // calculate this after the end of the linked list transfer
         }
-    }
-
-    pub fn init_mdec_params(&mut self) {
-        self.blocks_remaining = self.num_blocks;
     }
 
     pub fn start_gpu_transfer(&mut self, ram: &mut [u8], gpu: &mut GPU) -> u32 {
@@ -424,7 +418,7 @@ impl Dma {
                 }
             }
 
-            if mdec.out_fifo.is_empty() {
+            if mdec.out_fifo_empty() {
                 let mdec_dma = mdec.execute();
 
                 self.set_request(
