@@ -466,10 +466,10 @@ impl GPU {
             self.display_range_x.1 - self.display_range_x.0
         } else {
             50
-        } as u32;
+        };
 
         w = ((w / dotclock) + 2) & !0b11;
-        let mut h = (self.display_range_y.1 - self.display_range_y.0) as u32;
+        let mut h = self.display_range_y.1 - self.display_range_y.0;
 
         if self.interlaced {
             h *= 2;
@@ -497,9 +497,9 @@ impl GPU {
 
         let vram_address = GPU::get_vram_address(curr_x & 0x3ff, curr_y & 0x1ff);
 
-        let halfword = unsafe { *(&self.vram[vram_address] as *const u8 as *const u16) };
+        
 
-        halfword
+        unsafe { *(&self.vram[vram_address] as *const u8 as *const u16) }
     }
 
     #[cfg(feature = "hardware_gpu")]

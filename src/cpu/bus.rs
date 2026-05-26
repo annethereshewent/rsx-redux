@@ -201,10 +201,10 @@ impl Bus {
                 self.tick(5);
                 self.interrupt_mask.bits() >> 16
             }
-            0x1f801100 => self.timers[0].counter as u32,
+            0x1f801100 => self.timers[0].counter,
             0x1f801104 => self.timers[0].counter_register.bits() as u32,
             0x1f801108 => self.timers[0].counter_target as u32,
-            0x1f801110 => self.timers[1].counter as u32,
+            0x1f801110 => self.timers[1].counter,
             0x1f801114 => self.timers[1].counter_register.bits() as u32,
             0x1f801118 => self.timers[1].counter_target as u32,
             0x1f801120 => self.timers[2].counter,

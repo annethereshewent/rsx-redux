@@ -266,10 +266,8 @@ impl Mdec {
                 if !self.decode_block(BlockType::Cr) {
                     return false;
                 }
-            } else {
-                if !self.decode_block(BlockType::Cb) {
-                    return false;
-                }
+            } else if !self.decode_block(BlockType::Cb) {
+                return false;
             }
         }
 

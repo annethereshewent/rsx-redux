@@ -907,12 +907,10 @@ impl CDRom {
                             if channels == 1 {
                                 spu.cd_left_samples.push_back(sample);
                                 spu.cd_right_samples.push_back(sample);
+                            } else if channel == 0 {
+                                spu.cd_left_samples.push_back(sample)
                             } else {
-                                if channel == 0 {
-                                    spu.cd_left_samples.push_back(sample)
-                                } else {
-                                    spu.cd_right_samples.push_back(sample);
-                                }
+                                spu.cd_right_samples.push_back(sample);
                             }
                         }
                     }
@@ -1046,7 +1044,7 @@ impl CDRom {
     }
 
     fn u8_to_bcd(value: u8) -> u8 {
-        (value / 10) << 4 | value % 10
+        ((value / 10) << 4) | (value % 10)
     }
 
     fn cd_stat(&mut self) {
