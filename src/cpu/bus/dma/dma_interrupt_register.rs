@@ -31,7 +31,7 @@ impl DmaInterruptRegister {
     pub fn set_channel_irq_if_enabled(&mut self, channel: usize) {
         let value: u32 = self.bits();
         let is_enabled_shift = 16 + channel;
-        if value >> is_enabled_shift & 0x1 == 1 {
+        if value >> is_enabled_shift & 0x1 == 1 && value >> 23 & 0x1 == 1 {
             let set_shift = 24 + channel;
 
             let mut interrupt_bits = value;

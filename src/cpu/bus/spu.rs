@@ -27,6 +27,12 @@ pub struct SoundRam {
     ram: Box<[u8]>,
 }
 
+impl Default for SoundRam {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SoundRam {
     pub fn new() -> Self {
         Self {
@@ -114,7 +120,7 @@ impl SPU {
             sound_ram_address: 0,
             irq_address: 0,
             current_ram_address: 0,
-            voices: from_fn(|index| Voice::new(index)),
+            voices: from_fn(Voice::new),
             keyon: 0,
             sample_fifo: VecDeque::new(),
             sound_ram: SoundRam::new(),
@@ -222,17 +228,17 @@ impl SPU {
     }
 
     pub fn write_voices(&mut self, address: usize, value: u16) {
-        let voice = ((address >> 4) & 0x1f) as usize;
+        let voice = (address >> 4) & 0x1f;
         let channel = address & 0xf;
 
-        self.voices[voice as usize].write(channel, value);
+        self.voices[voice].write(channel, value);
     }
 
     pub fn read_voices(&self, address: usize) -> u16 {
-        let voice = ((address >> 4) & 0x1f) as usize;
+        let voice = (address >> 4) & 0x1f;
         let channel = (address - 0x1f801c00) & 0xf;
 
-        self.voices[voice as usize].read(channel)
+        self.voices[voice].read(channel)
     }
 
     pub fn dma_write(&mut self, value: u32, interrupt_register: &mut InterruptRegister) {
@@ -440,8 +446,7 @@ impl SPU {
                 println!("[WARN]Writing to internal registers of SPU voices. should not happen.")
             }
             _ => panic!(
-                "invalid address given to control spu control registers: 0x{:x}",
-                address
+                "invalid address given to control spu control registers: 0x{address:x}"
             ),
         }
     }
@@ -602,7 +607,7 @@ impl SPU {
         interrupt_register: &mut InterruptRegister,
     ) {
         let ram_address = (capture_index * CAPTURE_SIZE) | self.capture_buffer_pos as usize;
-        self.sound_ram.write16(ram_address as usize, volume);
+        self.sound_ram.write16(ram_address, volume);
 
         if self.is_irq_triggerable() && self.irq_address == ram_address as u32 {
             interrupt_register.insert(InterruptRegister::SPU);

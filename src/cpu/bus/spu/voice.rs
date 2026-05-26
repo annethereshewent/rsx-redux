@@ -185,7 +185,7 @@ impl Envelope {
             }
         }
 
-        self.counter += this_increment as u32;
+        self.counter += this_increment;
 
         if self.counter & 0x8000 == 0 {
             return true;
@@ -237,6 +237,12 @@ pub struct Adsr {
     value: u32,
     current_target: i16,
     envelope: Envelope,
+}
+
+impl Default for Adsr {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Adsr {
@@ -580,7 +586,7 @@ impl Voice {
                     !self.is_first_block || self.adsr.phase == AdsrPhase::Idle;
                 self.repeat_address = value as u32 * 8;
             }
-            _ => panic!("invalid channel given: 0x{:x}", channel),
+            _ => panic!("invalid channel given: 0x{channel:x}"),
         }
     }
 
@@ -603,7 +609,7 @@ impl Voice {
         out += GAUSSIAN_TABLE[0x100 + interpolation_index]
             * self.current_samples[sample_index - 1] as i32;
         out +=
-            GAUSSIAN_TABLE[0x000 + interpolation_index] * self.current_samples[sample_index] as i32;
+            GAUSSIAN_TABLE[interpolation_index] * self.current_samples[sample_index] as i32;
 
         out >> 15
     }
@@ -850,7 +856,7 @@ impl Voice {
             0xa => (self.adsr.value >> 16) as u16,
             0xc => self.adsr_volume as u16,
             0xe => (self.repeat_address / 8) as u16,
-            _ => panic!("invalid channel given: 0x{:x}", channel),
+            _ => panic!("invalid channel given: 0x{channel:x}"),
         }
     }
 }

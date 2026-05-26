@@ -9,6 +9,7 @@ pub enum EventType {
     HblankStart,
     HblankEnd,
     DmaFinished(usize),
+    UnhaltDma(usize),
     TickCDRom,
     TickSpu,
     ControllerByteTransfer,

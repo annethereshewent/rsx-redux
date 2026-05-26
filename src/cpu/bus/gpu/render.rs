@@ -34,8 +34,7 @@ impl GPU {
             || end_x >= 1024
             || start_y < 0
             || end_y >= 512
-            || start_y >= 512
-            || start_y < 0
+            || !(0..512).contains(&start_y)
             || start_x >= 1024
         {
             return;
@@ -69,7 +68,7 @@ impl GPU {
 
             let diff_x = diff_x.abs();
 
-            let mut color = vertices[0].color.clone();
+            let mut color = vertices[0].color;
 
             for x in 0..=diff_x {
                 let curr_x = if going_left { start_x - x } else { x + start_x };
@@ -100,7 +99,7 @@ impl GPU {
                     y: curr_y,
                 };
 
-                let mut output = color.clone();
+                let mut output = color;
 
                 if self.texpage.dither {
                     self.dither(&coordinates, &mut output);
@@ -137,7 +136,7 @@ impl GPU {
                 dbdy *= -1.0;
             }
 
-            let mut color = vertices[0].color.clone();
+            let mut color = vertices[0].color;
 
             let mut r_fp = vertices[0].color.r as f32;
             let mut g_fp = vertices[0].color.g as f32;
@@ -169,7 +168,7 @@ impl GPU {
                     y: curr_y,
                 };
 
-                let mut output = color.clone();
+                let mut output = color;
 
                 if self.texpage.dither {
                     self.dither(&coordinates, &mut output);
@@ -310,7 +309,7 @@ impl GPU {
 
                         let masked_uv = self.mask_texture_coordinates(uv);
 
-                        if let Some(mut texture) = self.get_texture(&polygon, texpage, masked_uv) {
+                        if let Some(mut texture) = self.get_texture(polygon, texpage, masked_uv) {
                             if polygon.modulate {
                                 Self::modulate_texture(&output, &mut texture);
                                 if texpage.dither {
@@ -324,7 +323,7 @@ impl GPU {
                         }
                     }
 
-                    self.render_pixel(&polygon, &mut output, &curr_point);
+                    self.render_pixel(polygon, &mut output, &curr_point);
                 }
                 curr_point.x += 1;
             }
@@ -438,10 +437,10 @@ impl GPU {
     }
 
     fn read_4bit_clut(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
-        let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
+        let (tex_x_base, tex_y_base) = (texpage.x_base * 64, texpage.y_base1 * 16);
 
         let offset_u = (2 * tex_x_base + uv.0 as u32 / 2) & 2047;
-        let offset_v = ((tex_y_base + uv.1 as u32) as u32) & 511;
+        let offset_v = (tex_y_base + uv.1 as u32) & 511;
 
         let clut_index_address = offset_u + offset_v * 2048;
 
@@ -461,7 +460,7 @@ impl GPU {
     }
 
     fn read_8bit_clut(&self, polygon: &Polygon, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
-        let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
+        let (tex_x_base, tex_y_base) = (texpage.x_base * 64, texpage.y_base1 * 16);
 
         let offset_u = (2 * tex_x_base + uv.0 as u32) & 2047;
         let offset_v = (tex_y_base + uv.1 as u32) & 511;
@@ -482,7 +481,7 @@ impl GPU {
     }
 
     fn read_15bit_clut(&self, texpage: Texpage, uv: (u8, u8)) -> Option<Color> {
-        let (tex_x_base, tex_y_base) = (texpage.x_base as u32 * 64, texpage.y_base1 as u32 * 16);
+        let (tex_x_base, tex_y_base) = (texpage.x_base * 64, texpage.y_base1 * 16);
 
         let offset_u = (tex_x_base + uv.0 as u32) & 2047;
         let offset_v = (tex_y_base + uv.1 as u32) & 511;
@@ -591,13 +590,11 @@ impl Polygon {
                     println!("shouldn't happen: p01_slope is None but should be Some");
                     0
                 }
+            } else if let Some(slope) = p12_slope {
+                Self::get_boundary_from_slope(&self.vertices[1], slope, curr_point)
             } else {
-                if let Some(slope) = p12_slope {
-                    Self::get_boundary_from_slope(&self.vertices[1], slope, curr_point)
-                } else {
-                    println!("shouldn't happen: p12_slope is None but should be Some");
-                    0
-                }
+                println!("shouldn't happen: p12_slope is None but should be Some");
+                0
             }
         };
 

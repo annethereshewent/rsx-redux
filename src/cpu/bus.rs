@@ -201,10 +201,10 @@ impl Bus {
                 self.tick(5);
                 self.interrupt_mask.bits() >> 16
             }
-            0x1f801100 => self.timers[0].counter as u32,
+            0x1f801100 => self.timers[0].counter,
             0x1f801104 => self.timers[0].counter_register.bits() as u32,
             0x1f801108 => self.timers[0].counter_target as u32,
-            0x1f801110 => self.timers[1].counter as u32,
+            0x1f801110 => self.timers[1].counter,
             0x1f801114 => self.timers[1].counter_register.bits() as u32,
             0x1f801118 => self.timers[1].counter_target as u32,
             0x1f801120 => self.timers[2].counter,
@@ -305,12 +305,57 @@ impl Bus {
             0x1f801118 => self.timers[1].counter_target = value as u16,
             0x1f801810 => self.gpu.process_gp0_commands(value),
             0x1f801814 => self.gpu.process_gp1_commands(value),
-            0x1f801820..=0x1f801824 => self.mdec.write(address, value),
+            0x1f801820..=0x1f801824 => {
+                let mdec_dma = self.mdec.write(address, value);
+
+                self.dma.set_request(
+                    mdec_dma.dma_in,
+                    DMA_MDEC_IN,
+                    &mut self.main_ram,
+                    &mut self.mdec,
+                    &mut self.scheduler,
+                    &mut self.interrupt_stat,
+                );
+
+                self.dma.set_request(
+                    mdec_dma.dma_out,
+                    DMA_MDEC_OUT,
+                    &mut self.main_ram,
+                    &mut self.mdec,
+                    &mut self.scheduler,
+                    &mut self.interrupt_stat,
+                );
+            }
             0xfffe0130 => {
                 self.cache_config = value;
                 self.cache_config &= !((1 << 6) | (1 << 10));
             }
             _ => todo!("(mem_write32) address: 0x{:x}", address),
+        }
+    }
+
+    // Currently only mdec in and mdec out support unhalting/halting dma
+    pub fn unhalt_dma(&mut self, channel: usize) {
+        match channel {
+            DMA_MDEC_IN => {
+                self.dma.start_mdec_in_transfer(
+                    &mut self.main_ram,
+                    &mut self.mdec,
+                    &mut self.scheduler,
+                    &mut self.interrupt_stat,
+                );
+            }
+            DMA_MDEC_OUT => {
+                self.dma.start_mdec_out_transfer(
+                    &mut self.main_ram,
+                    &mut self.mdec,
+                    &mut self.scheduler,
+                    &mut self.interrupt_stat,
+                );
+            }
+            _ => println!(
+                "[WARN]: got dma channel {channel}, currently unimplemented unhalting behavior for that channel"
+            ),
         }
     }
 
@@ -333,18 +378,12 @@ impl Bus {
             };
 
             match channel {
-                DMA_MDEC_IN => {
-                    dma_channel.start_mdec_in_transfer(&mut self.main_ram, &mut self.mdec)
-                }
-                DMA_MDEC_OUT => {
-                    dma_channel.start_mdec_out_transfer(&mut self.main_ram, &mut self.mdec)
-                }
                 DMA_GPU => match dma_channel.control.sync_mode() {
                     SyncMode::LinkedList => {
                         num_words =
                             dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu)
                     }
-                    SyncMode::Burst | SyncMode::Slice => {
+                    SyncMode::Manual | SyncMode::Request => {
                         dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu);
                     }
                 },
@@ -356,6 +395,26 @@ impl Bus {
                 ),
                 DMA_PIO => dma_channel.start_pio_transfer(),
                 DMA_OTC => dma_channel.start_otc_transfer(&mut self.main_ram),
+                DMA_MDEC_IN => {
+                    self.dma.start_mdec_in_transfer(
+                        &mut self.main_ram,
+                        &mut self.mdec,
+                        &mut self.scheduler,
+                        &mut self.interrupt_stat,
+                    );
+
+                    return;
+                }
+                DMA_MDEC_OUT => {
+                    self.dma.start_mdec_out_transfer(
+                        &mut self.main_ram,
+                        &mut self.mdec,
+                        &mut self.scheduler,
+                        &mut self.interrupt_stat,
+                    );
+
+                    return;
+                }
                 _ => todo!("dma transfer for channel {channel}"),
             }
 
