@@ -91,8 +91,6 @@ pub struct Renderer {
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    has_semitransparent_polys: bool,
-    leftover_polygons: Vec<Polygon>,
 }
 
 impl Renderer {
@@ -306,8 +304,6 @@ impl Renderer {
             set_only,
             both,
             compute_pipeline_state,
-            has_semitransparent_polys: false,
-            leftover_polygons: Vec::new(),
         }
     }
 
@@ -473,11 +469,6 @@ impl Renderer {
 
             let primitive_type = MTLPrimitiveType::Triangle;
 
-            if polygon.semitransparent && !self.has_semitransparent_polys {
-                self.has_semitransparent_polys = true;
-                return;
-            }
-
             encoder.setRenderPipelineState(&self.pipeline_state);
 
             let stencil_state = match (polygon.force_mask_bit, polygon.preserve_masked_pixels) {
@@ -494,26 +485,16 @@ impl Renderer {
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
             }
         }
-        self.has_semitransparent_polys = false;
     }
 
     pub fn render_polygons(&mut self, gpu: &mut GPU) {
-        let polygons: Vec<Polygon> = if !self.has_semitransparent_polys {
-            gpu.polygons.drain(..).collect()
-        } else {
-            self.leftover_polygons.drain(..).collect()
-        };
-        for (index, polygon) in polygons.iter().enumerate() {
-            self.render_polygon(polygon);
-            if self.has_semitransparent_polys {
+        let polygons: Vec<_> = gpu.polygons.drain(..).collect();
+
+        for polygon in &polygons {
+            if polygon.semitransparent {
                 self.vram_writeback(Some(polygon), None);
-
-                self.leftover_polygons = polygons[index..].to_vec();
-
-                self.render_polygons(gpu);
-
-                break;
             }
+            self.render_polygon(polygon);
         }
     }
 
@@ -860,10 +841,11 @@ impl Renderer {
             }
         }
     }
+
     // TODO: this whole method is a mess. I need to fix this up quite a bit eventually to get it working right
     fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
         if let (Some(encoder), Some(command_buffer)) =
-            (&self.encoder.take(), &mut self.command_buffer.take())
+            (&self.encoder.take(), &self.command_buffer.take())
         {
             encoder.endEncoding();
 
