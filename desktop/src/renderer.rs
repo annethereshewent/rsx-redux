@@ -22,6 +22,12 @@ use std::cmp;
 
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
+enum TextureType {
+    Read,
+    Write,
+    Blend,
+}
+
 #[repr(C)]
 struct FbParams {
     display_start_x: u32,
@@ -101,6 +107,7 @@ pub struct Renderer {
     fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     compute_pipeline_state: Retained<ProtocolObject<dyn MTLComputePipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    vram_blend: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
     command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
@@ -268,8 +275,9 @@ impl Renderer {
         }
         .unwrap();
 
-        let vram_read = Self::create_texture(&device, true);
-        let vram_write = Self::create_texture(&device, false);
+        let vram_read = Self::create_texture(&device, TextureType::Read);
+        let vram_write = Self::create_texture(&device, TextureType::Write);
+        let vram_blend = Self::create_texture(&device, TextureType::Blend);
 
         let rpd = MTLRenderPassDescriptor::new();
 
@@ -312,6 +320,7 @@ impl Renderer {
             command_queue,
             vram_read,
             vram_write,
+            vram_blend,
             device,
             pipeline_state,
             fb_pipeline_state,
@@ -503,6 +512,7 @@ impl Renderer {
                 encoder.setDepthStencilState(Some(stencil_state));
                 encoder.setStencilReferenceValue(if polygon.force_mask_bit { 1 } else { 0 });
                 encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
+                encoder.setFragmentTexture_atIndex(self.vram_blend.as_deref(), 1);
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
             }
         }
@@ -553,12 +563,49 @@ impl Renderer {
         }
     }
 
+    fn update_blend_texture(&mut self, polygon: &Polygon) {
+        if let Some(encoder) = self.encoder.take() {
+            encoder.endEncoding();
+        }
+
+        let command_buffer = if let Some(command_buffer) = self.command_buffer.take() {
+            command_buffer
+        } else {
+            self.command_queue.commandBuffer().unwrap()
+        };
+
+        let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
+
+        let (x, y, width, height) = Self::get_drawing_area(polygon);
+        let origin = MTLOrigin { x, y, z: 0 };
+        let size = MTLSize { width, height, depth: 1 };
+
+        unsafe {
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_write.as_ref().unwrap(),
+                0,
+                0,
+                origin,
+                size,
+                self.vram_blend.as_ref().unwrap(),
+                0,
+                0,
+                origin
+            );
+        }
+
+        blit_encoder.endEncoding();
+        command_buffer.commit();
+
+        self.create_encoder();
+    }
+
     fn render_polygons(&mut self, gpu: &mut GPU) {
        let polygons: Vec<_> = gpu.polygons.drain(..).collect();
 
         for polygon in &polygons {
             if polygon.semitransparent {
-                self.vram_writeback(Some(polygon), None);
+                self.update_blend_texture(polygon);
             }
             self.render_polygon(polygon);
         }
@@ -1160,13 +1207,13 @@ impl Renderer {
 
     fn create_texture(
         device: &Retained<ProtocolObject<dyn MTLDevice>>,
-        is_read: bool,
+        texture_type: TextureType,
     ) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
-        let pixel_format = if is_read {
-            MTLPixelFormat::R16Uint
-        } else {
-            MTLPixelFormat::RGBA8Unorm
+        let pixel_format = match texture_type {
+            TextureType::Read => MTLPixelFormat::R16Uint,
+            TextureType::Write | TextureType::Blend => MTLPixelFormat::RGBA8Unorm,
         };
+
         let descriptor = unsafe {
             MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 pixel_format,
@@ -1178,10 +1225,9 @@ impl Renderer {
 
         descriptor.setStorageMode(MTLStorageMode::Shared);
 
-        if is_read {
-            descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite)
-        } else {
-            descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
+        match texture_type {
+            TextureType::Write => descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget),
+            TextureType::Read | TextureType::Blend => descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite)
         }
 
         let mtl_texture = device.newTextureWithDescriptor(&descriptor);
