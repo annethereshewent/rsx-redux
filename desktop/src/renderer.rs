@@ -67,14 +67,15 @@ impl MetalVertex {
     }
 }
 
-struct DirtyRegion {
+#[derive(Debug)]
+struct Region {
     x: u32,
     y: u32,
     width: u32,
     height: u32,
 }
 
-impl DirtyRegion {
+impl Region {
     fn new() -> Self {
         Self {
             x: 0,
@@ -109,7 +110,7 @@ pub struct Renderer {
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    dirty_region: Option<DirtyRegion>,
+    dirty_region: Option<Region>,
 }
 
 impl Renderer {
@@ -507,20 +508,33 @@ impl Renderer {
         }
     }
 
-    fn texture_overlaps_dirty_region(&self, polygon: &Polygon, dirty_region: DirtyRegion) -> bool {
-        let (x, y, width, height) = Self::get_texture_region(polygon);
+    fn get_overlap_region(&self, polygon: &Polygon, dirty_region: Option<&Region>) -> Option<Region> {
+        if let Some(dirty_region) = dirty_region {
+            let (x, y, width, height) = Self::get_texture_region(polygon);
 
-        let dirty_x_end = dirty_region.x + dirty_region.width;
-        let dirty_y_end = dirty_region.y + dirty_region.height;
-        let tex_x_end = x + width;
-        let tex_y_end = y + height;
+            let dirty_x_end = dirty_region.x + dirty_region.width;
+            let dirty_y_end = dirty_region.y + dirty_region.height;
+            let tex_x_end = x + width;
+            let tex_y_end = y + height;
 
-        let intersect_x_start = dirty_region.x.max(x);
-        let intersect_y_start = dirty_region.y.max(y);
-        let intersect_x_end = dirty_x_end.min(tex_x_end);
-        let intersect_y_end = dirty_y_end.min(tex_y_end);
+            let intersect_x_start = dirty_region.x.max(x);
+            let intersect_y_start = dirty_region.y.max(y);
+            let intersect_x_end = dirty_x_end.min(tex_x_end);
+            let intersect_y_end = dirty_y_end.min(tex_y_end);
 
-        intersect_x_start < intersect_x_end && intersect_y_start < intersect_y_end
+            if intersect_x_start < intersect_x_end && intersect_y_start < intersect_y_end {
+                Some(Region {
+                    x: intersect_x_start,
+                    y: intersect_y_start,
+                    width: intersect_x_end - intersect_x_start,
+                    height: intersect_y_end - intersect_y_start
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     fn get_texture_region(polygon: &Polygon) -> (u32, u32, u32, u32) {
