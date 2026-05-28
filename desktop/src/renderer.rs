@@ -49,7 +49,7 @@ struct FragmentUniform {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct MetalVertex {
+struct MetalVertex {
     position: [f32; 2],
     uv: [f32; 2],
     color: [f32; 4],
@@ -67,9 +67,27 @@ impl MetalVertex {
     }
 }
 
+struct DirtyRegion {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+impl DirtyRegion {
+    fn new() -> Self {
+        Self {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct FbVertex {
+struct FbVertex {
     pub position: [f32; 2],
     pub uv: [f32; 2],
 }
@@ -91,6 +109,7 @@ pub struct Renderer {
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
+    dirty_region: Option<DirtyRegion>,
 }
 
 impl Renderer {
@@ -304,6 +323,7 @@ impl Renderer {
             set_only,
             both,
             compute_pipeline_state,
+            dirty_region: None,
         }
     }
 
@@ -487,8 +507,40 @@ impl Renderer {
         }
     }
 
-    pub fn render_polygons(&mut self, gpu: &mut GPU) {
-        let polygons: Vec<_> = gpu.polygons.drain(..).collect();
+    fn texture_overlaps_dirty_region(&self, polygon: &Polygon, dirty_region: DirtyRegion) -> bool {
+        let (x, y, width, height) = Self::get_texture_region(polygon);
+
+        let dirty_x_end = dirty_region.x + dirty_region.width;
+        let dirty_y_end = dirty_region.y + dirty_region.height;
+        let tex_x_end = x + width;
+        let tex_y_end = y + height;
+
+        let intersect_x_start = dirty_region.x.max(x);
+        let intersect_y_start = dirty_region.y.max(y);
+        let intersect_x_end = dirty_x_end.min(tex_x_end);
+        let intersect_y_end = dirty_y_end.min(tex_y_end);
+
+        intersect_x_start < intersect_x_end && intersect_y_start < intersect_y_end
+    }
+
+    fn get_texture_region(polygon: &Polygon) -> (u32, u32, u32, u32) {
+        if let Some(texpage) = polygon.texpage {
+            let x = texpage.x_base as u32 * 64;
+            let y = texpage.y_base1 as u32 * 16;
+
+            let width = match texpage.texture_page_colors {
+                TexturePageColors::Bit4 => 64,
+                TexturePageColors::Bit8 => 128,
+                TexturePageColors::Bit15 => 256,
+            };
+            (x, y, width, 256)
+        } else {
+            (0, 0, 0, 0)
+        }
+    }
+
+    fn render_polygons(&mut self, gpu: &mut GPU) {
+       let polygons: Vec<_> = gpu.polygons.drain(..).collect();
 
         for polygon in &polygons {
             if polygon.semitransparent {
@@ -742,7 +794,7 @@ impl Renderer {
         }
     }
 
-    pub fn process_commands(&mut self, gpu: &mut GPU) {
+    fn process_commands(&mut self, gpu: &mut GPU) {
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
@@ -1000,7 +1052,7 @@ impl Renderer {
         }
     }
 
-    pub fn get_vertices() -> [FbVertex; 4] {
+    fn get_vertices() -> [FbVertex; 4] {
         [
             FbVertex {
                 position: [-1.0, 1.0],
