@@ -81,17 +81,6 @@ struct Region {
     height: u32,
 }
 
-impl Region {
-    fn new() -> Self {
-        Self {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct FbVertex {
@@ -518,7 +507,11 @@ impl Renderer {
         }
     }
 
-    fn get_overlap_region(&self, polygon: &Polygon, dirty_region: Option<&Region>) -> Option<Region> {
+    fn get_overlap_region(
+        &self,
+        polygon: &Polygon,
+        dirty_region: Option<&Region>,
+    ) -> Option<Region> {
         if let Some(dirty_region) = dirty_region {
             let (x, y, width, height) = Self::get_texture_region(polygon);
 
@@ -537,7 +530,7 @@ impl Renderer {
                     x: intersect_x_start,
                     y: intersect_y_start,
                     width: intersect_x_end - intersect_x_start,
-                    height: intersect_y_end - intersect_y_start
+                    height: intersect_y_end - intersect_y_start,
                 })
             } else {
                 None
@@ -578,7 +571,11 @@ impl Renderer {
 
         let (x, y, width, height) = Self::get_drawing_area(polygon);
         let origin = MTLOrigin { x, y, z: 0 };
-        let size = MTLSize { width, height, depth: 1 };
+        let size = MTLSize {
+            width,
+            height,
+            depth: 1,
+        };
 
         unsafe {
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
@@ -601,7 +598,7 @@ impl Renderer {
     }
 
     fn render_polygons(&mut self, gpu: &mut GPU) {
-       let polygons: Vec<_> = gpu.polygons.drain(..).collect();
+        let polygons: Vec<_> = gpu.polygons.drain(..).collect();
 
         for polygon in &polygons {
             if polygon.semitransparent {
@@ -1226,8 +1223,12 @@ impl Renderer {
         descriptor.setStorageMode(MTLStorageMode::Shared);
 
         match texture_type {
-            TextureType::Write => descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget),
-            TextureType::Read | TextureType::Blend => descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite)
+            TextureType::Write => {
+                descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget)
+            }
+            TextureType::Read | TextureType::Blend => {
+                descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite)
+            }
         }
 
         let mtl_texture = device.newTextureWithDescriptor(&descriptor);

@@ -497,8 +497,6 @@ impl GPU {
 
         let vram_address = GPU::get_vram_address(curr_x & 0x3ff, curr_y & 0x1ff);
 
-        
-
         unsafe { *(&self.vram[vram_address] as *const u8 as *const u16) }
     }
 
