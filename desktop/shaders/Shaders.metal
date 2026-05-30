@@ -67,24 +67,24 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
 
 
 // new 16bpp function with vram_blend
-// float4 getTexColor16bpp(VertexOut in, texture2d<float, access::read> vram, FragmentUniforms uniforms) {
-//     uint u = uint(in.uv.x) & 0xffu;
-//     uint v = uint(in.uv.y) & 0xffu;
+float4 getTexColor16bpp(VertexOut in, texture2d<float, access::read> vram, FragmentUniforms uniforms) {
+    uint u = uint(in.uv.x) & 0xffu;
+    uint v = uint(in.uv.y) & 0xffu;
 
-//     u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
-//     v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+    u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
 
-//     uint offsetU = uniforms.page[0] + u;
-//     uint offsetV = uniforms.page[1] + v;
+    uint offsetU = uniforms.page[0] + u;
+    uint offsetV = uniforms.page[1] + v;
 
-//     float4 color = vram.read(uint2(offsetU, offsetV));
+    float4 color = vram.read(uint2(offsetU, offsetV));
 
-//     if (color.r == 0 && color.g == 0 && color.b == 0) {
-//         discard_fragment();
-//     }
+    if (color.r == 0 && color.g == 0 && color.b == 0) {
+        discard_fragment();
+    }
 
-//     return color;
-// }
+    return color;
+}
 
 float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms, uint2 clut) {
     uint u = uint(in.uv.x) & 0xffu;
