@@ -65,7 +65,6 @@ float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, Frag
     return float4(r, g, b, a) / 31.0;
 }
 
-
 // new 16bpp function with vram_blend
 float4 getTexColor16bpp(VertexOut in, texture2d<float, access::read> vram, FragmentUniforms uniforms) {
     uint u = uint(in.uv.x) & 0xffu;

@@ -603,11 +603,18 @@ impl Renderer {
     fn render_polygons(&mut self, gpu: &mut GPU) {
         let polygons: Vec<_> = gpu.polygons.drain(..).collect();
 
+        let mut blend_dirty = true;
+
         for polygon in &polygons {
-            if polygon.semitransparent {
+            if polygon.semitransparent && blend_dirty {
                 self.update_blend_texture(polygon);
+                blend_dirty = false;
             }
             self.render_polygon(polygon);
+
+            if !polygon.semitransparent {
+                blend_dirty = true;
+            }
         }
     }
 
