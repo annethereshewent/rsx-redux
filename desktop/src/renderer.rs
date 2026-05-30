@@ -633,7 +633,7 @@ impl Renderer {
     }
 
     fn execute_vram_to_vram(&mut self, params: VramToVramTransferParams) {
-        let texture_descriptor = unsafe {
+        let rgba8_texture_descriptor = unsafe {
             MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 MTLPixelFormat::RGBA8Unorm,
                 params.width as usize,
@@ -642,16 +642,28 @@ impl Renderer {
             )
         };
 
-        texture_descriptor.setStorageMode(MTLStorageMode::Shared);
-        texture_descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+        let r16uint_texture_descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::R16Uint,
+                params.width as usize,
+                params.height as usize,
+                false,
+            )
+        };
 
-        let read_texture = self
+        rgba8_texture_descriptor.setStorageMode(MTLStorageMode::Shared);
+        rgba8_texture_descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+
+        r16uint_texture_descriptor.setStorageMode(MTLStorageMode::Shared);
+        r16uint_texture_descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+
+        let r16uint_texture = self
             .device
-            .newTextureWithDescriptor(&texture_descriptor)
+            .newTextureWithDescriptor(&r16uint_texture_descriptor)
             .unwrap();
-        let write_texture = self
+        let rgba8_texture = self
             .device
-            .newTextureWithDescriptor(&texture_descriptor)
+            .newTextureWithDescriptor(&rgba8_texture_descriptor)
             .unwrap();
 
         let command_buffer = self.command_queue.commandBuffer().unwrap();
@@ -682,14 +694,14 @@ impl Renderer {
                 0,
                 source_origin,
                 size,
-                write_texture.as_ref(),
+                &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                write_texture.as_ref(),
+                &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
@@ -701,19 +713,43 @@ impl Renderer {
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                self.vram_read.as_ref().unwrap(),
+                self.vram_blend.as_ref().unwrap(),
                 0,
                 0,
                 source_origin,
                 size,
-                read_texture.as_ref(),
+                &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                read_texture.as_ref(),
+                &rgba8_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                size,
+                self.vram_blend.as_ref().unwrap(),
+                0,
+                0,
+                destination_origin,
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_read.as_ref().unwrap(),
+                0,
+                0,
+                source_origin,
+                size,
+                r16uint_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                r16uint_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
@@ -769,6 +805,17 @@ impl Renderer {
         };
 
         if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                )
+            }
+        }
+
+        if let Some(texture) = &self.vram_blend {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
@@ -841,6 +888,17 @@ impl Renderer {
         }
 
         if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                );
+            }
+        }
+
+        if let Some(texture) = &self.vram_blend {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
