@@ -54,6 +54,7 @@ pub enum GPUCommand {
     VRAMtoCPU(CPUTransferParams),
     FillVRAM(FillVramParams),
     VramToVram(VramToVramTransferParams),
+    RenderPolygon(Polygon),
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
@@ -285,8 +286,6 @@ pub struct GPU {
     pub force_mask_bit: bool,
     pub preserve_masked_pixels: bool,
     #[cfg(feature = "hardware_gpu")]
-    pub polygons: Vec<Polygon>,
-    #[cfg(feature = "hardware_gpu")]
     pub commands_ready: bool,
     num_vertices: usize,
     is_shaded: bool,
@@ -390,8 +389,6 @@ impl GPU {
             preserve_masked_pixels: false,
             #[cfg(feature = "hardware_gpu")]
             commands_ready: false,
-            #[cfg(feature = "hardware_gpu")]
-            polygons: Vec::new(),
             num_vertices: 0,
             is_shaded: false,
             is_textured: false,
@@ -777,14 +774,12 @@ impl GPU {
 
         #[cfg(feature = "hardware_gpu")]
         {
-            let mut polygons: Vec<Polygon> = Vec::new();
-
             if vertices.len() > 3 {
                 // split up into two triangles
                 let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
                 let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
 
-                polygons.push(Polygon {
+                self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
                     vertices: vertices1,
                     is_line: false,
                     textured: self.is_textured,
@@ -808,9 +803,9 @@ impl GPU {
                     y2: self.y2,
                     force_mask_bit: self.force_mask_bit,
                     preserve_masked_pixels: self.preserve_masked_pixels,
-                });
+                }));
 
-                polygons.push(Polygon {
+                self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
                     vertices: vertices2,
                     is_line: false,
                     texpage,
@@ -834,9 +829,9 @@ impl GPU {
                     y2: self.y2,
                     force_mask_bit: self.force_mask_bit,
                     preserve_masked_pixels: self.preserve_masked_pixels,
-                });
+                }));
             } else {
-                polygons.push(Polygon {
+                self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
                     vertices,
                     is_line: false,
                     texpage,
@@ -860,10 +855,8 @@ impl GPU {
                     y2: self.y2,
                     force_mask_bit: self.force_mask_bit,
                     preserve_masked_pixels: self.preserve_masked_pixels,
-                });
+                }));
             }
-
-            self.polygons.append(&mut polygons);
 
             self.commands_ready = true;
         }
@@ -1044,7 +1037,7 @@ impl GPU {
 
         #[cfg(feature = "hardware_gpu")]
         {
-            self.polygons.push(Polygon {
+            self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
                 vertices: vertices1,
                 is_line: false,
                 texpage: if self.is_textured {
@@ -1068,8 +1061,8 @@ impl GPU {
                 y2: self.y2,
                 force_mask_bit: self.force_mask_bit,
                 preserve_masked_pixels: self.preserve_masked_pixels,
-            });
-            self.polygons.push(Polygon {
+            }));
+            self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
                 vertices: vertices2,
                 is_line: false,
                 texpage: if self.is_textured {
@@ -1093,7 +1086,7 @@ impl GPU {
                 y2: self.y2,
                 force_mask_bit: self.force_mask_bit,
                 preserve_masked_pixels: self.preserve_masked_pixels,
-            });
+            }));
         }
         #[cfg(feature = "software_gpu")]
         {
@@ -1497,7 +1490,7 @@ impl GPU {
 
     #[cfg(feature = "hardware_gpu")]
     fn push_line(&mut self, vertex0: Vertex, vertex1: Vertex) {
-        self.polygons.push(Polygon {
+        self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
             vertices: vec![vertex0, vertex1],
             is_line: true,
             is_shaded: self.is_shaded,
@@ -1514,7 +1507,7 @@ impl GPU {
             force_mask_bit: self.force_mask_bit,
             preserve_masked_pixels: self.preserve_masked_pixels,
             ..Default::default()
-        });
+        }));
 
         self.commands_ready = true;
     }

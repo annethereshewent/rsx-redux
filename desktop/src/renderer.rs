@@ -603,24 +603,6 @@ impl Renderer {
         self.create_encoder();
     }
 
-    fn render_polygons(&mut self, gpu: &mut GPU) {
-        let polygons: Vec<_> = gpu.polygons.drain(..).collect();
-
-        let mut blend_dirty = true;
-
-        for polygon in &polygons {
-            if polygon.semitransparent && blend_dirty {
-                self.update_blend_texture(polygon);
-                blend_dirty = false;
-            }
-            self.render_polygon(polygon);
-
-            if !polygon.semitransparent {
-                blend_dirty = true;
-            }
-        }
-    }
-
     fn create_encoder(&mut self) {
         let rpd = MTLRenderPassDescriptor::new();
         self.command_buffer = self.command_queue.commandBuffer();
@@ -926,6 +908,7 @@ impl Renderer {
     }
 
     fn process_commands(&mut self, gpu: &mut GPU) {
+        let mut blend_dirty = true;
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
@@ -939,6 +922,22 @@ impl Renderer {
                 }
                 GPUCommand::FillVRAM(params) => {
                     self.execute_fill_vram(params);
+                }
+                GPUCommand::RenderPolygon(polygon) => {
+                    if self.encoder.is_none() {
+                        self.create_encoder();
+                    }
+
+                    if polygon.semitransparent && blend_dirty {
+                        self.update_blend_texture(&polygon);
+                        blend_dirty = false;
+                    }
+
+                    self.render_polygon(&polygon);
+
+                    if !polygon.semitransparent {
+                        blend_dirty = true;
+                    }
                 }
             }
         }
@@ -1006,13 +1005,6 @@ impl Renderer {
                 self.process_commands(gpu);
             }
 
-            if gpu.polygons.len() > 0 {
-                if self.encoder.is_none() {
-                    self.create_encoder();
-                }
-
-                self.render_polygons(gpu);
-            }
             if let Some(params) = &gpu.transfer_params.take() {
                 self.vram_writeback(None, Some(params));
 
