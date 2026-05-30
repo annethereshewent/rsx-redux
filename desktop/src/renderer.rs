@@ -728,6 +728,30 @@ impl Renderer {
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_blend.as_ref().unwrap(),
+                0,
+                0,
+                source_origin,
+                size,
+                &rgba8_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                &rgba8_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                size,
+                self.vram_blend.as_ref().unwrap(),
+                0,
+                0,
+                destination_origin,
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 self.vram_read.as_ref().unwrap(),
                 0,
                 0,
@@ -806,6 +830,17 @@ impl Renderer {
             }
         }
 
+        if let Some(texture) = &self.vram_blend {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                )
+            }
+        }
+
         if let Some(texture) = &self.vram_read {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
@@ -868,6 +903,17 @@ impl Renderer {
         }
 
         if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                );
+            }
+        }
+
+        if let Some(texture) = &self.vram_blend {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
