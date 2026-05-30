@@ -329,7 +329,7 @@ impl Dma {
         let num_words = self.channels[DMA_MDEC_IN].block_size;
         let mut ticks_remaining = DMA_TICKS_REMAINING;
 
-        while ticks_remaining > 0 && self.channels[DMA_MDEC_IN].num_blocks > 0 {
+        while ticks_remaining > 0 && self.channels[DMA_MDEC_IN].num_blocks > 0 && self.channels[DMA_MDEC_IN].request {
             for _ in 0..num_words {
                 let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
 
@@ -402,7 +402,7 @@ impl Dma {
         let num_words = self.channels[DMA_MDEC_OUT].block_size;
         let mut ticks_remaining = DMA_TICKS_REMAINING;
 
-        while ticks_remaining > 0 && self.channels[DMA_MDEC_OUT].num_blocks > 0 {
+        while ticks_remaining > 0 && self.channels[DMA_MDEC_OUT].num_blocks > 0 && self.channels[DMA_MDEC_OUT].request {
             for _ in 0..num_words {
                 let word = mdec.read_out_fifo();
 
