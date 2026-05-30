@@ -407,7 +407,6 @@ impl Renderer {
 
         let v = &polygon.vertices;
 
-
         if !polygon.is_line {
             let cross_product = GPU::cross_product(&polygon.vertices);
             if cross_product == 0 {
@@ -489,7 +488,11 @@ impl Renderer {
             };
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
-            let primitive_type = if polygon.is_line { MTLPrimitiveType::Line } else { MTLPrimitiveType::Triangle };
+            let primitive_type = if polygon.is_line {
+                MTLPrimitiveType::Line
+            } else {
+                MTLPrimitiveType::Triangle
+            };
 
             encoder.setRenderPipelineState(&self.pipeline_state);
 
@@ -662,10 +665,12 @@ impl Renderer {
         };
 
         rgba8_texture_descriptor.setStorageMode(MTLStorageMode::Shared);
-        rgba8_texture_descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+        rgba8_texture_descriptor
+            .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
 
         r16uint_texture_descriptor.setStorageMode(MTLStorageMode::Shared);
-        r16uint_texture_descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+        r16uint_texture_descriptor
+            .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
 
         let r16uint_texture = self
             .device
@@ -721,7 +726,6 @@ impl Renderer {
                 0,
                 destination_origin,
             );
-
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 self.vram_read.as_ref().unwrap(),
