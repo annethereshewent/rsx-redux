@@ -1497,61 +1497,8 @@ impl GPU {
 
     #[cfg(feature = "hardware_gpu")]
     fn push_line(&mut self, vertex0: Vertex, vertex1: Vertex) {
-        let dx = vertex1.x - vertex0.x;
-        let dy = vertex1.y - vertex0.y;
-
-        let color0 = vertex0.color;
-        let color1 = vertex1.color;
-
-        let (ox, oy) = if dx.abs() >= dy.abs() {
-            // shallow line: make it 1 pixel tall
-            (0, 1)
-        } else {
-            // steep line: make it 1 pixel wide
-            (1, 0)
-        };
-
-        let v0 = vertex0;
-        let v1 = vertex1;
-        let v2 = Vertex {
-            x: vertex0.x + ox,
-            y: vertex0.y + oy,
-            u: 0,
-            v: 0,
-            color: color0,
-        };
-        let v3 = Vertex {
-            x: vertex1.x + ox,
-            y: vertex1.y + oy,
-            u: 0,
-            v: 0,
-            color: color1,
-        };
-
-        let vertices0 = vec![v0, v1, v2];
-        let vertices1 = vec![v1, v2, v3];
-
         self.polygons.push(Polygon {
-            vertices: vertices0,
-            is_line: true,
-            is_shaded: self.is_shaded,
-            semitransparent: self.is_semitransparent,
-            textured: false,
-            texpage: None,
-            modulate: false,
-            transparent_mode: self.texpage.semi_transparency as u32,
-            clut: (0, 0),
-            x1: self.x1,
-            x2: self.x2,
-            y1: self.y1,
-            y2: self.y2,
-            force_mask_bit: self.force_mask_bit,
-            preserve_masked_pixels: self.preserve_masked_pixels,
-            ..Default::default()
-        });
-
-        self.polygons.push(Polygon {
-            vertices: vertices1,
+            vertices: vec![vertex0, vertex1],
             is_line: true,
             is_shaded: self.is_shaded,
             semitransparent: self.is_semitransparent,

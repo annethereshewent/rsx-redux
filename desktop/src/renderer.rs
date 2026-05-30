@@ -405,29 +405,32 @@ impl Renderer {
             page: [0; 2],
         };
 
-        let cross_product = GPU::cross_product(&polygon.vertices);
         let v = &polygon.vertices;
 
-        if cross_product == 0 {
-            return;
-        }
 
-        let min_x = cmp::min(v[0].x, cmp::min(v[1].x, v[2].x));
-        let min_y = cmp::min(v[0].y, cmp::min(v[1].y, v[2].y));
+        if !polygon.is_line {
+            let cross_product = GPU::cross_product(&polygon.vertices);
+            if cross_product == 0 {
+                return;
+            }
 
-        let max_x = cmp::max(v[0].x, cmp::max(v[1].x, v[2].x));
-        let max_y = cmp::max(v[0].y, cmp::max(v[1].y, v[2].y));
+            let min_x = cmp::min(v[0].x, cmp::min(v[1].x, v[2].x));
+            let min_y = cmp::min(v[0].y, cmp::min(v[1].y, v[2].y));
 
-        if (max_x >= 1024 && min_x >= 1024) || (max_x < 0 && min_x < 0) {
-            return;
-        }
+            let max_x = cmp::max(v[0].x, cmp::max(v[1].x, v[2].x));
+            let max_y = cmp::max(v[0].y, cmp::max(v[1].y, v[2].y));
 
-        if (max_y >= 512 && min_y >= 512) || (max_y < 0 && min_y < 0) {
-            return;
-        }
+            if (max_x >= 1024 && min_x >= 1024) || (max_x < 0 && min_x < 0) {
+                return;
+            }
 
-        if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
-            return;
+            if (max_y >= 512 && min_y >= 512) || (max_y < 0 && min_y < 0) {
+                return;
+            }
+
+            if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
+                return;
+            }
         }
 
         for i in 0..polygon.vertices.len() {
@@ -486,7 +489,7 @@ impl Renderer {
             };
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
-            let primitive_type = MTLPrimitiveType::Triangle;
+            let primitive_type = if polygon.is_line { MTLPrimitiveType::Line } else { MTLPrimitiveType::Triangle };
 
             encoder.setRenderPipelineState(&self.pipeline_state);
 
