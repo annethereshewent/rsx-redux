@@ -144,6 +144,9 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 texColor = getTexColor8bpp(in, vram, uniforms, clut);
                 break;
             case 2:
+                // Note: getTexColor16bpp uses the vram blend texture since
+                // it's the same format as vram_write, which makes it convenient
+                // to just sample from and fixes a lot of issues with games
                 texColor = getTexColor16bpp(in, vramBlend, uniforms);
                 break;
         }
