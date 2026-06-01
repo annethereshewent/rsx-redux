@@ -851,7 +851,6 @@ impl Renderer {
                     self.execute_cpu_to_vram(params);
                 }
                 GPUCommand::VRAMtoCPU(params) => {
-                    println!("executing vram to cpu!");
                     let halfwords = self.handle_cpu_transfer(&params);
 
                     for halfword in halfwords {
@@ -859,7 +858,6 @@ impl Renderer {
                     }
                 }
                 GPUCommand::VramToVram(params) => {
-                    println!("executing vram to vram!");
                     self.execute_vram_to_vram(params);
                 }
                 GPUCommand::FillVRAM(params) => {
@@ -878,20 +876,6 @@ impl Renderer {
                         sample_dirty = false;
 
                         self.update_texture_for_sampling();
-                    }
-
-                    if polygon.texpage.map(|texpage| texpage.texture_page_colors)
-                        == Some(TexturePageColors::Bit8)
-                        && gpu.debug_on
-                    {
-                        if polygon.vertices[0].y == 329 {
-                            for (i, v) in polygon.vertices.iter().enumerate() {
-                                println!(
-                                    "8BPP v{}: uv=({},{}) pos=({},{})",
-                                    i, v.u, v.v, v.x, v.y,
-                                );
-                            }
-                        }
                     }
 
                     self.render_polygon(&polygon);
