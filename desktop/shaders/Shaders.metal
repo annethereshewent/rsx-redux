@@ -78,7 +78,7 @@ float4 getTexColor16bpp(VertexOut in, texture2d<float, access::read> vram, Fragm
 
     float4 color = vram.read(uint2(offsetU, offsetV));
 
-    if (color.r == 0 && color.g == 0 && color.b == 0) {
+    if (color.r == 0 && color.g == 0 && color.b == 0 && color.a == 0) {
         discard_fragment();
     }
 
@@ -174,6 +174,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 // it's the same format as vram_write, which makes it convenient
                 // to just sample from and fixes a lot of issues with games
                 texColor = getTexColor16bpp(in, vramBlend, uniforms);
+
                 break;
         }
 
@@ -212,7 +213,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         }
     }
 
-    finalColor[3] = 0.0;
+    finalColor[3] = 1.0;
 
     return finalColor;
 }

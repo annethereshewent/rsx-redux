@@ -513,6 +513,7 @@ impl Renderer {
         }
     }
 
+    #[allow(dead_code)]
     fn get_overlap_region(
         &self,
         polygon: &Polygon,
@@ -546,6 +547,7 @@ impl Renderer {
         }
     }
 
+    #[allow(dead_code)]
     fn get_texture_region(polygon: &Polygon) -> (u32, u32, u32, u32) {
         if let Some(texpage) = polygon.texpage {
             let x = texpage.x_base as u32 * 64;
@@ -909,6 +911,8 @@ impl Renderer {
 
     fn process_commands(&mut self, gpu: &mut GPU) {
         let mut blend_dirty = true;
+        let mut sample_dirty = true;
+
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
@@ -928,9 +932,19 @@ impl Renderer {
                         self.create_encoder();
                     }
 
+                    let is_16bpp = polygon.textured
+                        && polygon.texpage.map(|t| t.texture_page_colors)
+                            == Some(TexturePageColors::Bit15);
+
                     if polygon.semitransparent && blend_dirty {
                         self.update_blend_texture(&polygon);
                         blend_dirty = false;
+                    }
+
+                    if is_16bpp && sample_dirty {
+                        sample_dirty = false;
+
+                        self.update_blend_texture_for_sampling();
                     }
 
                     self.render_polygon(&polygon);
@@ -938,9 +952,78 @@ impl Renderer {
                     if !polygon.semitransparent {
                         blend_dirty = true;
                     }
+                    if !is_16bpp {
+                        sample_dirty = true;
+                    }
                 }
             }
         }
+    }
+
+    // used to dump textures to a ppm file. currently unused, only for debugging
+    #[allow(dead_code)]
+    fn dump_texture_to_ppm(&self, texture: &ProtocolObject<dyn MTLTexture>, path: &str) {
+        let width = VRAM_WIDTH;
+        let height = VRAM_HEIGHT;
+        let mut data = vec![0u8; width * height * 4];
+
+        let region = MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize { width, height, depth: 1 },
+        };
+
+        unsafe {
+            texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
+                width * 4,
+                region,
+                0,
+            );
+        }
+
+        let mut file = std::fs::File::create(path).unwrap();
+        use std::io::Write;
+        write!(file, "P6\n{} {}\n255\n", width, height).unwrap();
+
+        for i in 0..width * height {
+            file.write_all(&[
+                data[i * 4],
+                data[i * 4 + 1],
+                data[i * 4 + 2],
+            ]).unwrap();
+        }
+    }
+
+    fn update_blend_texture_for_sampling(&mut self) {
+        if let Some(encoder) = self.encoder.take() {
+            encoder.endEncoding();
+        }
+
+        let command_buffer = self.command_buffer.as_ref().unwrap();
+
+        let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
+
+        let origin = MTLOrigin { x: 0, y: 0, z: 0 };
+        let size = MTLSize {
+            width: VRAM_WIDTH,
+            height: VRAM_HEIGHT,
+            depth: 1,
+        };
+
+        unsafe {
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_write.as_ref().unwrap(),
+                0, 0, origin, size,
+                self.vram_blend.as_ref().unwrap(),
+                0, 0, origin,
+            );
+        }
+
+        blit_encoder.endEncoding();
+        command_buffer.commit();
+        command_buffer.waitUntilCompleted();
+
+        self.create_encoder();
     }
 
     pub fn handle_cpu_transfer(&mut self, params: &CPUTransferParams) -> Vec<u16> {
