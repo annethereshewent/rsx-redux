@@ -613,10 +613,6 @@ impl Renderer {
         r16uint_texture_descriptor
             .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
 
-        let r16uint_texture = self
-            .device
-            .newTextureWithDescriptor(&r16uint_texture_descriptor)
-            .unwrap();
         let rgba8_texture = self
             .device
             .newTextureWithDescriptor(&rgba8_texture_descriptor)
@@ -669,24 +665,12 @@ impl Renderer {
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                self.vram_read.as_ref().unwrap(),
-                0,
-                0,
-                source_origin,
-                size,
-                r16uint_texture.as_ref(),
-                0,
-                0,
-                MTLOrigin { x: 0, y: 0, z: 0 },
-            );
-
-            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                r16uint_texture.as_ref(),
+                &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
                 size,
-                self.vram_read.as_ref().unwrap(),
+                self.vram_sample.as_ref().unwrap(),
                 0,
                 0,
                 destination_origin,
@@ -695,6 +679,7 @@ impl Renderer {
 
         blit_encoder.endEncoding();
         command_buffer.commit();
+        command_buffer.waitUntilCompleted();
     }
 
     fn execute_cpu_to_vram(&mut self, params: VRamTransferParams) {
@@ -737,6 +722,17 @@ impl Renderer {
         };
 
         if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                )
+            }
+        }
+
+        if let Some(texture) = &self.vram_sample {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
@@ -829,7 +825,11 @@ impl Renderer {
                     self.execute_cpu_to_vram(params);
                 }
                 GPUCommand::VRAMtoCPU(params) => {
-                    gpu.transfer_params = Some(params);
+                    let halfwords = self.handle_cpu_transfer(&params);
+
+                    for halfword in halfwords {
+                        gpu.gpuread_fifo.push_back(halfword);
+                    }
                 }
                 GPUCommand::VramToVram(params) => {
                     self.execute_vram_to_vram(params);
@@ -863,9 +863,7 @@ impl Renderer {
 
     // used to dump textures to a ppm file. currently unused, only for debugging
     #[allow(dead_code)]
-    fn dump_texture_to_ppm(&self, texture: &ProtocolObject<dyn MTLTexture>, path: &str) {
-        let width = VRAM_WIDTH;
-        let height = VRAM_HEIGHT;
+    fn dump_texture_to_ppm(&self, texture: &ProtocolObject<dyn MTLTexture>, width: usize, height: usize, path: &str) {
         let mut data = vec![0u8; width * height * 4];
 
         let region = MTLRegion {
@@ -930,10 +928,10 @@ impl Renderer {
     pub fn handle_cpu_transfer(&mut self, params: &CPUTransferParams) -> Vec<u16> {
         let mut halfwords = Vec::new();
 
-        let row_bytes = params.width * 2;
+        let row_bytes = params.width * 4;
 
-        if let Some(texture) = &self.vram_read {
-            let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
+        if let Some(texture) = &self.vram_write {
+            let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 4];
             unsafe {
                 texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
                     NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
@@ -954,8 +952,12 @@ impl Renderer {
                 );
             }
 
-            for i in (0..bytes.len()).step_by(2) {
-                let halfword = bytes[i] as u16 | (bytes[i + 1] as u16) << 8;
+            for i in (0..bytes.len()).step_by(4) {
+                let r = bytes[i] >> 3;
+                let g = bytes[i+1] >> 3;
+                let b = bytes[i+2] >> 3;
+
+                let halfword = r as u16 | (g as u16) << 5 | (b as u16) << 10;
 
                 halfwords.push(halfword);
             }
@@ -988,20 +990,11 @@ impl Renderer {
             if !gpu.gpu_commands.is_empty() {
                 self.process_commands(gpu);
             }
-
-            if let Some(params) = &gpu.transfer_params.take() {
-                self.vram_writeback(None, Some(params));
-
-                let halfwords = self.handle_cpu_transfer(params);
-
-                for halfword in halfwords {
-                    gpu.gpuread_fifo.push_back(halfword);
-                }
-            }
         }
     }
 
     // TODO: this whole method is a mess. I need to fix this up quite a bit eventually to get it working right
+    #[allow(dead_code)]
     fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
         if let (Some(encoder), Some(command_buffer)) =
             (&self.encoder.take(), &self.command_buffer.take())
@@ -1060,6 +1053,7 @@ impl Renderer {
             }
 
             command_buffer.commit();
+            command_buffer.waitUntilCompleted();
         }
     }
 
