@@ -839,7 +839,7 @@ impl Renderer {
                 }
                 GPUCommand::RenderPolygon(polygon) => {
                     let is_16bpp = polygon.textured
-                        && polygon.texpage.map(|t| t.texture_page_colors)
+                        && polygon.texpage.map(|texpage| texpage.texture_page_colors)
                             == Some(TexturePageColors::Bit15);
                     if self.encoder.is_none() {
                         self.create_encoder();
