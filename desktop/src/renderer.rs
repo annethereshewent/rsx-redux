@@ -838,13 +838,12 @@ impl Renderer {
                     self.execute_fill_vram(params);
                 }
                 GPUCommand::RenderPolygon(polygon) => {
-                    if self.encoder.is_none() {
-                        self.create_encoder();
-                    }
-
                     let is_16bpp = polygon.textured
                         && polygon.texpage.map(|t| t.texture_page_colors)
                             == Some(TexturePageColors::Bit15);
+                    if self.encoder.is_none() {
+                        self.create_encoder();
+                    }
 
                     if is_16bpp && sample_dirty {
                         sample_dirty = false;
