@@ -22,6 +22,7 @@ use std::cmp;
 
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
+#[derive(PartialEq)]
 enum TextureType {
     Read,
     Write,
@@ -850,6 +851,7 @@ impl Renderer {
                     self.execute_cpu_to_vram(params);
                 }
                 GPUCommand::VRAMtoCPU(params) => {
+                    println!("executing vram to cpu!");
                     let halfwords = self.handle_cpu_transfer(&params);
 
                     for halfword in halfwords {
@@ -857,6 +859,7 @@ impl Renderer {
                     }
                 }
                 GPUCommand::VramToVram(params) => {
+                    println!("executing vram to vram!");
                     self.execute_vram_to_vram(params);
                 }
                 GPUCommand::FillVRAM(params) => {
@@ -877,6 +880,20 @@ impl Renderer {
                         self.update_texture_for_sampling();
                     }
 
+                    if polygon.texpage.map(|texpage| texpage.texture_page_colors)
+                        == Some(TexturePageColors::Bit8)
+                        && gpu.debug_on
+                    {
+                        if polygon.vertices[0].y == 329 {
+                            for (i, v) in polygon.vertices.iter().enumerate() {
+                                println!(
+                                    "8BPP v{}: uv=({},{}) pos=({},{})",
+                                    i, v.u, v.v, v.x, v.y,
+                                );
+                            }
+                        }
+                    }
+
                     self.render_polygon(&polygon);
 
                     if !is_16bpp {
@@ -895,8 +912,13 @@ impl Renderer {
         width: usize,
         height: usize,
         path: &str,
+        texture_type: TextureType
     ) {
-        let mut data = vec![0u8; width * height * 4];
+        let mut data = if texture_type == TextureType::Read {
+            vec![0u8; width * height * 2]
+        } else {
+            vec![0u8; width * height * 4]
+        };
 
         let region = MTLRegion {
             origin: MTLOrigin { x: 0, y: 0, z: 0 },
@@ -907,21 +929,53 @@ impl Renderer {
             },
         };
 
+        let bytes_per_row = if texture_type == TextureType::Read {
+            width * 2
+        } else {
+            width * 4
+        };
+
         unsafe {
             texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
                 NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
-                width * 4,
+                bytes_per_row,
                 region,
                 0,
             );
         }
+
+        let output = if texture_type == TextureType::Read {
+            let mut output = Vec::new();
+
+            for i in (0..data.len()).step_by(2) {
+                let halfword = data[i] as u16 | (data[i + 1] as u16) << 8;
+
+                let mut r = halfword & 0x1f;
+                let mut g = (halfword >> 5) & 0x1f;
+                let mut b = (halfword >> 10) & 0x1f;
+                let a = halfword >> 15;
+
+                r = r << 3 | r >> 2;
+                g = g << 3 | g >> 2;
+                b = b << 3 | b >> 2;
+
+                output.push(r as u8);
+                output.push(g as u8);
+                output.push(b as u8);
+                output.push(a as u8);
+            }
+
+            output
+        } else {
+            data
+        };
 
         let mut file = std::fs::File::create(path).unwrap();
         use std::io::Write;
         write!(file, "P6\n{} {}\n255\n", width, height).unwrap();
 
         for i in 0..width * height {
-            file.write_all(&[data[i * 4], data[i * 4 + 1], data[i * 4 + 2]])
+            file.write_all(&[output[i * 4], output[i * 4 + 1], output[i * 4 + 2]])
                 .unwrap();
         }
     }
