@@ -39,6 +39,32 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]]) {
     return out;
 }
 
+// old 16bpp function, uses vram_read
+float4 getTexColor16bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
+    uint u = uint(in.uv.x) & 0xffu;
+    uint v = uint(in.uv.y) & 0xffu;
+
+    u = (u & ~uniforms.textureMaskX) | (uniforms.textureOffsetX & uniforms.textureMaskX);
+    v = (v & ~uniforms.textureMaskY) | (uniforms.textureOffsetY & uniforms.textureMaskY);
+
+    uint offsetU = uniforms.page[0] + u;
+    uint offsetV = uniforms.page[1] + v;
+
+    ushort texel = vram.read(uint2(offsetU, offsetV)).r;
+
+    uint r = texel & 0x1f;
+    uint g = (texel >> 5) & 0x1f;
+    uint b = (texel >> 10) & 0x1f;
+
+    float a = float((texel >> 15) & 1) * 31.0;
+
+    if (texel == 0) {
+        discard_fragment();
+    }
+
+    return float4(r, g, b, a) / 31.0;
+}
+
 // new 16bpp function with vram_blend
 float4 getTexColor16bpp(VertexOut in, texture2d<float, access::read> vram, FragmentUniforms uniforms) {
     uint u = uint(in.uv.x) & 0xffu;
