@@ -106,7 +106,6 @@ pub struct Renderer {
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    dirty_region: Option<Region>,
 }
 
 impl Renderer {
@@ -322,7 +321,6 @@ impl Renderer {
             set_only,
             both,
             compute_pipeline_state,
-            dirty_region: None,
         }
     }
 
