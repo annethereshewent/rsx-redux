@@ -51,6 +51,7 @@ struct FragmentUniform {
     transparent_mode: u32,
     pass: u32,
     page: [u32; 2],
+    clut: [u32; 2],
 }
 
 #[repr(C)]
@@ -401,6 +402,7 @@ impl Renderer {
             transparent_mode: polygon.transparent_mode,
             pass: 1,
             page: [0; 2],
+            clut: [polygon.clut.0, polygon.clut.1],
         };
 
         let v = &polygon.vertices;
@@ -476,12 +478,6 @@ impl Renderer {
                     NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap(),
                     size_of::<FragmentUniform>(),
                     1,
-                );
-                encoder.setFragmentBytes_length_atIndex(
-                    NonNull::new(&mut [polygon.clut.0, polygon.clut.1] as *mut _ as *mut c_void)
-                        .unwrap(),
-                    size_of::<[u32; 2]>(),
-                    2,
                 );
             };
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
@@ -618,6 +614,11 @@ impl Renderer {
             .newTextureWithDescriptor(&rgba8_texture_descriptor)
             .unwrap();
 
+        let r16uint_texture = self
+            .device
+            .newTextureWithDescriptor(&r16uint_texture_descriptor)
+            .unwrap();
+
         let command_buffer = self.command_queue.commandBuffer().unwrap();
         let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
 
@@ -671,6 +672,30 @@ impl Renderer {
                 MTLOrigin { x: 0, y: 0, z: 0 },
                 size,
                 self.vram_sample.as_ref().unwrap(),
+                0,
+                0,
+                destination_origin,
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_read.as_ref().unwrap(),
+                0,
+                0,
+                source_origin,
+                size,
+                &r16uint_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                &r16uint_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                size,
+                self.vram_read.as_ref().unwrap(),
                 0,
                 0,
                 destination_origin,
@@ -841,6 +866,7 @@ impl Renderer {
                     let is_16bpp = polygon.textured
                         && polygon.texpage.map(|texpage| texpage.texture_page_colors)
                             == Some(TexturePageColors::Bit15);
+
                     if self.encoder.is_none() {
                         self.create_encoder();
                     }
@@ -863,12 +889,22 @@ impl Renderer {
 
     // used to dump textures to a ppm file. currently unused, only for debugging
     #[allow(dead_code)]
-    fn dump_texture_to_ppm(&self, texture: &ProtocolObject<dyn MTLTexture>, width: usize, height: usize, path: &str) {
+    fn dump_texture_to_ppm(
+        &self,
+        texture: &ProtocolObject<dyn MTLTexture>,
+        width: usize,
+        height: usize,
+        path: &str,
+    ) {
         let mut data = vec![0u8; width * height * 4];
 
         let region = MTLRegion {
             origin: MTLOrigin { x: 0, y: 0, z: 0 },
-            size: MTLSize { width, height, depth: 1 },
+            size: MTLSize {
+                width,
+                height,
+                depth: 1,
+            },
         };
 
         unsafe {
@@ -885,11 +921,8 @@ impl Renderer {
         write!(file, "P6\n{} {}\n255\n", width, height).unwrap();
 
         for i in 0..width * height {
-            file.write_all(&[
-                data[i * 4],
-                data[i * 4 + 1],
-                data[i * 4 + 2],
-            ]).unwrap();
+            file.write_all(&[data[i * 4], data[i * 4 + 1], data[i * 4 + 2]])
+                .unwrap();
         }
     }
 
@@ -954,8 +987,8 @@ impl Renderer {
 
             for i in (0..bytes.len()).step_by(4) {
                 let r = bytes[i] >> 3;
-                let g = bytes[i+1] >> 3;
-                let b = bytes[i+2] >> 3;
+                let g = bytes[i + 1] >> 3;
+                let b = bytes[i + 2] >> 3;
 
                 let halfword = r as u16 | (g as u16) << 5 | (b as u16) << 10;
 
