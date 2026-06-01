@@ -22,6 +22,12 @@ use std::cmp;
 
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
+enum TextureType {
+    Read,
+    Write,
+    Blend,
+}
+
 #[repr(C)]
 struct FbParams {
     display_start_x: u32,
@@ -49,7 +55,7 @@ struct FragmentUniform {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
-pub struct MetalVertex {
+struct MetalVertex {
     position: [f32; 2],
     uv: [f32; 2],
     color: [f32; 4],
@@ -67,9 +73,17 @@ impl MetalVertex {
     }
 }
 
+#[derive(Debug)]
+struct Region {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct FbVertex {
+struct FbVertex {
     pub position: [f32; 2],
     pub uv: [f32; 2],
 }
@@ -82,6 +96,7 @@ pub struct Renderer {
     fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     compute_pipeline_state: Retained<ProtocolObject<dyn MTLComputePipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    vram_blend: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
     command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
@@ -91,8 +106,7 @@ pub struct Renderer {
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    has_semitransparent_polys: bool,
-    leftover_polygons: Vec<Polygon>,
+    dirty_region: Option<Region>,
 }
 
 impl Renderer {
@@ -250,8 +264,9 @@ impl Renderer {
         }
         .unwrap();
 
-        let vram_read = Self::create_texture(&device, true);
-        let vram_write = Self::create_texture(&device, false);
+        let vram_read = Self::create_texture(&device, TextureType::Read);
+        let vram_write = Self::create_texture(&device, TextureType::Write);
+        let vram_blend = Self::create_texture(&device, TextureType::Blend);
 
         let rpd = MTLRenderPassDescriptor::new();
 
@@ -294,6 +309,7 @@ impl Renderer {
             command_queue,
             vram_read,
             vram_write,
+            vram_blend,
             device,
             pipeline_state,
             fb_pipeline_state,
@@ -306,8 +322,7 @@ impl Renderer {
             set_only,
             both,
             compute_pipeline_state,
-            has_semitransparent_polys: false,
-            leftover_polygons: Vec::new(),
+            dirty_region: None,
         }
     }
 
@@ -390,29 +405,31 @@ impl Renderer {
             page: [0; 2],
         };
 
-        let cross_product = GPU::cross_product(&polygon.vertices);
         let v = &polygon.vertices;
 
-        if cross_product == 0 {
-            return;
-        }
+        if !polygon.is_line {
+            let cross_product = GPU::cross_product(&polygon.vertices);
+            if cross_product == 0 {
+                return;
+            }
 
-        let min_x = cmp::min(v[0].x, cmp::min(v[1].x, v[2].x));
-        let min_y = cmp::min(v[0].y, cmp::min(v[1].y, v[2].y));
+            let min_x = cmp::min(v[0].x, cmp::min(v[1].x, v[2].x));
+            let min_y = cmp::min(v[0].y, cmp::min(v[1].y, v[2].y));
 
-        let max_x = cmp::max(v[0].x, cmp::max(v[1].x, v[2].x));
-        let max_y = cmp::max(v[0].y, cmp::max(v[1].y, v[2].y));
+            let max_x = cmp::max(v[0].x, cmp::max(v[1].x, v[2].x));
+            let max_y = cmp::max(v[0].y, cmp::max(v[1].y, v[2].y));
 
-        if (max_x >= 1024 && min_x >= 1024) || (max_x < 0 && min_x < 0) {
-            return;
-        }
+            if (max_x >= 1024 && min_x >= 1024) || (max_x < 0 && min_x < 0) {
+                return;
+            }
 
-        if (max_y >= 512 && min_y >= 512) || (max_y < 0 && min_y < 0) {
-            return;
-        }
+            if (max_y >= 512 && min_y >= 512) || (max_y < 0 && min_y < 0) {
+                return;
+            }
 
-        if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
-            return;
+            if (max_x - min_x) >= 1024 || (max_y - min_y) >= 512 {
+                return;
+            }
         }
 
         for i in 0..polygon.vertices.len() {
@@ -471,12 +488,11 @@ impl Renderer {
             };
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
-            let primitive_type = MTLPrimitiveType::Triangle;
-
-            if polygon.semitransparent && !self.has_semitransparent_polys {
-                self.has_semitransparent_polys = true;
-                return;
-            }
+            let primitive_type = if polygon.is_line {
+                MTLPrimitiveType::Line
+            } else {
+                MTLPrimitiveType::Triangle
+            };
 
             encoder.setRenderPipelineState(&self.pipeline_state);
 
@@ -491,30 +507,100 @@ impl Renderer {
                 encoder.setDepthStencilState(Some(stencil_state));
                 encoder.setStencilReferenceValue(if polygon.force_mask_bit { 1 } else { 0 });
                 encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
+                encoder.setFragmentTexture_atIndex(self.vram_blend.as_deref(), 1);
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
             }
         }
-        self.has_semitransparent_polys = false;
     }
 
-    pub fn render_polygons(&mut self, gpu: &mut GPU) {
-        let polygons: Vec<Polygon> = if !self.has_semitransparent_polys {
-            gpu.polygons.drain(..).collect()
-        } else {
-            self.leftover_polygons.drain(..).collect()
-        };
-        for (index, polygon) in polygons.iter().enumerate() {
-            self.render_polygon(polygon);
-            if self.has_semitransparent_polys {
-                self.vram_writeback(Some(polygon), None);
+    fn get_overlap_region(
+        &self,
+        polygon: &Polygon,
+        dirty_region: Option<&Region>,
+    ) -> Option<Region> {
+        if let Some(dirty_region) = dirty_region {
+            let (x, y, width, height) = Self::get_texture_region(polygon);
 
-                self.leftover_polygons = polygons[index..].to_vec();
+            let dirty_x_end = dirty_region.x + dirty_region.width;
+            let dirty_y_end = dirty_region.y + dirty_region.height;
+            let tex_x_end = x + width;
+            let tex_y_end = y + height;
 
-                self.render_polygons(gpu);
+            let intersect_x_start = dirty_region.x.max(x);
+            let intersect_y_start = dirty_region.y.max(y);
+            let intersect_x_end = dirty_x_end.min(tex_x_end);
+            let intersect_y_end = dirty_y_end.min(tex_y_end);
 
-                break;
+            if intersect_x_start < intersect_x_end && intersect_y_start < intersect_y_end {
+                Some(Region {
+                    x: intersect_x_start,
+                    y: intersect_y_start,
+                    width: intersect_x_end - intersect_x_start,
+                    height: intersect_y_end - intersect_y_start,
+                })
+            } else {
+                None
             }
+        } else {
+            None
         }
+    }
+
+    fn get_texture_region(polygon: &Polygon) -> (u32, u32, u32, u32) {
+        if let Some(texpage) = polygon.texpage {
+            let x = texpage.x_base as u32 * 64;
+            let y = texpage.y_base1 as u32 * 16;
+
+            let width = match texpage.texture_page_colors {
+                TexturePageColors::Bit4 => 64,
+                TexturePageColors::Bit8 => 128,
+                TexturePageColors::Bit15 => 256,
+            };
+            (x, y, width, 256)
+        } else {
+            (0, 0, 0, 0)
+        }
+    }
+
+    fn update_blend_texture(&mut self, polygon: &Polygon) {
+        if let Some(encoder) = self.encoder.take() {
+            encoder.endEncoding();
+        }
+
+        let command_buffer = if let Some(command_buffer) = self.command_buffer.take() {
+            command_buffer
+        } else {
+            self.command_queue.commandBuffer().unwrap()
+        };
+
+        let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
+
+        let (x, y, width, height) = Self::get_drawing_area(polygon);
+        let origin = MTLOrigin { x, y, z: 0 };
+        let size = MTLSize {
+            width,
+            height,
+            depth: 1,
+        };
+
+        unsafe {
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_write.as_ref().unwrap(),
+                0,
+                0,
+                origin,
+                size,
+                self.vram_blend.as_ref().unwrap(),
+                0,
+                0,
+                origin
+            );
+        }
+
+        blit_encoder.endEncoding();
+        command_buffer.commit();
+
+        self.create_encoder();
     }
 
     fn create_encoder(&mut self) {
@@ -542,7 +628,7 @@ impl Renderer {
     }
 
     fn execute_vram_to_vram(&mut self, params: VramToVramTransferParams) {
-        let texture_descriptor = unsafe {
+        let rgba8_texture_descriptor = unsafe {
             MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 MTLPixelFormat::RGBA8Unorm,
                 params.width as usize,
@@ -551,16 +637,30 @@ impl Renderer {
             )
         };
 
-        texture_descriptor.setStorageMode(MTLStorageMode::Shared);
-        texture_descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+        let r16uint_texture_descriptor = unsafe {
+            MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+                MTLPixelFormat::R16Uint,
+                params.width as usize,
+                params.height as usize,
+                false,
+            )
+        };
 
-        let read_texture = self
+        rgba8_texture_descriptor.setStorageMode(MTLStorageMode::Shared);
+        rgba8_texture_descriptor
+            .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+
+        r16uint_texture_descriptor.setStorageMode(MTLStorageMode::Shared);
+        r16uint_texture_descriptor
+            .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+
+        let r16uint_texture = self
             .device
-            .newTextureWithDescriptor(&texture_descriptor)
+            .newTextureWithDescriptor(&r16uint_texture_descriptor)
             .unwrap();
-        let write_texture = self
+        let rgba8_texture = self
             .device
-            .newTextureWithDescriptor(&texture_descriptor)
+            .newTextureWithDescriptor(&rgba8_texture_descriptor)
             .unwrap();
 
         let command_buffer = self.command_queue.commandBuffer().unwrap();
@@ -591,14 +691,14 @@ impl Renderer {
                 0,
                 source_origin,
                 size,
-                write_texture.as_ref(),
+                &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                write_texture.as_ref(),
+                &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
@@ -610,19 +710,43 @@ impl Renderer {
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                self.vram_read.as_ref().unwrap(),
+                self.vram_blend.as_ref().unwrap(),
                 0,
                 0,
                 source_origin,
                 size,
-                read_texture.as_ref(),
+                &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                read_texture.as_ref(),
+                &rgba8_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+                size,
+                self.vram_blend.as_ref().unwrap(),
+                0,
+                0,
+                destination_origin,
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_read.as_ref().unwrap(),
+                0,
+                0,
+                source_origin,
+                size,
+                r16uint_texture.as_ref(),
+                0,
+                0,
+                MTLOrigin { x: 0, y: 0, z: 0 },
+            );
+
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                r16uint_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
@@ -678,6 +802,17 @@ impl Renderer {
         };
 
         if let Some(texture) = &self.vram_write {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                )
+            }
+        }
+
+        if let Some(texture) = &self.vram_blend {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
@@ -759,9 +894,21 @@ impl Renderer {
                 );
             }
         }
+
+        if let Some(texture) = &self.vram_blend {
+            unsafe {
+                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
+                    region,
+                    0,
+                    NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
+                    4 * params.width as usize,
+                );
+            }
+        }
     }
 
-    pub fn process_commands(&mut self, gpu: &mut GPU) {
+    fn process_commands(&mut self, gpu: &mut GPU) {
+        let mut blend_dirty = true;
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
@@ -775,6 +922,22 @@ impl Renderer {
                 }
                 GPUCommand::FillVRAM(params) => {
                     self.execute_fill_vram(params);
+                }
+                GPUCommand::RenderPolygon(polygon) => {
+                    if self.encoder.is_none() {
+                        self.create_encoder();
+                    }
+
+                    if polygon.semitransparent && blend_dirty {
+                        self.update_blend_texture(&polygon);
+                        blend_dirty = false;
+                    }
+
+                    self.render_polygon(&polygon);
+
+                    if !polygon.semitransparent {
+                        blend_dirty = true;
+                    }
                 }
             }
         }
@@ -842,13 +1005,6 @@ impl Renderer {
                 self.process_commands(gpu);
             }
 
-            if gpu.polygons.len() > 0 {
-                if self.encoder.is_none() {
-                    self.create_encoder();
-                }
-
-                self.render_polygons(gpu);
-            }
             if let Some(params) = &gpu.transfer_params.take() {
                 self.vram_writeback(None, Some(params));
 
@@ -860,10 +1016,11 @@ impl Renderer {
             }
         }
     }
+
     // TODO: this whole method is a mess. I need to fix this up quite a bit eventually to get it working right
     fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
         if let (Some(encoder), Some(command_buffer)) =
-            (&self.encoder.take(), &mut self.command_buffer.take())
+            (&self.encoder.take(), &self.command_buffer.take())
         {
             encoder.endEncoding();
 
@@ -1018,7 +1175,7 @@ impl Renderer {
         }
     }
 
-    pub fn get_vertices() -> [FbVertex; 4] {
+    fn get_vertices() -> [FbVertex; 4] {
         [
             FbVertex {
                 position: [-1.0, 1.0],
@@ -1112,13 +1269,13 @@ impl Renderer {
 
     fn create_texture(
         device: &Retained<ProtocolObject<dyn MTLDevice>>,
-        is_read: bool,
+        texture_type: TextureType,
     ) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
-        let pixel_format = if is_read {
-            MTLPixelFormat::R16Uint
-        } else {
-            MTLPixelFormat::RGBA8Unorm
+        let pixel_format = match texture_type {
+            TextureType::Read => MTLPixelFormat::R16Uint,
+            TextureType::Write | TextureType::Blend => MTLPixelFormat::RGBA8Unorm,
         };
+
         let descriptor = unsafe {
             MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
                 pixel_format,
@@ -1130,10 +1287,13 @@ impl Renderer {
 
         descriptor.setStorageMode(MTLStorageMode::Shared);
 
-        if is_read {
-            descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite)
-        } else {
-            descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
+        match texture_type {
+            TextureType::Write => {
+                descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget)
+            }
+            TextureType::Read | TextureType::Blend => {
+                descriptor.setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite)
+            }
         }
 
         let mtl_texture = device.newTextureWithDescriptor(&descriptor);

@@ -445,9 +445,7 @@ impl SPU {
             0x1f80_1e00..=0x1f801e5f => {
                 println!("[WARN]Writing to internal registers of SPU voices. should not happen.")
             }
-            _ => panic!(
-                "invalid address given to control spu control registers: 0x{address:x}"
-            ),
+            _ => panic!("invalid address given to control spu control registers: 0x{address:x}"),
         }
     }
 

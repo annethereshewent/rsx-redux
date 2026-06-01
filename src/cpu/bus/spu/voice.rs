@@ -608,8 +608,7 @@ impl Voice {
             * self.current_samples[sample_index - 2] as i32;
         out += GAUSSIAN_TABLE[0x100 + interpolation_index]
             * self.current_samples[sample_index - 1] as i32;
-        out +=
-            GAUSSIAN_TABLE[interpolation_index] * self.current_samples[sample_index] as i32;
+        out += GAUSSIAN_TABLE[interpolation_index] * self.current_samples[sample_index] as i32;
 
         out >> 15
     }
