@@ -151,8 +151,9 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
 
 // Fragment
 fragment float4 fragment_main(VertexOut in [[stage_in]],
+                              float4 currentColor [[color(0)]],
                               texture2d<ushort, access::read> vram [[texture(0)]],
-                              texture2d<float, access::read> vramBlend [[texture(1)]],
+                              texture2d<float, access::read> vramSample [[texture(1)]],
                               constant FragmentUniforms& uniforms [[buffer(1)]],
                               constant uint2& clut [[buffer(2)]]
 )
@@ -170,10 +171,10 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
                 texColor = getTexColor8bpp(in, vram, uniforms, clut);
                 break;
             case 2:
-                // Note: getTexColor16bpp uses the vram blend texture since
+                // Note: getTexColor16bpp uses the vram sample texture since
                 // it's the same format as vram_write, which makes it convenient
                 // to just sample from and fixes a lot of issues with games
-                texColor = getTexColor16bpp(in, vramBlend, uniforms);
+                texColor = getTexColor16bpp(in, vramSample, uniforms);
 
                 break;
         }
@@ -195,7 +196,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     }
 
     if (uniforms.semitransparent && (!uniforms.hasTexture || texAlpha == 1)) {
-        float4 old = vramBlend.read(uint2(in.orig));
+        float4 old = currentColor;
 
         switch (uniforms.transparentMode) {
             case 0:

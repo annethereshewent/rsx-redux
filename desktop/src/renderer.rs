@@ -96,7 +96,7 @@ pub struct Renderer {
     fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     compute_pipeline_state: Retained<ProtocolObject<dyn MTLComputePipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
-    vram_blend: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    vram_sample: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
     command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
@@ -265,7 +265,7 @@ impl Renderer {
 
         let vram_read = Self::create_texture(&device, TextureType::Read);
         let vram_write = Self::create_texture(&device, TextureType::Write);
-        let vram_blend = Self::create_texture(&device, TextureType::Blend);
+        let vram_sample = Self::create_texture(&device, TextureType::Blend);
 
         let rpd = MTLRenderPassDescriptor::new();
 
@@ -308,7 +308,7 @@ impl Renderer {
             command_queue,
             vram_read,
             vram_write,
-            vram_blend,
+            vram_sample,
             device,
             pipeline_state,
             fb_pipeline_state,
@@ -505,7 +505,7 @@ impl Renderer {
                 encoder.setDepthStencilState(Some(stencil_state));
                 encoder.setStencilReferenceValue(if polygon.force_mask_bit { 1 } else { 0 });
                 encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
-                encoder.setFragmentTexture_atIndex(self.vram_blend.as_deref(), 1);
+                encoder.setFragmentTexture_atIndex(self.vram_sample.as_deref(), 1);
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
             }
         }
@@ -560,47 +560,6 @@ impl Renderer {
         } else {
             (0, 0, 0, 0)
         }
-    }
-
-    fn update_blend_texture(&mut self, polygon: &Polygon) {
-        if let Some(encoder) = self.encoder.take() {
-            encoder.endEncoding();
-        }
-
-        let command_buffer = if let Some(command_buffer) = self.command_buffer.take() {
-            command_buffer
-        } else {
-            self.command_queue.commandBuffer().unwrap()
-        };
-
-        let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
-
-        let (x, y, width, height) = Self::get_drawing_area(polygon);
-        let origin = MTLOrigin { x, y, z: 0 };
-        let size = MTLSize {
-            width,
-            height,
-            depth: 1,
-        };
-
-        unsafe {
-            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                self.vram_write.as_ref().unwrap(),
-                0,
-                0,
-                origin,
-                size,
-                self.vram_blend.as_ref().unwrap(),
-                0,
-                0,
-                origin
-            );
-        }
-
-        blit_encoder.endEncoding();
-        command_buffer.commit();
-
-        self.create_encoder();
     }
 
     fn create_encoder(&mut self) {
@@ -710,30 +669,6 @@ impl Renderer {
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                self.vram_blend.as_ref().unwrap(),
-                0,
-                0,
-                source_origin,
-                size,
-                &rgba8_texture.as_ref(),
-                0,
-                0,
-                MTLOrigin { x: 0, y: 0, z: 0 },
-            );
-
-            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                &rgba8_texture.as_ref(),
-                0,
-                0,
-                MTLOrigin { x: 0, y: 0, z: 0 },
-                size,
-                self.vram_blend.as_ref().unwrap(),
-                0,
-                0,
-                destination_origin,
-            );
-
-            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 self.vram_read.as_ref().unwrap(),
                 0,
                 0,
@@ -802,17 +737,6 @@ impl Renderer {
         };
 
         if let Some(texture) = &self.vram_write {
-            unsafe {
-                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                    region,
-                    0,
-                    NonNull::new(rgba8_buffer.as_ptr() as *mut c_void).unwrap(),
-                    4 * params.width as usize,
-                )
-            }
-        }
-
-        if let Some(texture) = &self.vram_blend {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
@@ -894,21 +818,9 @@ impl Renderer {
                 );
             }
         }
-
-        if let Some(texture) = &self.vram_blend {
-            unsafe {
-                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                    region,
-                    0,
-                    NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
-                    4 * params.width as usize,
-                );
-            }
-        }
     }
 
     fn process_commands(&mut self, gpu: &mut GPU) {
-        let mut blend_dirty = true;
         let mut sample_dirty = true;
 
         for command in gpu.gpu_commands.drain(..) {
@@ -934,22 +846,14 @@ impl Renderer {
                         && polygon.texpage.map(|t| t.texture_page_colors)
                             == Some(TexturePageColors::Bit15);
 
-                    if polygon.semitransparent && blend_dirty {
-                        self.update_blend_texture(&polygon);
-                        blend_dirty = false;
-                    }
-
                     if is_16bpp && sample_dirty {
                         sample_dirty = false;
 
-                        self.update_blend_texture_for_sampling();
+                        self.update_texture_for_sampling();
                     }
 
                     self.render_polygon(&polygon);
 
-                    if !polygon.semitransparent {
-                        blend_dirty = true;
-                    }
                     if !is_16bpp {
                         sample_dirty = true;
                     }
@@ -992,7 +896,7 @@ impl Renderer {
         }
     }
 
-    fn update_blend_texture_for_sampling(&mut self) {
+    fn update_texture_for_sampling(&mut self) {
         if let Some(encoder) = self.encoder.take() {
             encoder.endEncoding();
         }
@@ -1012,7 +916,7 @@ impl Renderer {
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 self.vram_write.as_ref().unwrap(),
                 0, 0, origin, size,
-                self.vram_blend.as_ref().unwrap(),
+                self.vram_sample.as_ref().unwrap(),
                 0, 0, origin,
             );
         }
