@@ -13,6 +13,7 @@ struct FragmentUniforms {
     uint transparentMode;
     uint pass;
     uint2 page;
+    uint2 clut;
 };
 
 struct VertexIn {
@@ -78,14 +79,14 @@ float4 getTexColor16bpp(VertexOut in, texture2d<float, access::read> vram, Fragm
 
     float4 color = vram.read(uint2(offsetU, offsetV));
 
-    if (color.r == 0 && color.g == 0 && color.b == 0) {
+    if (color.r == 0 && color.g == 0 && color.b == 0 && color.a == 0) {
         discard_fragment();
     }
 
     return color;
 }
 
-float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms, uint2 clut) {
+float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
     uint u = uint(in.uv.x) & 0xffu;
     uint v = uint(in.uv.y) & 0xffu;
 
@@ -105,7 +106,7 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
         texelIndex = (texelIndex >> 4) & 0xf;
     }
 
-    ushort texel = vram.read(uint2(texelIndex + clut.x, clut.y)).r;
+    ushort texel = vram.read(uint2(texelIndex + uniforms.clut.x, uniforms.clut.y)).r;
 
     uint r = texel & 0x1f;
     uint g = (texel >> 5) & 0x1f;
@@ -120,7 +121,7 @@ float4 getTexColor4bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
     return float4(r, g, b, a) / 31.0;
 }
 
-float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms, uint2 clut) {
+float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, FragmentUniforms uniforms) {
     uint u = uint(in.uv.x) & 0xffu;
     uint v = uint(in.uv.y) & 0xffu;
 
@@ -134,7 +135,7 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
 
     uint texelIndex = (u & 1) == 0 ? halfWord & 0xff : halfWord >> 8;
 
-    ushort texel = vram.read(uint2(texelIndex + clut.x, clut.y)).r;
+    ushort texel = vram.read(uint2(texelIndex + uniforms.clut.x, uniforms.clut.y)).r;
 
     uint r = texel & 0x1f;
     uint g = (texel >> 5) & 0x1f;
@@ -151,10 +152,10 @@ float4 getTexColor8bpp(VertexOut in, texture2d<ushort, access::read> vram, Fragm
 
 // Fragment
 fragment float4 fragment_main(VertexOut in [[stage_in]],
+                              float4 currentColor [[color(0)]],
                               texture2d<ushort, access::read> vram [[texture(0)]],
-                              texture2d<float, access::read> vramBlend [[texture(1)]],
-                              constant FragmentUniforms& uniforms [[buffer(1)]],
-                              constant uint2& clut [[buffer(2)]]
+                              texture2d<float, access::read> vramSample [[texture(1)]],
+                              constant FragmentUniforms& uniforms [[buffer(1)]]
 )
 {
     float4 finalColor;
@@ -164,16 +165,17 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float4 texColor;
         switch (uniforms.depth) {
             case 0:
-                texColor = getTexColor4bpp(in, vram, uniforms, clut);
+                texColor = getTexColor4bpp(in, vram, uniforms);
                 break;
             case 1:
-                texColor = getTexColor8bpp(in, vram, uniforms, clut);
+                texColor = getTexColor8bpp(in, vram, uniforms);
                 break;
             case 2:
-                // Note: getTexColor16bpp uses the vram blend texture since
+                // Note: getTexColor16bpp uses the vram sample texture since
                 // it's the same format as vram_write, which makes it convenient
                 // to just sample from and fixes a lot of issues with games
-                texColor = getTexColor16bpp(in, vramBlend, uniforms);
+                texColor = getTexColor16bpp(in, vramSample, uniforms);
+
                 break;
         }
 
@@ -194,7 +196,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     }
 
     if (uniforms.semitransparent && (!uniforms.hasTexture || texAlpha == 1)) {
-        float4 old = vramBlend.read(uint2(in.orig));
+        float4 old = currentColor;
 
         switch (uniforms.transparentMode) {
             case 0:
@@ -212,7 +214,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         }
     }
 
-    finalColor[3] = 0.0;
+    finalColor[3] = 1.0;
 
     return finalColor;
 }

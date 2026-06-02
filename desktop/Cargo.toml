@@ -18,7 +18,7 @@ dirs-next = "2.0.0"
 zstd = "0.13"
 
 [features]
-default = ["software_gpu"]
+default = ["hardware_gpu"]
 software_gpu = ["rsx-redux/software_gpu"]
 hardware_gpu = ["rsx-redux/hardware_gpu"]
 debug = ["rsx-redux/debug"]

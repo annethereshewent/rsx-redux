@@ -22,6 +22,7 @@ use std::cmp;
 
 pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 
+#[derive(PartialEq)]
 enum TextureType {
     Read,
     Write,
@@ -51,6 +52,7 @@ struct FragmentUniform {
     transparent_mode: u32,
     pass: u32,
     page: [u32; 2],
+    clut: [u32; 2],
 }
 
 #[repr(C)]
@@ -96,7 +98,7 @@ pub struct Renderer {
     fb_pipeline_state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
     compute_pipeline_state: Retained<ProtocolObject<dyn MTLComputePipelineState>>,
     vram_read: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
-    vram_blend: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
+    vram_sample: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     vram_write: Option<Retained<ProtocolObject<dyn MTLTexture>>>,
     encoder: Option<Retained<ProtocolObject<dyn MTLRenderCommandEncoder>>>,
     command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
@@ -106,7 +108,6 @@ pub struct Renderer {
     check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
     both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    dirty_region: Option<Region>,
 }
 
 impl Renderer {
@@ -266,7 +267,7 @@ impl Renderer {
 
         let vram_read = Self::create_texture(&device, TextureType::Read);
         let vram_write = Self::create_texture(&device, TextureType::Write);
-        let vram_blend = Self::create_texture(&device, TextureType::Blend);
+        let vram_sample = Self::create_texture(&device, TextureType::Blend);
 
         let rpd = MTLRenderPassDescriptor::new();
 
@@ -309,7 +310,7 @@ impl Renderer {
             command_queue,
             vram_read,
             vram_write,
-            vram_blend,
+            vram_sample,
             device,
             pipeline_state,
             fb_pipeline_state,
@@ -322,7 +323,6 @@ impl Renderer {
             set_only,
             both,
             compute_pipeline_state,
-            dirty_region: None,
         }
     }
 
@@ -403,6 +403,7 @@ impl Renderer {
             transparent_mode: polygon.transparent_mode,
             pass: 1,
             page: [0; 2],
+            clut: [polygon.clut.0, polygon.clut.1],
         };
 
         let v = &polygon.vertices;
@@ -479,12 +480,6 @@ impl Renderer {
                     size_of::<FragmentUniform>(),
                     1,
                 );
-                encoder.setFragmentBytes_length_atIndex(
-                    NonNull::new(&mut [polygon.clut.0, polygon.clut.1] as *mut _ as *mut c_void)
-                        .unwrap(),
-                    size_of::<[u32; 2]>(),
-                    2,
-                );
             };
             unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
 
@@ -507,12 +502,13 @@ impl Renderer {
                 encoder.setDepthStencilState(Some(stencil_state));
                 encoder.setStencilReferenceValue(if polygon.force_mask_bit { 1 } else { 0 });
                 encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
-                encoder.setFragmentTexture_atIndex(self.vram_blend.as_deref(), 1);
+                encoder.setFragmentTexture_atIndex(self.vram_sample.as_deref(), 1);
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
             }
         }
     }
 
+    #[allow(dead_code)]
     fn get_overlap_region(
         &self,
         polygon: &Polygon,
@@ -546,6 +542,7 @@ impl Renderer {
         }
     }
 
+    #[allow(dead_code)]
     fn get_texture_region(polygon: &Polygon) -> (u32, u32, u32, u32) {
         if let Some(texpage) = polygon.texpage {
             let x = texpage.x_base as u32 * 64;
@@ -560,47 +557,6 @@ impl Renderer {
         } else {
             (0, 0, 0, 0)
         }
-    }
-
-    fn update_blend_texture(&mut self, polygon: &Polygon) {
-        if let Some(encoder) = self.encoder.take() {
-            encoder.endEncoding();
-        }
-
-        let command_buffer = if let Some(command_buffer) = self.command_buffer.take() {
-            command_buffer
-        } else {
-            self.command_queue.commandBuffer().unwrap()
-        };
-
-        let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
-
-        let (x, y, width, height) = Self::get_drawing_area(polygon);
-        let origin = MTLOrigin { x, y, z: 0 };
-        let size = MTLSize {
-            width,
-            height,
-            depth: 1,
-        };
-
-        unsafe {
-            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                self.vram_write.as_ref().unwrap(),
-                0,
-                0,
-                origin,
-                size,
-                self.vram_blend.as_ref().unwrap(),
-                0,
-                0,
-                origin
-            );
-        }
-
-        blit_encoder.endEncoding();
-        command_buffer.commit();
-
-        self.create_encoder();
     }
 
     fn create_encoder(&mut self) {
@@ -654,13 +610,14 @@ impl Renderer {
         r16uint_texture_descriptor
             .setUsage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
 
-        let r16uint_texture = self
-            .device
-            .newTextureWithDescriptor(&r16uint_texture_descriptor)
-            .unwrap();
         let rgba8_texture = self
             .device
             .newTextureWithDescriptor(&rgba8_texture_descriptor)
+            .unwrap();
+
+        let r16uint_texture = self
+            .device
+            .newTextureWithDescriptor(&r16uint_texture_descriptor)
             .unwrap();
 
         let command_buffer = self.command_queue.commandBuffer().unwrap();
@@ -710,24 +667,12 @@ impl Renderer {
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                self.vram_blend.as_ref().unwrap(),
-                0,
-                0,
-                source_origin,
-                size,
-                &rgba8_texture.as_ref(),
-                0,
-                0,
-                MTLOrigin { x: 0, y: 0, z: 0 },
-            );
-
-            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 &rgba8_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
                 size,
-                self.vram_blend.as_ref().unwrap(),
+                self.vram_sample.as_ref().unwrap(),
                 0,
                 0,
                 destination_origin,
@@ -739,14 +684,14 @@ impl Renderer {
                 0,
                 source_origin,
                 size,
-                r16uint_texture.as_ref(),
+                &r16uint_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                r16uint_texture.as_ref(),
+                &r16uint_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
@@ -760,6 +705,7 @@ impl Renderer {
 
         blit_encoder.endEncoding();
         command_buffer.commit();
+        command_buffer.waitUntilCompleted();
     }
 
     fn execute_cpu_to_vram(&mut self, params: VRamTransferParams) {
@@ -812,7 +758,7 @@ impl Renderer {
             }
         }
 
-        if let Some(texture) = &self.vram_blend {
+        if let Some(texture) = &self.vram_sample {
             unsafe {
                 texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
                     region,
@@ -894,28 +840,22 @@ impl Renderer {
                 );
             }
         }
-
-        if let Some(texture) = &self.vram_blend {
-            unsafe {
-                texture.replaceRegion_mipmapLevel_withBytes_bytesPerRow(
-                    region,
-                    0,
-                    NonNull::new(rgba8_bytes.as_ptr() as *mut c_void).unwrap(),
-                    4 * params.width as usize,
-                );
-            }
-        }
     }
 
     fn process_commands(&mut self, gpu: &mut GPU) {
-        let mut blend_dirty = true;
+        let mut sample_dirty = true;
+
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
                     self.execute_cpu_to_vram(params);
                 }
                 GPUCommand::VRAMtoCPU(params) => {
-                    gpu.transfer_params = Some(params);
+                    let halfwords = self.handle_cpu_transfer(&params);
+
+                    for halfword in halfwords {
+                        gpu.gpuread_fifo.push_back(halfword);
+                    }
                 }
                 GPUCommand::VramToVram(params) => {
                     self.execute_vram_to_vram(params);
@@ -924,32 +864,145 @@ impl Renderer {
                     self.execute_fill_vram(params);
                 }
                 GPUCommand::RenderPolygon(polygon) => {
+                    let is_16bpp = polygon.textured
+                        && polygon.texpage.map(|texpage| texpage.texture_page_colors)
+                            == Some(TexturePageColors::Bit15);
+
                     if self.encoder.is_none() {
                         self.create_encoder();
                     }
 
-                    if polygon.semitransparent && blend_dirty {
-                        self.update_blend_texture(&polygon);
-                        blend_dirty = false;
+                    if is_16bpp && sample_dirty {
+                        sample_dirty = false;
+
+                        self.update_texture_for_sampling();
                     }
 
                     self.render_polygon(&polygon);
 
-                    if !polygon.semitransparent {
-                        blend_dirty = true;
+                    if !is_16bpp {
+                        sample_dirty = true;
                     }
                 }
             }
         }
     }
 
+    // used to dump textures to a ppm file. currently unused, only for debugging
+    #[allow(dead_code)]
+    fn dump_texture_to_ppm(
+        &self,
+        texture: &ProtocolObject<dyn MTLTexture>,
+        width: usize,
+        height: usize,
+        path: &str,
+        texture_type: TextureType
+    ) {
+        let mut data = if texture_type == TextureType::Read {
+            vec![0u8; width * height * 2]
+        } else {
+            vec![0u8; width * height * 4]
+        };
+
+        let region = MTLRegion {
+            origin: MTLOrigin { x: 0, y: 0, z: 0 },
+            size: MTLSize {
+                width,
+                height,
+                depth: 1,
+            },
+        };
+
+        let bytes_per_row = if texture_type == TextureType::Read {
+            width * 2
+        } else {
+            width * 4
+        };
+
+        unsafe {
+            texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
+                bytes_per_row,
+                region,
+                0,
+            );
+        }
+
+        let output = if texture_type == TextureType::Read {
+            let mut output = Vec::new();
+
+            for i in (0..data.len()).step_by(2) {
+                let halfword = data[i] as u16 | (data[i + 1] as u16) << 8;
+
+                let mut r = halfword & 0x1f;
+                let mut g = (halfword >> 5) & 0x1f;
+                let mut b = (halfword >> 10) & 0x1f;
+                let a = halfword >> 15;
+
+                r = r << 3 | r >> 2;
+                g = g << 3 | g >> 2;
+                b = b << 3 | b >> 2;
+
+                output.push(r as u8);
+                output.push(g as u8);
+                output.push(b as u8);
+                output.push(a as u8);
+            }
+
+            output
+        } else {
+            data
+        };
+
+        let mut file = std::fs::File::create(path).unwrap();
+        use std::io::Write;
+        write!(file, "P6\n{} {}\n255\n", width, height).unwrap();
+
+        for i in 0..width * height {
+            file.write_all(&[output[i * 4], output[i * 4 + 1], output[i * 4 + 2]])
+                .unwrap();
+        }
+    }
+
+    fn update_texture_for_sampling(&mut self) {
+        if let Some(encoder) = self.encoder.take() {
+            encoder.endEncoding();
+        }
+
+        let command_buffer = self.command_buffer.as_ref().unwrap();
+
+        let blit_encoder = command_buffer.blitCommandEncoder().unwrap();
+
+        let origin = MTLOrigin { x: 0, y: 0, z: 0 };
+        let size = MTLSize {
+            width: VRAM_WIDTH,
+            height: VRAM_HEIGHT,
+            depth: 1,
+        };
+
+        unsafe {
+            blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                self.vram_write.as_ref().unwrap(),
+                0, 0, origin, size,
+                self.vram_sample.as_ref().unwrap(),
+                0, 0, origin,
+            );
+        }
+
+        blit_encoder.endEncoding();
+        command_buffer.commit();
+        command_buffer.waitUntilCompleted();
+
+        self.create_encoder();
+    }
+
     pub fn handle_cpu_transfer(&mut self, params: &CPUTransferParams) -> Vec<u16> {
         let mut halfwords = Vec::new();
 
-        let row_bytes = params.width * 2;
+        let row_bytes = params.width * 4;
 
-        if let Some(texture) = &self.vram_read {
-            let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 2];
+        if let Some(texture) = &self.vram_write {
+            let mut bytes: Vec<u8> = vec![0xff; params.width as usize * params.height as usize * 4];
             unsafe {
                 texture.getBytes_bytesPerRow_fromRegion_mipmapLevel(
                     NonNull::new(bytes.as_mut_ptr() as *mut c_void).unwrap(),
@@ -970,8 +1023,12 @@ impl Renderer {
                 );
             }
 
-            for i in (0..bytes.len()).step_by(2) {
-                let halfword = bytes[i] as u16 | (bytes[i + 1] as u16) << 8;
+            for i in (0..bytes.len()).step_by(4) {
+                let r = bytes[i] >> 3;
+                let g = bytes[i + 1] >> 3;
+                let b = bytes[i + 2] >> 3;
+
+                let halfword = r as u16 | (g as u16) << 5 | (b as u16) << 10;
 
                 halfwords.push(halfword);
             }
@@ -1004,20 +1061,11 @@ impl Renderer {
             if !gpu.gpu_commands.is_empty() {
                 self.process_commands(gpu);
             }
-
-            if let Some(params) = &gpu.transfer_params.take() {
-                self.vram_writeback(None, Some(params));
-
-                let halfwords = self.handle_cpu_transfer(params);
-
-                for halfword in halfwords {
-                    gpu.gpuread_fifo.push_back(halfword);
-                }
-            }
         }
     }
 
     // TODO: this whole method is a mess. I need to fix this up quite a bit eventually to get it working right
+    #[allow(dead_code)]
     fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
         if let (Some(encoder), Some(command_buffer)) =
             (&self.encoder.take(), &self.command_buffer.take())
@@ -1076,6 +1124,7 @@ impl Renderer {
             }
 
             command_buffer.commit();
+            command_buffer.waitUntilCompleted();
         }
     }
 
