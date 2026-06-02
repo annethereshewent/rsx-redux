@@ -719,7 +719,7 @@ impl Renderer {
                 let mut r = halfword & 0x1f;
                 let mut g = (halfword >> 5) & 0x1f;
                 let mut b = (halfword >> 10) & 0x1f;
-                let a = 0;
+                let a = (halfword >> 15) & 1 * 0xff;
 
                 r = r << 3 | r >> 2;
                 g = g << 3 | g >> 2;
@@ -1027,8 +1027,9 @@ impl Renderer {
                 let r = bytes[i] >> 3;
                 let g = bytes[i + 1] >> 3;
                 let b = bytes[i + 2] >> 3;
+                let a = (bytes[i + 3] != 0) as u16;
 
-                let halfword = r as u16 | (g as u16) << 5 | (b as u16) << 10;
+                let halfword = r as u16 | (g as u16) << 5 | (b as u16) << 10 | a << 15;
 
                 halfwords.push(halfword);
             }
