@@ -684,14 +684,14 @@ impl Renderer {
                 0,
                 source_origin,
                 size,
-                &r16uint_texture.as_ref(),
+                r16uint_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
             );
 
             blit_encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
-                &r16uint_texture.as_ref(),
+                r16uint_texture.as_ref(),
                 0,
                 0,
                 MTLOrigin { x: 0, y: 0, z: 0 },
