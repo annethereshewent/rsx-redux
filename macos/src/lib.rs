@@ -32,6 +32,12 @@ mod ffi {
 
         #[swift_bridge(swift_name = "toggleDigitalMode")]
         fn toggle_digital_mode(&mut self);
+
+        #[swift_bridge(swift_name = "setLeftThumbstick")]
+        fn set_left_thumbstick(&mut self, normalized_x: u8, normalized_y: u8);
+
+        #[swift_bridge(swift_name = "setRightThumbstick")]
+        fn set_right_thumbstick(&mut self, normalized_x: u8, normalized_y: u8);
     }
 }
 
@@ -98,5 +104,15 @@ impl PsxMacEmulator {
     pub fn toggle_digital_mode(&mut self) {
         let digital_mode = &mut self.cpu.bus.peripherals.controller.digital_mode;
         *digital_mode = !*digital_mode;
+    }
+
+    pub fn set_left_thumbstick(&mut self, normalized_x: u8, normalized_y: u8) {
+        self.cpu.bus.peripherals.controller.set_leftx(normalized_x);
+        self.cpu.bus.peripherals.controller.set_lefty(normalized_y);
+    }
+
+    pub fn set_right_thumbstick(&mut self, normalized_x: u8, normalized_y: u8) {
+        self.cpu.bus.peripherals.controller.set_rightx(normalized_x);
+        self.cpu.bus.peripherals.controller.set_righty(normalized_y);
     }
 }
