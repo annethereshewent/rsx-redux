@@ -113,16 +113,29 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(metal_layer: Retained<CAMetalLayer>) -> Self {
         let device = MTLCreateSystemDefaultDevice().unwrap();
-
+        #[cfg(not(feature = "bundle_shaders"))]
         let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
+        #[cfg(not(feature = "bundle_shaders"))]
         let fb_source = NSString::from_str(&fs::read_to_string("shaders/ShadersFb.metal").unwrap());
 
-        let library = device
-            .newLibraryWithSource_options_error(source.deref(), None)
-            .unwrap();
-        let fb_library = device
-            .newLibraryWithSource_options_error(fb_source.deref(), None)
-            .unwrap();
+        #[cfg(not(feature = "bundle_shaders"))]
+        let (library, fb_library) = {
+            (
+                device
+                    .newLibraryWithSource_options_error(source.deref(), None)
+                    .unwrap(),
+                device
+                    .newLibraryWithSource_options_error(fb_source.deref(), None)
+                    .unwrap()
+            )
+        };
+
+        #[cfg(feature = "bundle_shaders")]
+        let (library, fb_library) = {
+            let library = device.newDefaultLibrary().unwrap();
+
+            (library.clone(), library)
+        };
 
         let vertex_str = NSString::from_str("vertex_main");
         let fragment_str = NSString::from_str("fragment_main");

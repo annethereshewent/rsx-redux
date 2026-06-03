@@ -14,3 +14,4 @@ objc2-foundation = "0.3.1"
 [features]
 default = ["hardware_gpu"]
 hardware_gpu = ["rsx-redux/hardware_gpu"]
+bundle_shaders = []
