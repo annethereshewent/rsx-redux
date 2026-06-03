@@ -26,6 +26,12 @@ mod ffi {
 
         #[swift_bridge(swift_name = "loadBios")]
         fn load_bios(&mut self, bios_path: &str);
+
+        #[swift_bridge(swift_name = "updateInput")]
+        fn update_input(&mut self, button: usize, pressed: bool);
+
+        #[swift_bridge(swift_name = "toggleDigitalMode")]
+        fn toggle_digital_mode(&mut self);
     }
 }
 
@@ -83,5 +89,14 @@ impl PsxMacEmulator {
 
     pub fn drain_samples(&mut self) -> Vec<i16> {
         self.cpu.bus.spu.audio_buffer.drain(..).collect()
+    }
+
+    pub fn update_input(&mut self, button: usize, pressed: bool) {
+        self.cpu.bus.peripherals.controller.update_input(button, pressed);
+    }
+
+    pub fn toggle_digital_mode(&mut self) {
+        let digital_mode = &mut self.cpu.bus.peripherals.controller.digital_mode;
+        *digital_mode = !*digital_mode;
     }
 }
