@@ -1057,8 +1057,8 @@ impl Renderer {
         MTLScissorRect {
             x,
             y,
-            width,
-            height,
+            width: width.min(VRAM_WIDTH),
+            height: height.min(VRAM_HEIGHT),
         }
     }
 

@@ -1,4 +1,4 @@
-use std::{ffi::c_void, fs::File};
+use std::{ffi::c_void, fs::{self, File}};
 
 use memmap2::Mmap;
 use objc2::rc::Retained;
@@ -23,6 +23,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "drainSamples")]
         fn drain_samples(&mut self) -> Vec<i16>;
+
+        #[swift_bridge(swift_name = "loadBios")]
+        fn load_bios(&mut self, bios_path: &str);
     }
 }
 
@@ -44,6 +47,11 @@ impl PsxMacEmulator {
             #[cfg(feature = "hardware_gpu")]
             renderer: Renderer::new(metal_layer),
         }
+    }
+
+    pub fn load_bios(&mut self, bios_path: &str) {
+        let bios_bytes = fs::read(bios_path).unwrap();
+        self.cpu.bus.load_bios(bios_bytes);
     }
 
     pub fn load_rom(&mut self, game_path: &str) {
