@@ -896,7 +896,7 @@ impl Renderer {
         width: usize,
         height: usize,
         path: &str,
-        texture_type: TextureType
+        texture_type: TextureType,
     ) {
         let mut data = if texture_type == TextureType::Read {
             vec![0u8; width * height * 2]

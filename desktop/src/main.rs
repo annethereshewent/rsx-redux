@@ -11,8 +11,6 @@ use objc2_core_foundation::CGSize;
 use rsx_redux::cpu::CPU;
 
 pub mod frontend;
-#[cfg(feature = "hardware_gpu")]
-pub mod renderer;
 
 // TODO: fix using unsafe for type coersion (ie reading a u16 from a byte array) to use std::ptr::read_unaligned
 

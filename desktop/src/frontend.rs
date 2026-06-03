@@ -4,6 +4,8 @@ use memmap2::{Mmap, MmapMut};
 use objc2::rc::Retained;
 #[cfg(feature = "hardware_gpu")]
 use objc2_quartz_core::CAMetalLayer;
+#[cfg(feature = "hardware_gpu")]
+use renderer_metal::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
@@ -23,9 +25,6 @@ use std::fs::{self, File, OpenOptions};
 use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-
-#[cfg(feature = "hardware_gpu")]
-use crate::renderer::Renderer;
 
 pub struct PsxAudioCallback {
     pub audio_buffer: VecDeque<i16>,
