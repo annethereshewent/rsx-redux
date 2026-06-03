@@ -1,6 +1,6 @@
-use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 #[cfg(not(feature = "bundle_shaders"))]
 use std::fs;
+use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
@@ -128,7 +128,7 @@ impl Renderer {
                     .unwrap(),
                 device
                     .newLibraryWithSource_options_error(fb_source.deref(), None)
-                    .unwrap()
+                    .unwrap(),
             )
         };
 

@@ -1,11 +1,14 @@
-use std::{ffi::c_void, fs::{self, File}};
+use std::{
+    ffi::c_void,
+    fs::{self, File, OpenOptions},
+};
 
-use memmap2::Mmap;
+use memmap2::{Mmap, MmapMut};
 use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 #[cfg(feature = "hardware_gpu")]
 use renderer_metal::renderer::Renderer;
-use rsx_redux::cpu::CPU;
+use rsx_redux::cpu::{bus::peripherals::memory_card::MEMORY_SIZE, CPU};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -38,6 +41,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "setRightThumbstick")]
         fn set_right_thumbstick(&mut self, normalized_x: u8, normalized_y: u8);
+
+        #[swift_bridge(swift_name = "setMemoryCard")]
+        fn set_memory_card(&mut self, memory_path: &str);
     }
 }
 
@@ -98,7 +104,11 @@ impl PsxMacEmulator {
     }
 
     pub fn update_input(&mut self, button: usize, pressed: bool) {
-        self.cpu.bus.peripherals.controller.update_input(button, pressed);
+        self.cpu
+            .bus
+            .peripherals
+            .controller
+            .update_input(button, pressed);
     }
 
     pub fn toggle_digital_mode(&mut self) {
@@ -114,5 +124,23 @@ impl PsxMacEmulator {
     pub fn set_right_thumbstick(&mut self, normalized_x: u8, normalized_y: u8) {
         self.cpu.bus.peripherals.controller.set_rightx(normalized_x);
         self.cpu.bus.peripherals.controller.set_righty(normalized_y);
+    }
+
+    pub fn set_memory_card(&mut self, memory_path: &str) {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(memory_path)
+            .unwrap();
+
+        file.set_len(MEMORY_SIZE as u64).unwrap();
+
+        let memory_card = unsafe { Some(MmapMut::map_mut(&file).unwrap()) };
+        self.cpu
+            .bus
+            .peripherals
+            .memory_card
+            .set_memory_file(memory_card);
     }
 }
