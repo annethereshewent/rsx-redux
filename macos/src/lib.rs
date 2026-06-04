@@ -44,6 +44,13 @@ mod ffi {
 
         #[swift_bridge(swift_name = "setMemoryCard")]
         fn set_memory_card(&mut self, memory_path: &str);
+
+        #[swift_bridge(swift_name = "saveQuickState")]
+        fn save_quick_state(&mut self) -> Vec<u8>;
+
+        #[swift_bridge(swift_name = "loadQuickState")]
+        fn load_quick_state(&mut self, data: &[u8]);
+
     }
 }
 
@@ -51,6 +58,7 @@ pub struct PsxMacEmulator {
     cpu: CPU,
     #[cfg(feature = "hardware_gpu")]
     renderer: Renderer,
+    memory_path: String,
 }
 
 impl PsxMacEmulator {
@@ -64,6 +72,7 @@ impl PsxMacEmulator {
             cpu: CPU::new(None, "".to_string()),
             #[cfg(feature = "hardware_gpu")]
             renderer: Renderer::new(metal_layer),
+            memory_path: "".to_string(),
         }
     }
 
@@ -127,6 +136,17 @@ impl PsxMacEmulator {
     }
 
     pub fn set_memory_card(&mut self, memory_path: &str) {
+        self.memory_path = memory_path.to_string();
+
+        let memory_card = Some(Self::get_memory_mmap(memory_path));
+        self.cpu
+            .bus
+            .peripherals
+            .memory_card
+            .set_memory_file(memory_card);
+    }
+
+    fn get_memory_mmap(memory_path: &str) -> MmapMut {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -136,11 +156,47 @@ impl PsxMacEmulator {
 
         file.set_len(MEMORY_SIZE as u64).unwrap();
 
-        let memory_card = unsafe { Some(MmapMut::map_mut(&file).unwrap()) };
-        self.cpu
-            .bus
-            .peripherals
-            .memory_card
-            .set_memory_file(memory_card);
+        unsafe { MmapMut::map_mut(&file).unwrap() }
+    }
+
+    pub fn load_quick_state(&mut self, data: &[u8]) {
+        if let Ok(bytes) = zstd::decode_all(&*data) {
+            self.cpu.load_save_state(&bytes);
+
+            let game_file = File::open(&self.cpu.game_path).unwrap();
+
+            let game_data = unsafe { Mmap::map(&game_file).unwrap() };
+
+            self.cpu.bus.cdrom.load_game_desktop(game_data);
+
+            self.cpu.reload_instructions();
+
+            self.cpu.bus.scheduler.deserialize_scheduler();
+
+            self.cpu
+                .bus
+                .peripherals
+                .memory_card
+                .set_memory_file(Some(Self::get_memory_mmap(&self.memory_path)));
+
+            self.renderer.set_vram_textures(
+                &self.cpu.bus.gpu.vram_read_tex,
+                &self.cpu.bus.gpu.vram_write_tex,
+            );
+        }
+    }
+
+    pub fn save_quick_state(&mut self) -> Vec<u8> {
+        self.cpu.bus.scheduler.serialize_scheduler();
+        let (vram_read, vram_write) = self.renderer.get_vram_textures();
+
+        self.cpu.bus.gpu.vram_read_tex = vram_read.into_boxed_slice();
+        self.cpu.bus.gpu.vram_write_tex = vram_write.into_boxed_slice();
+
+        let (data, _) = self.cpu.create_save_state();
+
+        let compressed = zstd::encode_all(&*data, 9).unwrap_or_default();
+
+        compressed
     }
 }

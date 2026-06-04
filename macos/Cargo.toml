@@ -16,6 +16,7 @@ objc2-quartz-core = { version = "0.3.1", features = ["CAMetalLayer"] }
 objc2 = "0.6.1"
 rsx-redux = { path = "..", default-features = false }
 renderer-metal = { path = "../renderer-metal", default-features = true, features = ["bundle_shaders"] }
+zstd = "0.13"
 
 [features]
 default = ["hardware_gpu"]
