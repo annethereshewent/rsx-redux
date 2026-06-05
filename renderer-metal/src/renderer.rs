@@ -913,7 +913,11 @@ impl Renderer {
         let bytes_per_row = width * 4;
 
         let region = MTLRegion {
-            origin: MTLOrigin { x: start_x as usize, y: start_y as usize, z: 0 },
+            origin: MTLOrigin {
+                x: start_x as usize,
+                y: start_y as usize,
+                z: 0,
+            },
             size: MTLSize {
                 width: width as usize,
                 height: height as usize,
@@ -922,12 +926,15 @@ impl Renderer {
         };
 
         unsafe {
-            self.vram_write.as_ref().unwrap().getBytes_bytesPerRow_fromRegion_mipmapLevel(
-                NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
-                bytes_per_row as usize,
-                region,
-                0,
-            );
+            self.vram_write
+                .as_ref()
+                .unwrap()
+                .getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
+                    bytes_per_row as usize,
+                    region,
+                    0,
+                );
         }
 
         data

@@ -206,7 +206,9 @@ impl PsxMacEmulator {
     }
 
     pub fn get_screenshot(&self) -> Vec<u8> {
-        let data = self.renderer.get_current_screenshot_bytes(&self.cpu.bus.gpu);
+        let data = self
+            .renderer
+            .get_current_screenshot_bytes(&self.cpu.bus.gpu);
 
         data
     }
