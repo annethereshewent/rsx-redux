@@ -45,12 +45,17 @@ mod ffi {
         #[swift_bridge(swift_name = "setMemoryCard")]
         fn set_memory_card(&mut self, memory_path: &str);
 
-        #[swift_bridge(swift_name = "saveQuickState")]
-        fn save_quick_state(&mut self) -> Vec<u8>;
+        #[swift_bridge(swift_name = "saveState")]
+        fn save_state(&mut self) -> Vec<u8>;
 
-        #[swift_bridge(swift_name = "loadQuickState")]
-        fn load_quick_state(&mut self, data: &[u8]);
+        #[swift_bridge(swift_name = "loadState")]
+        fn load_state(&mut self, data: &[u8]);
 
+        #[swift_bridge(swift_name = "getScreenshot")]
+        fn get_screenshot(&self) -> Vec<u8>;
+
+        #[swift_bridge(swift_name = "getDimensions")]
+        fn get_dimensions(&self) -> (u32, u32);
     }
 }
 
@@ -159,7 +164,7 @@ impl PsxMacEmulator {
         unsafe { MmapMut::map_mut(&file).unwrap() }
     }
 
-    pub fn load_quick_state(&mut self, data: &[u8]) {
+    pub fn load_state(&mut self, data: &[u8]) {
         if let Ok(bytes) = zstd::decode_all(&*data) {
             self.cpu.load_save_state(&bytes);
 
@@ -186,7 +191,7 @@ impl PsxMacEmulator {
         }
     }
 
-    pub fn save_quick_state(&mut self) -> Vec<u8> {
+    pub fn save_state(&mut self) -> Vec<u8> {
         self.cpu.bus.scheduler.serialize_scheduler();
         let (vram_read, vram_write) = self.renderer.get_vram_textures();
 
@@ -198,5 +203,15 @@ impl PsxMacEmulator {
         let compressed = zstd::encode_all(&*data, 9).unwrap_or_default();
 
         compressed
+    }
+
+    pub fn get_screenshot(&self) -> Vec<u8> {
+        let data = self.renderer.get_current_screenshot_bytes(&self.cpu.bus.gpu);
+
+        data
+    }
+
+    pub fn get_dimensions(&self) -> (u32, u32) {
+        self.cpu.bus.gpu.get_dimensions()
     }
 }

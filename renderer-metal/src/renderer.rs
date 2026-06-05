@@ -903,6 +903,36 @@ impl Renderer {
         }
     }
 
+    pub fn get_current_screenshot_bytes(&self, gpu: &GPU) -> Vec<u8> {
+        let (width, height) = gpu.get_dimensions();
+        let start_x = gpu.display_start_x;
+        let start_y = gpu.display_start_y;
+
+        let mut data = vec![0u8; width as usize * height as usize * 4];
+
+        let bytes_per_row = width * 4;
+
+        let region = MTLRegion {
+            origin: MTLOrigin { x: start_x as usize, y: start_y as usize, z: 0 },
+            size: MTLSize {
+                width: width as usize,
+                height: height as usize,
+                depth: 1,
+            },
+        };
+
+        unsafe {
+            self.vram_write.as_ref().unwrap().getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
+                bytes_per_row as usize,
+                region,
+                0,
+            );
+        }
+
+        data
+    }
+
     // used to dump textures to a ppm file. currently unused, only for debugging
     #[allow(dead_code)]
     fn dump_texture_to_ppm(
