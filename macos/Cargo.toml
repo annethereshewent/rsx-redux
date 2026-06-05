@@ -1,0 +1,24 @@
+[package]
+name = "rsx-redux-macos"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[build-dependencies]
+swift-bridge-build = "0.1"
+
+[dependencies]
+swift-bridge = "0.1"
+memmap2 = "0.9.7"
+objc2-quartz-core = { version = "0.3.1", features = ["CAMetalLayer"] }
+objc2 = "0.6.1"
+rsx-redux = { path = "..", default-features = false }
+renderer-metal = { path = "../renderer-metal", default-features = true, features = ["bundle_shaders"] }
+zstd = "0.13"
+
+[features]
+default = ["hardware_gpu"]
+hardware_gpu = []
+software_gpu = []

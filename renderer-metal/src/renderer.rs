@@ -1,4 +1,6 @@
-use std::{ffi::c_void, fs, ops::Deref, ptr::NonNull};
+#[cfg(not(feature = "bundle_shaders"))]
+use std::fs;
+use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};
 use objc2_core_foundation::CGSize;
@@ -113,16 +115,29 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(metal_layer: Retained<CAMetalLayer>) -> Self {
         let device = MTLCreateSystemDefaultDevice().unwrap();
-
+        #[cfg(not(feature = "bundle_shaders"))]
         let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
+        #[cfg(not(feature = "bundle_shaders"))]
         let fb_source = NSString::from_str(&fs::read_to_string("shaders/ShadersFb.metal").unwrap());
 
-        let library = device
-            .newLibraryWithSource_options_error(source.deref(), None)
-            .unwrap();
-        let fb_library = device
-            .newLibraryWithSource_options_error(fb_source.deref(), None)
-            .unwrap();
+        #[cfg(not(feature = "bundle_shaders"))]
+        let (library, fb_library) = {
+            (
+                device
+                    .newLibraryWithSource_options_error(source.deref(), None)
+                    .unwrap(),
+                device
+                    .newLibraryWithSource_options_error(fb_source.deref(), None)
+                    .unwrap(),
+            )
+        };
+
+        #[cfg(feature = "bundle_shaders")]
+        let (library, fb_library) = {
+            let library = device.newDefaultLibrary().unwrap();
+
+            (library.clone(), library)
+        };
 
         let vertex_str = NSString::from_str("vertex_main");
         let fragment_str = NSString::from_str("fragment_main");
@@ -888,6 +903,43 @@ impl Renderer {
         }
     }
 
+    pub fn get_current_screenshot_bytes(&self, gpu: &GPU) -> Vec<u8> {
+        let (width, height) = gpu.get_dimensions();
+        let start_x = gpu.display_start_x;
+        let start_y = gpu.display_start_y;
+
+        let mut data = vec![0u8; width as usize * height as usize * 4];
+
+        let bytes_per_row = width * 4;
+
+        let region = MTLRegion {
+            origin: MTLOrigin {
+                x: start_x as usize,
+                y: start_y as usize,
+                z: 0,
+            },
+            size: MTLSize {
+                width: width as usize,
+                height: height as usize,
+                depth: 1,
+            },
+        };
+
+        unsafe {
+            self.vram_write
+                .as_ref()
+                .unwrap()
+                .getBytes_bytesPerRow_fromRegion_mipmapLevel(
+                    NonNull::new(data.as_mut_ptr() as *mut c_void).unwrap(),
+                    bytes_per_row as usize,
+                    region,
+                    0,
+                );
+        }
+
+        data
+    }
+
     // used to dump textures to a ppm file. currently unused, only for debugging
     #[allow(dead_code)]
     fn dump_texture_to_ppm(
@@ -896,7 +948,7 @@ impl Renderer {
         width: usize,
         height: usize,
         path: &str,
-        texture_type: TextureType
+        texture_type: TextureType,
     ) {
         let mut data = if texture_type == TextureType::Read {
             vec![0u8; width * height * 2]
@@ -1044,8 +1096,8 @@ impl Renderer {
         MTLScissorRect {
             x,
             y,
-            width,
-            height,
+            width: width.min(VRAM_WIDTH),
+            height: height.min(VRAM_HEIGHT),
         }
     }
 
