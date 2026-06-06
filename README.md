@@ -22,7 +22,7 @@ To compile the binary, use `cargo build --release` but remember to specify wheth
 
 Works great with a dualshock-like controller! Supports Xbox 360, dualshock, and dualsense controllers. Controls are exactly like on the Playstation.
 
-For keyboard support (keyboard mappings coming soon), use:
+For keyboard support (custom keyboard mappings coming soon), use:
 
 * **Up**: W
 * **Down**: S
