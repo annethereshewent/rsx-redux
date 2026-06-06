@@ -56,6 +56,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "getDimensions")]
         fn get_dimensions(&self) -> (u32, u32);
+
+        #[swift_bridge(swift_name = "startExe")]
+        fn start_exe(&mut self, path: &str);
     }
 }
 
@@ -215,5 +218,10 @@ impl PsxMacEmulator {
 
     pub fn get_dimensions(&self) -> (u32, u32) {
         self.cpu.bus.gpu.get_dimensions()
+    }
+
+    pub fn start_exe(&mut self, path: &str) {
+        self.cpu.exe_file = Some(path.to_string());
+        self.cpu.load_exe(path);
     }
 }

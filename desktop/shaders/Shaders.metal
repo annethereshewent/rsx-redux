@@ -235,11 +235,11 @@ kernel void rgba8_to_rgb5551(texture2d<float, access::sample> src [[texture(0)]]
                              texture2d<ushort, access::write> dst [[texture(1)]],
                              constant uint2 &dstOrigin [[buffer(0)]],
                              uint2 gid [[thread_position_in_grid]]) {
-    float3 c = src.read(gid + dstOrigin).rgb;
-    ushort r = ushort(c.r * 31.0);
-    ushort g = ushort(c.g * 31.0);
-    ushort b = ushort(c.b * 31.0);
-    ushort a = 0;
+    float4 c = src.read(gid + dstOrigin);
+    ushort r = ushort(c.r * 255.0 + 0.5) >> 3;
+    ushort g = ushort(c.g * 255.0 + 0.5) >> 3;
+    ushort b = ushort(c.b * 255.0 + 0.5) >> 3;
+    ushort a = c.a > 0.5 ? 1 : 0;
     ushort packed = r | (g << 5) | (b << 10) | (a << 15);
     dst.write(packed, dstOrigin + gid);
 }

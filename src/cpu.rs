@@ -173,7 +173,7 @@ pub struct CPU {
     output: String,
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
-    exe_file: Option<String>,
+    pub exe_file: Option<String>,
     should_transfer_load: bool,
     isolated_cache: IsolatedCache,
     pub game_path: String,

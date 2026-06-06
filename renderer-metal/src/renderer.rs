@@ -7,18 +7,17 @@ use objc2_core_foundation::CGSize;
 use objc2_foundation::NSString;
 use objc2_metal::{
     MTLBlitCommandEncoder, MTLBuffer, MTLClearColor, MTLCommandBuffer, MTLCommandEncoder,
-    MTLCommandQueue, MTLCompareFunction, MTLComputeCommandEncoder, MTLComputePipelineState,
-    MTLCreateSystemDefaultDevice, MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState,
-    MTLDevice, MTLLibrary, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion,
-    MTLRenderCommandEncoder, MTLRenderPassDescriptor, MTLRenderPipelineDescriptor,
-    MTLRenderPipelineState, MTLResourceOptions, MTLScissorRect, MTLSize, MTLStencilDescriptor,
-    MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTexture, MTLTextureDescriptor,
-    MTLTextureUsage, MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
+    MTLCommandQueue, MTLComputeCommandEncoder, MTLComputePipelineState,
+    MTLCreateSystemDefaultDevice, MTLCullMode, MTLDevice, MTLLibrary, MTLLoadAction, MTLOrigin,
+    MTLPixelFormat, MTLPrimitiveType, MTLRegion, MTLRenderCommandEncoder, MTLRenderPassDescriptor,
+    MTLRenderPipelineDescriptor, MTLRenderPipelineState, MTLResourceOptions, MTLScissorRect,
+    MTLSize, MTLStorageMode, MTLStoreAction, MTLTexture, MTLTextureDescriptor, MTLTextureUsage,
+    MTLVertexDescriptor, MTLVertexFormat, MTLViewport, MTLWinding,
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use rsx_redux::cpu::bus::gpu::{
-    CPUTransferParams, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors, VRAM_HEIGHT,
-    VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
+    CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors,
+    VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
 };
 use std::cmp;
 
@@ -804,6 +803,10 @@ impl Renderer {
     fn process_commands(&mut self, gpu: &mut GPU) {
         let mut sample_dirty = true;
 
+        if gpu.display_depth == DisplayDepth::Bit24 {
+            self.vram_writeback(gpu);
+        }
+
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
@@ -1061,9 +1064,7 @@ impl Renderer {
         }
     }
 
-    // TODO: this whole method is a mess. I need to fix this up quite a bit eventually to get it working right
-    #[allow(dead_code)]
-    fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
+    fn vram_writeback(&mut self, gpu: &GPU) {
         if let (Some(encoder), Some(command_buffer)) =
             (&self.encoder.take(), &self.command_buffer.take())
         {
@@ -1072,24 +1073,11 @@ impl Renderer {
             let compute_encoder = command_buffer.computeCommandEncoder().unwrap();
             compute_encoder.setComputePipelineState(&self.compute_pipeline_state);
 
-            // this code is most definitely wrong, TODO: fix this up
-            let (x, y, width, height) = if let Some(polygon) = polygon {
-                Self::get_drawing_area(polygon)
-            } else {
-                if let Some(params) = params {
-                    (
-                        params.start_x as usize,
-                        params.start_y as usize,
-                        params.width as usize,
-                        params.height as usize,
-                    )
-                } else {
-                    println!(
-                        "[WARN]: neither polygon or CPUTransferParams passed, defaulting to 0s"
-                    );
-                    (0, 0, 0, 0)
-                }
-            };
+            let (width, height) = gpu.get_dimensions();
+            let writeback_width = ((width * 3 + 1) / 2) as usize;
+
+            let x = gpu.display_start_x;
+            let y = gpu.display_start_y;
 
             unsafe {
                 compute_encoder.setTexture_atIndex(self.vram_write.as_deref(), 0);
@@ -1110,8 +1098,8 @@ impl Renderer {
                 };
 
                 let threadgroups = MTLSize {
-                    width: (width + 7) / 8,
-                    height: (height + 7) / 8,
+                    width: (writeback_width + 7) / 8,
+                    height: (height as usize + 7) / 8,
                     depth: 1,
                 };
 
@@ -1127,6 +1115,8 @@ impl Renderer {
 
     pub fn present(&mut self, gpu: &mut GPU) {
         let drawable = self.metal_layer.nextDrawable();
+
+        let (width, height) = gpu.get_dimensions();
 
         if let (Some(encoder), Some(command_buffer)) =
             (&self.encoder.take(), &self.command_buffer.take())
@@ -1191,7 +1181,6 @@ impl Renderer {
                         draw_encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 1);
 
                         let display_depth = gpu.display_depth as u32;
-                        let (width, height) = gpu.get_dimensions();
 
                         let fb_params = FbParams {
                             display_depth,
