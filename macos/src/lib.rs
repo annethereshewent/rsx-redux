@@ -59,6 +59,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "startExe")]
         fn start_exe(&mut self, path: &str);
+
+        #[swift_bridge(swift_name = "getRumble")]
+        fn get_rumble(&self) -> (bool, u8);
     }
 }
 
@@ -223,5 +226,9 @@ impl PsxMacEmulator {
     pub fn start_exe(&mut self, path: &str) {
         self.cpu.exe_file = Some(path.to_string());
         self.cpu.load_exe(path);
+    }
+
+    pub fn get_rumble(&self) -> (bool, u8) {
+        self.cpu.bus.peripherals.controller.get_rumble()
     }
 }
