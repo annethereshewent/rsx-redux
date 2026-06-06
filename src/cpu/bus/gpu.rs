@@ -509,7 +509,7 @@ impl GPU {
             return value;
         }
 
-        panic!("shouldn't reach here");
+        return 0;
     }
 
     pub fn handle_hblank_start(
