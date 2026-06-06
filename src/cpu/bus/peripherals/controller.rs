@@ -13,6 +13,10 @@ pub struct Controller {
     config_mode: bool,
     config_command: Option<u8>,
     variable_byte: u8,
+    current_vibration: [u8; 6],
+    vibration_latch: [u8; 6],
+    small_motor: bool,
+    large_motor: u8,
 
 }
 
@@ -29,7 +33,11 @@ impl Controller {
             rumble_on: false,
             config_mode: false,
             config_command: None,
-            variable_byte: 0
+            variable_byte: 0,
+            current_vibration: [0xff; 6],
+            vibration_latch: [0xff; 6],
+            small_motor: false,
+            large_motor: 0,
         }
     }
 
@@ -70,7 +78,6 @@ impl Controller {
         let reply = match self.state {
             0 => 0xff,
             1 => {
-                println!("got command byte 0x{command:x}");
                 match command {
                     0x42 => {
                         self.config_command = None;
@@ -105,8 +112,11 @@ impl Controller {
                         self.config_command = Some(0x47);
                         0xf3
                     }
+                    0x4d => {
+                        self.config_command = Some(0x4d);
+                        0xf3
+                    }
                     _ => {
-                        println!("unknown command received, resetting state");
                         reset_state = true;
 
                         0xff
@@ -116,7 +126,14 @@ impl Controller {
             2 => 0x5a,
             3 => {
                 match self.config_command {
-                    None => self.buttons as u8,
+                    None => {
+                        if self.current_vibration[self.state - 3] == 0x0 {
+                            self.small_motor = command & 1 == 1;
+                        } else if self.current_vibration[self.state - 3] == 0x1 {
+                            self.large_motor = command;
+                        }
+                        self.buttons as u8
+                    }
                     Some(config_command) => match config_command {
                         0x43 => {
                             self.variable_byte = command;
@@ -138,6 +155,10 @@ impl Controller {
                             0x0
                         }
                         0x47 => 0,
+                        0x4d => {
+                            self.vibration_latch[self.state - 3] = command;
+                            self.current_vibration[self.state - 3]
+                        }
                         _ => panic!("config command not yet implemented: 0x{command:x}")
                     }
                 }
@@ -155,14 +176,19 @@ impl Controller {
                         0x46 => 0x0,
                         0x4c => 0x0,
                         0x47 => 0x0,
+                        0x4d => {
+                            self.vibration_latch[self.state - 3] = command;
+                            self.current_vibration[self.state - 3]
+                        }
                         _ => panic!("config command not yet implemented: 0x{command:x}")
                     }
                     None => {
-                        if command != 0 {
-                            println!("byte = 0x{command:x}");
+                        if self.current_vibration[self.state - 3] == 0x0 {
+                            self.small_motor = command & 1 == 1;
+                        } else if self.current_vibration[self.state - 3] == 0x1 {
+                            self.large_motor = command;
                         }
                         if self.digital_mode && !self.config_mode {
-                            println!("resetting state on digital buttons");
                             reset_state = true;
                         }
 
@@ -185,9 +211,20 @@ impl Controller {
                         _ => 0x0,
                     }
                     0x47 => 0x2,
+                    0x4d => {
+                        self.vibration_latch[self.state - 3] = command;
+                        self.current_vibration[self.state - 3]
+                    }
                     _ => panic!("config command not yet implemented: 0x{command:x}")
                 }
-                None => self.right_joy_x,
+                None => {
+                    if self.current_vibration[self.state - 3] == 0x0 {
+                        self.small_motor = command & 1 == 1;
+                    } else if self.current_vibration[self.state - 3] == 0x1 {
+                        self.large_motor = command;
+                    }
+                    self.right_joy_x
+                }
             }
             6 => match self.config_command {
                 Some(command) => match command {
@@ -208,9 +245,20 @@ impl Controller {
                         _ => 0x0,
                     },
                     0x47 => 0x0,
+                    0x4d => {
+                        self.vibration_latch[self.state - 3] = command;
+                        self.current_vibration[self.state - 3]
+                    }
                     _ => panic!("config command not yet implemented: 0x{command:x}")
                 }
-                None => self.right_joy_y,
+                None => {
+                    if self.current_vibration[self.state - 3] == 0x0 {
+                        self.small_motor = command & 1 == 1;
+                    } else if self.current_vibration[self.state - 3] == 0x1 {
+                        self.large_motor = command;
+                    }
+                    self.right_joy_y
+                }
             },
             7 => match self.config_command {
                 Some(command) => match command {
@@ -227,16 +275,26 @@ impl Controller {
                     }
                     0x4c => 0x0,
                     0x47 => 0x1,
+                    0x4d => {
+                        self.vibration_latch[self.state - 3] = command;
+                        self.current_vibration[self.state - 3]
+                    }
                     _ => panic!("config command not yet implemented: 0x{command:x}")
                 }
-                None => self.left_joy_x,
+                None => {
+                    if self.current_vibration[self.state - 3] == 0x0 {
+                        self.small_motor = command & 1 == 1;
+                    } else if self.current_vibration[self.state - 3] == 0x1 {
+                        self.large_motor = command;
+                    }
+                    self.left_joy_x
+                }
             }
             8 => {
                 reset_state = true;
 
                 match self.config_command {
                     Some(command) => {
-                        println!("resetting state on analog buttons, config command = 0x{command:x}");
                         match command {
                             0x43 => {
                                 let return_byte = if self.config_mode {
@@ -261,11 +319,28 @@ impl Controller {
                             }
                             0x4c => 0x0,
                             0x47 => 0x0,
+                            0x4d => {
+                                self.vibration_latch[self.state - 3] = command;
+                                let reply = self.current_vibration[self.state - 3];
+
+                                for i in 0..6 {
+                                    self.current_vibration[i] = self.vibration_latch[i];
+                                }
+
+                                reply
+                            }
                             _ => panic!("config command not yet implemented: 0x{command:x}")
                         }
 
                     }
-                    None => self.left_joy_y
+                    None => {
+                        if self.current_vibration[self.state - 3] == 0x0 {
+                            self.small_motor = command & 1 == 1;
+                        } else if self.current_vibration[self.state - 3] == 0x1 {
+                            self.large_motor = command;
+                        }
+                        self.left_joy_y
+                    }
                 }
             }
             _ => unreachable!(),
