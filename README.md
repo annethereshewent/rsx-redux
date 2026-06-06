@@ -42,7 +42,7 @@ For keyboard support (keyboard mappings coming soon), use:
 * **Right stick button**: Right shift
 * **Waveform visualizer (MacOS only right now)**: F4 key 
 * **Quick save state**: F5 key
-* **Quick load state*: F7 key
+* **Quick load state**: F7 key
 
 ## Screenshots
 
