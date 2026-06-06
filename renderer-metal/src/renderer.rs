@@ -16,8 +16,7 @@ use objc2_metal::{
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use rsx_redux::cpu::bus::gpu::{
-    CPUTransferParams, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors, VRAM_HEIGHT,
-    VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
+    CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH
 };
 use std::cmp;
 
@@ -803,6 +802,18 @@ impl Renderer {
     fn process_commands(&mut self, gpu: &mut GPU) {
         let mut sample_dirty = true;
 
+        let (width, height) = gpu.get_dimensions();
+
+        if gpu.display_depth == DisplayDepth::Bit24 {
+            let writeback_width = (width * 3 + 1) / 2;
+            self.vram_writeback(None, Some(&CPUTransferParams {
+                start_x: gpu.display_start_x,
+                start_y: gpu.display_start_y,
+                width: writeback_width,
+                height
+            }));
+        }
+
         for command in gpu.gpu_commands.drain(..) {
             match command {
                 GPUCommand::CPUtoVram(params) => {
@@ -1060,8 +1071,6 @@ impl Renderer {
         }
     }
 
-    // TODO: this whole method is a mess. I need to fix this up quite a bit eventually to get it working right
-    #[allow(dead_code)]
     fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
         if let (Some(encoder), Some(command_buffer)) =
             (&self.encoder.take(), &self.command_buffer.take())
@@ -1071,7 +1080,6 @@ impl Renderer {
             let compute_encoder = command_buffer.computeCommandEncoder().unwrap();
             compute_encoder.setComputePipelineState(&self.compute_pipeline_state);
 
-            // this code is most definitely wrong, TODO: fix this up
             let (x, y, width, height) = if let Some(polygon) = polygon {
                 Self::get_drawing_area(polygon)
             } else {
@@ -1126,6 +1134,8 @@ impl Renderer {
 
     pub fn present(&mut self, gpu: &mut GPU) {
         let drawable = self.metal_layer.nextDrawable();
+
+        let (width, height) = gpu.get_dimensions();
 
         if let (Some(encoder), Some(command_buffer)) =
             (&self.encoder.take(), &self.command_buffer.take())
@@ -1190,7 +1200,6 @@ impl Renderer {
                         draw_encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 1);
 
                         let display_depth = gpu.display_depth as u32;
-                        let (width, height) = gpu.get_dimensions();
 
                         let fb_params = FbParams {
                             display_depth,
