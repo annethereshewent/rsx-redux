@@ -55,6 +55,8 @@ struct FragmentUniform {
     pass: u32,
     page: [u32; 2],
     clut: [u32; 2],
+    force_mask_bit: bool,
+    preserve_masked_pixels: bool,
 }
 
 #[repr(C)]
@@ -419,6 +421,8 @@ impl Renderer {
             pass: 1,
             page: [0; 2],
             clut: [polygon.clut.0, polygon.clut.1],
+            preserve_masked_pixels: polygon.preserve_masked_pixels,
+            force_mask_bit: polygon.force_mask_bit,
         };
 
         let v = &polygon.vertices;
