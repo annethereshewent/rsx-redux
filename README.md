@@ -1,4 +1,4 @@
-#RSX Redux
+# RSX Redux
 
 ## About
 
