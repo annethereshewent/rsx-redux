@@ -14,6 +14,8 @@ struct FragmentUniforms {
     uint pass;
     uint2 page;
     uint2 clut;
+    bool forceMaskBit;
+    bool preserveMaskedPixels;
 };
 
 struct VertexIn {
@@ -161,6 +163,10 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     float4 finalColor;
     float texAlpha = 0;
 
+    if (currentColor.a != 0 && uniforms.preserveMaskedPixels) {
+        discard_fragment();
+    }
+
     if (uniforms.hasTexture) {
         float4 texColor;
         switch (uniforms.depth) {
@@ -214,7 +220,13 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         }
     }
 
-    finalColor[3] = 1.0;
+    if (uniforms.forceMaskBit) {
+        finalColor.a = 1.0;
+    } else if (uniforms.hasTexture) {
+        finalColor.a = texAlpha;
+    } else {
+        finalColor.a = 0.0;
+    }
 
     return finalColor;
 }

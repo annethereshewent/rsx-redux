@@ -55,6 +55,8 @@ struct FragmentUniform {
     pass: u32,
     page: [u32; 2],
     clut: [u32; 2],
+    force_mask_bit: bool,
+    preserve_masked_pixels: bool,
 }
 
 #[repr(C)]
@@ -106,10 +108,6 @@ pub struct Renderer {
     command_buffer: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
     vertices: [FbVertex; 4],
     buffer: Retained<ProtocolObject<dyn MTLBuffer>>,
-    no_mask: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    check_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    set_only: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
-    both: Retained<ProtocolObject<dyn MTLDepthStencilState>>,
 }
 
 impl Renderer {
@@ -299,27 +297,6 @@ impl Renderer {
         });
         color_attachment.setTexture(vram_write.as_deref());
 
-        let no_mask = Self::make_stencil_state(
-            &device,
-            MTLCompareFunction::Always,
-            MTLStencilOperation::Keep,
-        );
-        let check_only = Self::make_stencil_state(
-            &device,
-            MTLCompareFunction::Equal,
-            MTLStencilOperation::Keep,
-        );
-        let set_only = Self::make_stencil_state(
-            &device,
-            MTLCompareFunction::Always,
-            MTLStencilOperation::Replace,
-        );
-        let both = Self::make_stencil_state(
-            &device,
-            MTLCompareFunction::Equal,
-            MTLStencilOperation::Replace,
-        );
-
         Self {
             metal_layer,
             command_queue,
@@ -333,34 +310,8 @@ impl Renderer {
             command_buffer: None,
             vertices,
             buffer,
-            no_mask,
-            check_only,
-            set_only,
-            both,
             compute_pipeline_state,
         }
-    }
-
-    fn make_stencil_state(
-        device: &Retained<ProtocolObject<dyn MTLDevice>>,
-        cmp: MTLCompareFunction,
-        pass_op: MTLStencilOperation,
-    ) -> Retained<ProtocolObject<dyn MTLDepthStencilState>> {
-        let ds = MTLDepthStencilDescriptor::new();
-        ds.setDepthCompareFunction(MTLCompareFunction::Always);
-        ds.setDepthWriteEnabled(false);
-
-        let front = MTLStencilDescriptor::new();
-        front.setStencilCompareFunction(cmp);
-        front.setReadMask(0xFF);
-        front.setWriteMask(0xFF);
-        front.setDepthStencilPassOperation(pass_op);
-        front.setStencilFailureOperation(MTLStencilOperation::Keep);
-        front.setDepthFailureOperation(MTLStencilOperation::Keep);
-        ds.setFrontFaceStencil(Some(&front));
-        ds.setBackFaceStencil(Some(&front));
-
-        device.newDepthStencilStateWithDescriptor(&ds).unwrap()
     }
 
     fn setup_encoder(
@@ -419,6 +370,8 @@ impl Renderer {
             pass: 1,
             page: [0; 2],
             clut: [polygon.clut.0, polygon.clut.1],
+            preserve_masked_pixels: polygon.preserve_masked_pixels,
+            force_mask_bit: polygon.force_mask_bit,
         };
 
         let v = &polygon.vertices;
@@ -506,16 +459,7 @@ impl Renderer {
 
             encoder.setRenderPipelineState(&self.pipeline_state);
 
-            let stencil_state = match (polygon.force_mask_bit, polygon.preserve_masked_pixels) {
-                (false, false) => &self.no_mask,
-                (true, false) => &self.set_only,
-                (false, true) => &self.check_only,
-                (true, true) => &self.both,
-            };
-
             unsafe {
-                encoder.setDepthStencilState(Some(stencil_state));
-                encoder.setStencilReferenceValue(if polygon.force_mask_bit { 1 } else { 0 });
                 encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
                 encoder.setFragmentTexture_atIndex(self.vram_sample.as_deref(), 1);
                 encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
@@ -734,7 +678,7 @@ impl Renderer {
                 let mut r = halfword & 0x1f;
                 let mut g = (halfword >> 5) & 0x1f;
                 let mut b = (halfword >> 10) & 0x1f;
-                let a = (halfword >> 15) & 1 * 0xff;
+                let a = ((halfword >> 15) & 1) * 0xff;
 
                 r = r << 3 | r >> 2;
                 g = g << 3 | g >> 2;
@@ -989,7 +933,7 @@ impl Renderer {
                 let mut r = halfword & 0x1f;
                 let mut g = (halfword >> 5) & 0x1f;
                 let mut b = (halfword >> 10) & 0x1f;
-                let a = halfword >> 15;
+                let a = ((halfword >> 15) & 1) * 0xff;
 
                 r = r << 3 | r >> 2;
                 g = g << 3 | g >> 2;
