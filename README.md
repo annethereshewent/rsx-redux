@@ -40,9 +40,9 @@ For keyboard support (keyboard mappings coming soon), use:
 * **Select**: Tab
 * **Left stick button**: Left shift
 * **Right stick button**: Right shift
-* **F4 key**: Waveform visualizer (MacOS only right now)
-* **F5 key**: Quick save state
-* **F7 key**: Quick load state
+* **Waveform visualizer (MacOS only right now)**: F4 key 
+* **Quick save state**: F5 key
+* **Quick load state*: F7 key
 
 ## Screenshots
 
