@@ -16,7 +16,8 @@ use objc2_metal::{
 };
 use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use rsx_redux::cpu::bus::gpu::{
-    CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH
+    CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors,
+    VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
 };
 use std::cmp;
 
@@ -802,16 +803,8 @@ impl Renderer {
     fn process_commands(&mut self, gpu: &mut GPU) {
         let mut sample_dirty = true;
 
-        let (width, height) = gpu.get_dimensions();
-
         if gpu.display_depth == DisplayDepth::Bit24 {
-            let writeback_width = (width * 3 + 1) / 2;
-            self.vram_writeback(None, Some(&CPUTransferParams {
-                start_x: gpu.display_start_x,
-                start_y: gpu.display_start_y,
-                width: writeback_width,
-                height
-            }));
+            self.vram_writeback(gpu);
         }
 
         for command in gpu.gpu_commands.drain(..) {
@@ -1071,7 +1064,7 @@ impl Renderer {
         }
     }
 
-    fn vram_writeback(&mut self, polygon: Option<&Polygon>, params: Option<&CPUTransferParams>) {
+    fn vram_writeback(&mut self, gpu: &GPU) {
         if let (Some(encoder), Some(command_buffer)) =
             (&self.encoder.take(), &self.command_buffer.take())
         {
@@ -1080,23 +1073,11 @@ impl Renderer {
             let compute_encoder = command_buffer.computeCommandEncoder().unwrap();
             compute_encoder.setComputePipelineState(&self.compute_pipeline_state);
 
-            let (x, y, width, height) = if let Some(polygon) = polygon {
-                Self::get_drawing_area(polygon)
-            } else {
-                if let Some(params) = params {
-                    (
-                        params.start_x as usize,
-                        params.start_y as usize,
-                        params.width as usize,
-                        params.height as usize,
-                    )
-                } else {
-                    println!(
-                        "[WARN]: neither polygon or CPUTransferParams passed, defaulting to 0s"
-                    );
-                    (0, 0, 0, 0)
-                }
-            };
+            let (width, height) = gpu.get_dimensions();
+            let writeback_width = ((width * 3 + 1) / 2) as usize;
+
+            let x = gpu.display_start_x;
+            let y = gpu.display_start_y;
 
             unsafe {
                 compute_encoder.setTexture_atIndex(self.vram_write.as_deref(), 0);
@@ -1117,8 +1098,8 @@ impl Renderer {
                 };
 
                 let threadgroups = MTLSize {
-                    width: (width + 7) / 8,
-                    height: (height + 7) / 8,
+                    width: (writeback_width + 7) / 8,
+                    height: (height as usize + 7) / 8,
                     depth: 1,
                 };
 
