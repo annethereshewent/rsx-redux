@@ -350,4 +350,8 @@ impl Controller {
 
         reply
     }
+
+    pub fn get_rumble(&self) -> (bool, u8) {
+        (self.small_motor, self.large_motor)
+    }
 }
