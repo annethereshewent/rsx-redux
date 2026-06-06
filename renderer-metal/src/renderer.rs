@@ -734,7 +734,7 @@ impl Renderer {
                 let mut r = halfword & 0x1f;
                 let mut g = (halfword >> 5) & 0x1f;
                 let mut b = (halfword >> 10) & 0x1f;
-                let a = (halfword >> 15) & 1 * 0xff;
+                let a = ((halfword >> 15) & 1) * 0xff;
 
                 r = r << 3 | r >> 2;
                 g = g << 3 | g >> 2;
