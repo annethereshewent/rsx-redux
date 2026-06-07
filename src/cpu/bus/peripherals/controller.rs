@@ -24,7 +24,7 @@ impl Controller {
     pub fn new() -> Self {
         Self {
             state: 0,
-            digital_mode: true,
+            digital_mode: false,
             buttons: 0xffff,
             left_joy_x: 0x80,
             right_joy_x: 0x80,
