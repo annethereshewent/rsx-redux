@@ -26,6 +26,11 @@ use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
+const BUTTON_UP: usize = 4;
+const BUTTON_RIGHT: usize = 5;
+const BUTTON_DOWN: usize = 6;
+const BUTTON_LEFT: usize = 7;
+
 pub struct PsxAudioCallback {
     pub audio_buffer: VecDeque<i16>,
 }
@@ -198,10 +203,6 @@ impl Frontend {
             (Keycode::LShift, 1),
             (Keycode::RShift, 2),
             (Keycode::Return, 3),
-            (Keycode::W, 4),
-            (Keycode::D, 5),
-            (Keycode::S, 6),
-            (Keycode::A, 7),
             (Keycode::Num7, 8),
             (Keycode::Num9, 9),
             (Keycode::U, 10),
@@ -366,11 +367,20 @@ impl Frontend {
                         if let Some(index) = self.key_map.get(&keycode) {
                             cpu.bus.peripherals.controller.update_input(*index, true);
                         } else {
+                            let digital_mode = cpu.bus.peripherals.controller.digital_mode;
                             match keycode {
                                 #[cfg(feature = "debug")]
                                 Keycode::G => {
                                     cpu.debug_on = !cpu.debug_on;
                                     println!("setting debug on to {}", cpu.debug_on);
+                                }
+                                Keycode::E => {
+                                    if !cpu.bus.peripherals.controller.digital_mode_locked {
+                                        cpu.bus.peripherals.controller.digital_mode =
+                                            !cpu.bus.peripherals.controller.digital_mode;
+
+                                        println!("set digital mode to {}", cpu.bus.peripherals.controller.digital_mode);
+                                    }
                                 }
                                 Keycode::F => {
                                     cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
@@ -387,6 +397,46 @@ impl Frontend {
                                     #[cfg(feature = "hardware_gpu")]
                                     Self::load_quick_state(&mut self.renderer, cpu);
                                 }
+                                Keycode::W => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_UP, true);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_lefty(0x0);
+                                    }
+                                }
+                                Keycode::S => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_DOWN, true);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_lefty(0xff);
+                                    }
+                                }
+                                Keycode::A => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_LEFT, true);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_leftx(0x0);
+                                    }
+                                }
+                                Keycode::D => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_RIGHT, true);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_leftx(0xff);
+                                    }
+                                }
                                 _ => (),
                             }
                         }
@@ -396,6 +446,51 @@ impl Frontend {
                     if let Some(keycode) = keycode {
                         if let Some(index) = self.key_map.get(&keycode) {
                             cpu.bus.peripherals.controller.update_input(*index, false);
+                        } else {
+                            let digital_mode = cpu.bus.peripherals.controller.digital_mode;
+                            match keycode {
+                                Keycode::W => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_UP, false);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_lefty(0x80);
+                                    }
+                                }
+                                Keycode::S => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_DOWN, false);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_lefty(0x80);
+                                    }
+                                }
+                                Keycode::A => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_LEFT, false);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_leftx(0x80);
+                                    }
+                                }
+                                Keycode::D => {
+                                    if digital_mode {
+                                        cpu.bus
+                                            .peripherals
+                                            .controller
+                                            .update_input(BUTTON_RIGHT, false);
+                                    } else {
+                                        cpu.bus.peripherals.controller.set_leftx(0x80);
+                                    }
+                                }
+                                _ => (),
+                            }
                         }
                     }
                 }
@@ -412,8 +507,10 @@ impl Frontend {
                             "setting digital mode to {}",
                             !cpu.bus.peripherals.controller.digital_mode
                         );
-                        cpu.bus.peripherals.controller.digital_mode =
-                            !cpu.bus.peripherals.controller.digital_mode
+                        if !cpu.bus.peripherals.controller.digital_mode_locked {
+                            cpu.bus.peripherals.controller.digital_mode =
+                                !cpu.bus.peripherals.controller.digital_mode
+                        }
                     }
                 }
                 Event::ControllerAxisMotion { axis, value, .. } => {

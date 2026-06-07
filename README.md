@@ -40,9 +40,10 @@ For keyboard support (custom keyboard mappings coming soon), use:
 * **Select**: Tab
 * **Left stick button**: Left shift
 * **Right stick button**: Right shift
-* **Waveform visualizer (MacOS only right now)**: F4 key 
+* **Waveform visualizer (MacOS only right now)**: F4 key
 * **Quick save state**: F5 key
 * **Quick load state**: F7 key
+* **Toggle digital mode on/off**: E Key
 
 ## Screenshots
 
