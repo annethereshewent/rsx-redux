@@ -62,6 +62,18 @@ mod ffi {
 
         #[swift_bridge(swift_name = "getRumble")]
         fn get_rumble(&self) -> (bool, u8);
+
+        #[swift_bridge(swift_name = "getDigitalMode")]
+        fn get_digital_mode(&self) -> bool;
+
+        #[swift_bridge(swift_name = "setDigitalMode")]
+        fn set_digital_mode(&mut self, mode: bool);
+
+        #[swift_bridge(swift_name = "setLeftX")]
+        fn set_left_x(&mut self, value: u8);
+
+        #[swift_bridge(swift_name = "setLeftY")]
+        fn set_left_y(&mut self, value: u8);
     }
 }
 
@@ -144,6 +156,14 @@ impl PsxMacEmulator {
     pub fn set_right_thumbstick(&mut self, normalized_x: u8, normalized_y: u8) {
         self.cpu.bus.peripherals.controller.set_rightx(normalized_x);
         self.cpu.bus.peripherals.controller.set_righty(normalized_y);
+    }
+
+    pub fn set_left_x(&mut self, value: u8) {
+        self.cpu.bus.peripherals.controller.set_leftx(value);
+    }
+
+    pub fn set_left_y(&mut self, value: u8) {
+        self.cpu.bus.peripherals.controller.set_lefty(value);
     }
 
     pub fn set_memory_card(&mut self, memory_path: &str) {
@@ -230,5 +250,13 @@ impl PsxMacEmulator {
 
     pub fn get_rumble(&self) -> (bool, u8) {
         self.cpu.bus.peripherals.controller.get_rumble()
+    }
+
+    pub fn get_digital_mode(&self) -> bool {
+        self.cpu.bus.peripherals.controller.digital_mode
+    }
+
+    pub fn set_digital_mode(&mut self, mode: bool) {
+        self.cpu.bus.peripherals.controller.digital_mode = mode;
     }
 }
