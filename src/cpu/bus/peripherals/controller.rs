@@ -17,7 +17,6 @@ pub struct Controller {
     vibration_latch: [u8; 6],
     small_motor: bool,
     large_motor: u8,
-
 }
 
 impl Controller {
@@ -89,10 +88,12 @@ impl Controller {
                         // 5A41h=Digital Pad (or analog pad/stick in digital mode; LED=Off)
                         if self.digital_mode { 0x41 } else { 0x73 }
                     }
-                    0x43 =>  if self.config_mode {
-                        0xf3
-                    } else {
-                        if self.digital_mode { 0x41 } else { 0x73 }
+                    0x43 => {
+                        if self.config_mode {
+                            0xf3
+                        } else {
+                            if self.digital_mode { 0x41 } else { 0x73 }
+                        }
                     }
                     0x45 | 0x4c | 0x46 | 0x47 | 0x4d => 0xf3,
                     _ => {
@@ -103,80 +104,75 @@ impl Controller {
                 }
             }
             2 => 0x5a,
-            3 => {
-                match self.controller_command {
-                    0x42 => {
-                        self.update_vibration(command);
+            3 => match self.controller_command {
+                0x42 => {
+                    self.update_vibration(command);
+                    self.buttons as u8
+                }
+                0x43 => {
+                    self.variable_byte = command;
+                    if self.config_mode {
+                        0x0
+                    } else {
                         self.buttons as u8
                     }
-                    0x43 => {
-                        self.variable_byte = command;
-                        if self.config_mode {
-                            0x0
-                        } else {
-                            self.buttons as u8
-                        }
-                    }
-                    0x45 => {
-                        0x1
-                    }
-                    0x46 => {
-                        self.variable_byte = command;
-                        0x0
-                    }
-                    0x4c => {
-                        self.variable_byte = command;
-                        0x0
-                    }
-                    0x47 => 0,
-                    0x4d => {
-                        self.vibration_latch[self.state - 3] = command;
-                        self.current_vibration[self.state - 3]
-                    }
-                    _ => panic!("config command not yet implemented: 0x{command:x}")
-
                 }
-
-            }
-            4 => {
-                match self.controller_command {
-                    0x43 => if self.config_mode {
+                0x45 => 0x1,
+                0x46 => {
+                    self.variable_byte = command;
+                    0x0
+                }
+                0x4c => {
+                    self.variable_byte = command;
+                    0x0
+                }
+                0x47 => 0,
+                0x4d => {
+                    self.vibration_latch[self.state - 3] = command;
+                    self.current_vibration[self.state - 3]
+                }
+                _ => panic!("config command not yet implemented: 0x{command:x}"),
+            },
+            4 => match self.controller_command {
+                0x43 => {
+                    if self.config_mode {
                         0x0
                     } else {
                         (self.buttons >> 8) as u8
                     }
-                    0x45 => 0x2,
-                    0x46 => 0x0,
-                    0x4c => 0x0,
-                    0x47 => 0x0,
-                    0x4d => {
-                        self.vibration_latch[self.state - 3] = command;
-                        self.current_vibration[self.state - 3]
-                    }
-                    0x42 => {
-                        self.update_vibration(command);
-                        if self.digital_mode && !self.config_mode {
-                            reset_state = true;
-                        }
-
-                        (self.buttons >> 8) as u8
-                    }
-                    _ => panic!("config command not yet implemented: 0x{command:x}")
                 }
+                0x45 => 0x2,
+                0x46 => 0x0,
+                0x4c => 0x0,
+                0x47 => 0x0,
+                0x4d => {
+                    self.vibration_latch[self.state - 3] = command;
+                    self.current_vibration[self.state - 3]
+                }
+                0x42 => {
+                    self.update_vibration(command);
+                    if self.digital_mode && !self.config_mode {
+                        reset_state = true;
+                    }
 
-            }
+                    (self.buttons >> 8) as u8
+                }
+                _ => panic!("config command not yet implemented: 0x{command:x}"),
+            },
             5 => match self.controller_command {
-                0x43 => if self.config_mode {
-                    0x0
-                } else {
-                    self.right_joy_x
+                0x43 => {
+                    if self.config_mode {
+                        0x0
+                    } else {
+                        self.right_joy_x
+                    }
                 }
                 0x45 => !self.digital_mode as u8,
                 0x4c => 0x0,
                 0x46 => match self.variable_byte {
                     0x0 | 0x1 => 0x1,
                     _ => 0x0,
-                }
+                },
                 0x47 => 0x2,
                 0x4d => {
                     self.vibration_latch[self.state - 3] = command;
@@ -186,20 +182,22 @@ impl Controller {
                     self.update_vibration(command);
                     self.right_joy_x
                 }
-                _ => panic!("config command not yet implemented: 0x{command:x}")
-            }
+                _ => panic!("config command not yet implemented: 0x{command:x}"),
+            },
             6 => match self.controller_command {
-                0x43 => if self.config_mode {
-                    0x0
-                } else {
-                    self.right_joy_y
+                0x43 => {
+                    if self.config_mode {
+                        0x0
+                    } else {
+                        self.right_joy_y
+                    }
                 }
                 0x45 => 0x2,
                 0x46 => match self.variable_byte {
                     0x0 => 0x2,
                     0x1 => 0x1,
                     _ => 0x0,
-                }
+                },
                 0x4c => match self.variable_byte {
                     0x0 => 0x4,
                     0x1 => 0x7,
@@ -214,20 +212,22 @@ impl Controller {
                     self.update_vibration(command);
                     self.right_joy_y
                 }
-                _ => panic!("config command not yet implemented: 0x{command:x}")
+                _ => panic!("config command not yet implemented: 0x{command:x}"),
             },
             7 => match self.controller_command {
-                0x43 => if self.config_mode {
-                    0x0
-                } else {
-                    self.left_joy_x
+                0x43 => {
+                    if self.config_mode {
+                        0x0
+                    } else {
+                        self.left_joy_x
+                    }
                 }
                 0x45 => 0x1,
                 0x46 => match self.variable_byte {
                     0x0 => 0x0,
                     0x1 => 0x1,
                     _ => 0x0,
-                }
+                },
                 0x4c => 0x0,
                 0x47 => 0x1,
                 0x4d => {
@@ -238,8 +238,8 @@ impl Controller {
                     self.update_vibration(command);
                     self.left_joy_x
                 }
-                _ => panic!("config command not yet implemented: 0x{command:x}")
-            }
+                _ => panic!("config command not yet implemented: 0x{command:x}"),
+            },
             8 => {
                 reset_state = true;
 
@@ -264,7 +264,7 @@ impl Controller {
                         0x0 => 0xa,
                         0x1 => 0x14,
                         _ => 0x0,
-                    }
+                    },
                     0x4c => 0x0,
                     0x47 => 0x0,
                     0x4d => {
@@ -281,7 +281,7 @@ impl Controller {
                         self.update_vibration(command);
                         self.left_joy_y
                     }
-                    _ => panic!("config command not yet implemented: 0x{command:x}")
+                    _ => panic!("config command not yet implemented: 0x{command:x}"),
                 }
             }
             _ => unreachable!(),

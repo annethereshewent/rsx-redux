@@ -372,6 +372,10 @@ impl Frontend {
                                     cpu.debug_on = !cpu.debug_on;
                                     println!("setting debug on to {}", cpu.debug_on);
                                 }
+                                Keycode::E => {
+                                    cpu.bus.peripherals.controller.digital_mode =
+                                        !cpu.bus.peripherals.controller.digital_mode;
+                                }
                                 Keycode::F => {
                                     cpu.bus.gpu.debug_on = !cpu.bus.gpu.debug_on;
                                 }
