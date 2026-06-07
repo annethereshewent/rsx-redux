@@ -379,7 +379,10 @@ impl Frontend {
                                         cpu.bus.peripherals.controller.digital_mode =
                                             !cpu.bus.peripherals.controller.digital_mode;
 
-                                        println!("set digital mode to {}", cpu.bus.peripherals.controller.digital_mode);
+                                        println!(
+                                            "set digital mode to {}",
+                                            cpu.bus.peripherals.controller.digital_mode
+                                        );
                                     }
                                 }
                                 Keycode::F => {

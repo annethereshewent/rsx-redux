@@ -46,6 +46,7 @@ pub struct Peripherals {
     pub memory_card: MemoryCard,
     interrupt: bool,
     rx_parity_error: bool,
+    pub selected_controller: u8,
 }
 
 impl Default for Peripherals {
@@ -70,6 +71,7 @@ impl Peripherals {
             memory_card: MemoryCard::new(),
             interrupt: false,
             rx_parity_error: false,
+            selected_controller: 0,
         }
     }
 
@@ -126,8 +128,12 @@ impl Peripherals {
 
     fn handle_transfer(&mut self, scheduler: &mut Scheduler) {
         let command = self.tx_fifo.pop_front().unwrap();
-        // port 1 aka controller 2 is unsupported. returning back a dummy byte
-        if self.ctrl.contains(SIOControl::SIO_PORT_SELECT) {
+
+        // only one controller connected at a time.
+        // this is mostly for metal gear solid, where one of the boss fights
+        // actually has you switch the controller ports so that you can beat the boss.
+        // skip a controller if it's not currently selected.
+        if (self.ctrl.contains(SIOControl::SIO_PORT_SELECT) as u8) != self.selected_controller {
             self.rx_fifo.push_back(0xff);
             return;
         }
