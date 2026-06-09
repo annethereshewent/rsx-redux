@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+#[cfg(not(target_arch = "wasm32"))]
 use memmap2::Mmap;
 use registers::HntmaskRegister;
 use serde::{Deserialize, Serialize};
@@ -319,6 +320,10 @@ pub struct CDRom {
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     pub game_data: Option<Mmap>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(target_arch = "wasm32")]
+    pub game_bytes: Option<Vec<u8>>,
     current_header: CDHeader,
     subheader: CDSubheader,
     output_buffer: Box<[u8]>,
@@ -367,7 +372,10 @@ impl CDRom {
             send_to_spu: false,
             sector_size: 0x800,
             report_interrupts: false,
+            #[cfg(not(target_arch = "wasm32"))]
             game_data: None,
+            #[cfg(target_arch = "wasm32")]
+            game_bytes: None,
             current_header: CDHeader::new(),
             subheader: CDSubheader::new(),
             buffer_index: 0,
@@ -404,6 +412,11 @@ impl CDRom {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_game_desktop(&mut self, game: Mmap) {
         self.game_data = Some(game);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn load_game_web(&mut self, game_bytes: Vec<u8>) {
+        self.game_bytes = Some(game_bytes);
     }
 
     fn read_hintsts(&self) -> u8 {
@@ -783,66 +796,77 @@ impl CDRom {
 
         self.stat();
 
-        // TODO: refactor this to allow for WASM builds to work as well
-        if let Some(game_data) = &mut self.game_data {
-            self.current_header = CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]);
-
-            if self.current_header.mode != CDMode::Mode2 {
-                panic!("non mode 2 header");
+        #[cfg(not(target_arch="wasm32"))]
+        {
+            (self.current_header, self.subheader) = if let Some(game_data) = &self.game_data {
+                (CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]), CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]))
+            } else {
+                panic!("game data not specified");
             }
-            self.subheader = CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]);
-
-            self.subchannel_q.track = 1;
-            self.subchannel_q.index = 1;
-
-            self.subchannel_q.mm = self.current_header.mm;
-            self.subchannel_q.ss = self.current_header.ss - 2;
-            self.subchannel_q.sect = self.current_header.sect;
-
-            self.subchannel_q.amm = self.current_header.mm;
-            self.subchannel_q.ass = self.current_header.ss;
-            self.subchannel_q.asect = self.current_header.sect;
-
-            if self.current_header.mm != self.current_msf.amm
-                || self.current_header.ss != self.current_msf.ass
-                || self.current_header.sect != self.current_msf.asect
-            {
-                panic!("mismatch between header and current msf");
+        }
+        #[cfg(target_arch="wasm32")]
+        {
+            (self.current_header, self.subheader) = if let Some(game_bytes) = &self.game_bytes {
+                (CDHeader::from_buf(&game_bytes[pointer + 0xc..pointer + 0x10]), CDSubheader::from_buf(&game_bytes[pointer + 0x10..pointer + 0x14]))
+            } else {
+                panic!("game data not specified")
             }
+        }
 
-            if (self.subheader.read_mode == CDReadMode::Audio
-                && (!self.send_to_spu || !self.subheader.realtime))
-                || self.subheader.read_mode == CDReadMode::Video
-            {
-                self.subheader.read_mode = CDReadMode::Data;
-            }
+        if self.current_header.mode != CDMode::Mode2 {
+            panic!("non mode 2 header");
+        }
 
-            match self.subheader.read_mode {
-                CDReadMode::Data => self.read_data(interrupt_register),
-                CDReadMode::Audio => {
-                    if !self.xa_filter
-                        || (self.filter_file == self.subheader.file_num
-                            && self.subheader.channel_num == self.filter_channel)
-                    {
-                        self.read_audio(spu)
-                    }
+        self.subchannel_q.track = 1;
+        self.subchannel_q.index = 1;
+
+        self.subchannel_q.mm = self.current_header.mm;
+        self.subchannel_q.ss = self.current_header.ss - 2;
+        self.subchannel_q.sect = self.current_header.sect;
+
+        self.subchannel_q.amm = self.current_header.mm;
+        self.subchannel_q.ass = self.current_header.ss;
+        self.subchannel_q.asect = self.current_header.sect;
+
+        if self.current_header.mm != self.current_msf.amm
+            || self.current_header.ss != self.current_msf.ass
+            || self.current_header.sect != self.current_msf.asect
+        {
+            panic!("mismatch between header and current msf");
+        }
+
+        if (self.subheader.read_mode == CDReadMode::Audio
+            && (!self.send_to_spu || !self.subheader.realtime))
+            || self.subheader.read_mode == CDReadMode::Video
+        {
+            self.subheader.read_mode = CDReadMode::Data;
+        }
+
+        match self.subheader.read_mode {
+            CDReadMode::Data => self.read_data(interrupt_register),
+            CDReadMode::Audio => {
+                if !self.xa_filter
+                    || (self.filter_file == self.subheader.file_num
+                        && self.subheader.channel_num == self.filter_channel)
+                {
+                    self.read_audio(spu)
                 }
-                CDReadMode::Video => todo!("read video cds"),
             }
+            CDReadMode::Video => todo!("read video cds"),
+        }
 
-            self.current_msf.asect += 1;
+        self.current_msf.asect += 1;
 
-            if self.current_msf.asect >= 75 {
-                self.current_msf.asect -= 75;
-                self.current_msf.ass += 1;
+        if self.current_msf.asect >= 75 {
+            self.current_msf.asect -= 75;
+            self.current_msf.ass += 1;
 
-                if self.current_msf.ass >= 60 {
-                    self.current_msf.amm += 1;
-                    self.current_msf.ass = 0;
+            if self.current_msf.ass >= 60 {
+                self.current_msf.amm += 1;
+                self.current_msf.ass = 0;
 
-                    if self.current_msf.amm == 74 {
-                        self.current_msf.amm = 0;
-                    }
+                if self.current_msf.amm == 74 {
+                    self.current_msf.amm = 0;
                 }
             }
         }
@@ -862,22 +886,32 @@ impl CDRom {
             todo!("8 bit audio not supported");
         }
 
+        let mut audio_sector = [0; 0x914];
+
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer() + 24;
-
-            let mut audio_sector = [0; 0x914];
-
-            audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914]);
-
-            for i in 0..0x12 {
-                let section_index = i * 128;
-                let section = &audio_sector[section_index..section_index + 128];
-
-                self.decode_section(section);
-            }
-
-            self.resample(spu);
+            audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914])
+        } else {
+            panic!("game data not specified");
         }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(game_bytes) = &self.game_bytes {
+            let pointer = self.get_pointer() + 24;
+            audio_sector.copy_from_slice(&game_bytes[pointer..pointer + 0x914])
+        } else {
+            panic!("game data not specified");
+        }
+
+        for i in 0..0x12 {
+            let section_index = i * 128;
+            let section = &audio_sector[section_index..section_index + 128];
+
+            self.decode_section(section);
+        }
+
+        self.resample(spu);
+
     }
 
     fn resample(&mut self, spu: &mut SPU) {
@@ -984,25 +1018,37 @@ impl CDRom {
     }
 
     fn read_data(&mut self, interrupt_register: &mut InterruptRegister) {
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(game_data) = &self.game_data {
             let pointer = self.get_pointer();
 
             self.output_buffer
                 .copy_from_slice(&game_data[pointer..pointer + 0x930]);
+        } else {
+            panic!("game data not specified");
+        }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(game_bytes) = &self.game_bytes {
+            let pointer = self.get_pointer();
 
-            let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
+            self.output_buffer
+                .copy_from_slice(&game_bytes[pointer..pointer + 0x930]);
+        } else {
+            panic!("game data not specified");
+        }
 
-            val |= (self.is_reading as u8) << 5;
-            val |= (self.is_seeking as u8) << 6;
-            val |= (self.is_playing as u8) << 7;
+        let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
 
-            if self.irqs == 0 {
-                self.irqs = 1;
-                self.process_irqs(interrupt_register);
-                self.result_fifo.push_back(val);
-            } else {
-                self.pending_stat = Some(val);
-            }
+        val |= (self.is_reading as u8) << 5;
+        val |= (self.is_seeking as u8) << 6;
+        val |= (self.is_playing as u8) << 7;
+
+        if self.irqs == 0 {
+            self.irqs = 1;
+            self.process_irqs(interrupt_register);
+            self.result_fifo.push_back(val);
+        } else {
+            self.pending_stat = Some(val);
         }
     }
 
