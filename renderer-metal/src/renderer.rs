@@ -113,9 +113,9 @@ impl Renderer {
     pub fn new(metal_layer: Retained<CAMetalLayer>) -> Self {
         let device = MTLCreateSystemDefaultDevice().unwrap();
         #[cfg(not(feature = "bundle_shaders"))]
-        let source = NSString::from_str(&fs::read_to_string("shaders/Shaders.metal").unwrap());
+        let source = NSString::from_str(include_str!("shaders/Shaders.metal"));
         #[cfg(not(feature = "bundle_shaders"))]
-        let fb_source = NSString::from_str(&fs::read_to_string("shaders/ShadersFb.metal").unwrap());
+        let fb_source = NSString::from_str(include_str!("shaders/ShadersFb.metal"));
 
         #[cfg(not(feature = "bundle_shaders"))]
         let (library, fb_library) = {

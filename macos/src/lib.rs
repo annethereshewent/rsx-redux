@@ -74,6 +74,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "setLeftY")]
         fn set_left_y(&mut self, value: u8);
+
+        #[swift_bridge(swift_name = "switchSelectedController")]
+        fn switch_selected_controller(&mut self, controller_id: u8);
     }
 }
 
@@ -258,5 +261,9 @@ impl PsxMacEmulator {
 
     pub fn set_digital_mode(&mut self, mode: bool) {
         self.cpu.bus.peripherals.controller.digital_mode = mode;
+    }
+
+    pub fn switch_selected_controller(&mut self, controller_id: u8) {
+        self.cpu.bus.peripherals.selected_controller = controller_id;
     }
 }
