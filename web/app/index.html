@@ -6,186 +6,6 @@
   <title>RSX Redux</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <style>
-    :root {
-      --psx-bg: #1a1a2e;
-      --psx-surface: #16213e;
-      --psx-surface-raised: #1c2a4a;
-      --psx-border: #2a3a5c;
-      --psx-text: #e0e0e0;
-      --psx-text-muted: #8892a4;
-      --psx-blue: #6c8cbf;
-      --psx-pink: #c2608e;
-      --psx-green: #5faa7d;
-      --psx-red: #c0524f;
-    }
-
-    html, body {
-      background-color: var(--psx-bg);
-      color: var(--psx-text);
-      min-height: 100vh;
-    }
-
-    /* ── Navbar ── */
-    .navbar {
-      background-color: var(--psx-surface);
-      border-bottom: 1px solid var(--psx-border);
-    }
-    .navbar-item, .navbar-burger {
-      color: var(--psx-text) !important;
-    }
-    .navbar-item:hover {
-      background-color: var(--psx-surface-raised) !important;
-      color: #fff !important;
-    }
-    .navbar-brand .navbar-item {
-      font-weight: 700;
-      font-size: 1.15rem;
-      letter-spacing: 0.04em;
-      gap: 0.5rem;
-    }
-    .navbar-brand .navbar-item .brand-accent {
-      color: var(--psx-blue);
-    }
-    .navbar-dropdown {
-      background-color: var(--psx-surface);
-      border-color: var(--psx-border);
-    }
-    .navbar-divider {
-      background-color: var(--psx-border);
-    }
-
-    /* ── Canvas area ── */
-    .canvas-wrapper {
-      background-color: #0d0d1a;
-      border: 2px solid var(--psx-border);
-      border-radius: 6px;
-      aspect-ratio: 4 / 3;
-      max-width: 800px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      overflow: hidden;
-    }
-    .canvas-wrapper canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    .canvas-placeholder {
-      text-align: center;
-      color: var(--psx-text-muted);
-      user-select: none;
-    }
-    .canvas-placeholder i {
-      font-size: 3rem;
-      margin-bottom: 0.75rem;
-      display: block;
-      color: var(--psx-border);
-    }
-
-    /* ── Action bar ── */
-    .action-bar {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-
-    /* ── Buttons ── */
-    .button.is-psx {
-      background-color: var(--psx-surface-raised);
-      border: 1px solid var(--psx-border);
-      color: var(--psx-text);
-      font-weight: 500;
-      transition: border-color 0.15s, background-color 0.15s;
-    }
-    .button.is-psx:hover {
-      background-color: #223052;
-      border-color: var(--psx-blue);
-      color: #fff;
-    }
-    .button.is-psx:focus {
-      box-shadow: 0 0 0 2px rgba(108, 140, 191, 0.35);
-    }
-    .button.is-psx.is-primary-action {
-      background-color: var(--psx-blue);
-      border-color: var(--psx-blue);
-      color: #fff;
-    }
-    .button.is-psx.is-primary-action:hover {
-      background-color: #7d9ccc;
-      border-color: #7d9ccc;
-    }
-    .button.is-psx .icon {
-      color: var(--psx-blue);
-    }
-    .button.is-psx.is-primary-action .icon {
-      color: #fff;
-    }
-
-    /* ── Sidebar panels ── */
-    .panel-card {
-      background-color: var(--psx-surface);
-      border: 1px solid var(--psx-border);
-      border-radius: 6px;
-      padding: 1.25rem;
-    }
-    .panel-card .panel-title {
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--psx-text-muted);
-      margin-bottom: 1rem;
-    }
-    .panel-card .menu-list a {
-      color: var(--psx-text);
-      border-radius: 4px;
-      padding: 0.5em 0.75em;
-    }
-    .panel-card .menu-list a:hover {
-      background-color: var(--psx-surface-raised);
-      color: #fff;
-    }
-    .panel-card .menu-list a .icon {
-      color: var(--psx-text-muted);
-      margin-right: 0.35em;
-    }
-
-    /* ── Status bar ── */
-    .status-bar {
-      background-color: var(--psx-surface);
-      border-top: 1px solid var(--psx-border);
-      font-size: 0.8rem;
-      color: var(--psx-text-muted);
-      padding: 0.4rem 1.5rem;
-    }
-    .status-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: var(--psx-text-muted);
-      margin-right: 0.4rem;
-      vertical-align: middle;
-    }
-    .status-dot.is-active {
-      background-color: var(--psx-green);
-    }
-
-    /* ── Footer ── */
-    .footer {
-      background-color: var(--psx-bg);
-      padding: 2rem 1.5rem;
-      color: var(--psx-text-muted);
-      font-size: 0.85rem;
-    }
-
-    /* ── Utilities ── */
-    .gap-2 { gap: 0.5rem; }
-    .gap-3 { gap: 0.75rem; }
-  </style>
 </head>
 <body>
   <!-- ════════════════════════════════════════════
@@ -295,8 +115,7 @@
       <!-- ── Center: display + controls ── -->
       <div class="column">
         <div class="canvas-wrapper mb-4" id="display">
-          <!-- <canvas> will be inserted here by WASM -->
-          <div class="canvas-placeholder">
+          <div class="canvas-placeholder" id="placeholder">
             <i class="fa-solid fa-gamepad"></i>
             <p>Load a BIOS and game to start</p>
           </div>
@@ -305,15 +124,15 @@
         <!-- Action bar (visible on all sizes) -->
         <div class="action-bar">
           <div class="buttons is-centered gap-3">
-            <button class="button is-psx" id="btn-load-bios">
+            <button class="button is-psx" id="btn-load-bios" data-action="loadBios">
               <span class="icon"><i class="fa-solid fa-memory"></i></span>
               <span>Load BIOS</span>
             </button>
-            <button class="button is-psx is-primary-action" id="btn-load-game">
+            <button class="button is-psx is-primary-action" disabled id="btn-load-game" data-action="loadGame">
               <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>
               <span>Load Game</span>
             </button>
-            <button class="button is-psx" id="btn-swap-disc">
+            <button class="button is-psx" id="btn-swap-disc" disabled data-action="swapDisc">
               <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>
               <span>Swap Disc</span>
             </button>
@@ -372,7 +191,7 @@
   </div>
 
   <!-- Hidden file inputs (wired up by your JS) -->
-  <input type="file" id="file-bios" accept=".bin,.rom,.BIN" hidden>
+  <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
   <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
   <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
   <script src="dist/bundle.js"></script>

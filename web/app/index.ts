@@ -1,3 +1,4 @@
+import { Psx } from './src/psx'
 import './styles/app.scss'
 
-console.log("hello world!")
+const psx = new Psx()

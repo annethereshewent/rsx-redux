@@ -43,8 +43,7 @@ impl PsxWebEmulator {
 
         self.cpu.bus.gpu.frame_finished = false;
 
-        #[cfg(feature = "software_gpu")]
-        self.cpu.bus.gpu.cap_fps();
+        self.cpu.bus.gpu.update_framebuffer();
     }
 
     pub fn drain_samples(&mut self) -> Vec<i16> {
@@ -117,12 +116,14 @@ impl PsxWebEmulator {
         data
     }
 
-    pub fn get_dimensions(&self) -> *const u32  {
+    pub fn get_dimensions(&self) -> Vec<u32> {
         let (width, height) = self.cpu.bus.gpu.get_dimensions();
+
+        console_log!("width = {width} height = {height}");
 
         let vec = vec![width, height];
 
-        vec.as_ptr()
+        vec
     }
 
     pub fn start_exe(&mut self, path: &str) {
@@ -148,5 +149,13 @@ impl PsxWebEmulator {
 
     pub fn switch_selected_controller(&mut self, controller_id: u8) {
         self.cpu.bus.peripherals.selected_controller = controller_id;
+    }
+
+    pub fn get_framebuffer(&self) -> *const u8 {
+        self.cpu.bus.gpu.picture.as_ptr()
+    }
+
+    pub fn get_framebuffer_size(&self) -> usize {
+        self.cpu.bus.gpu.picture.len()
     }
 }
