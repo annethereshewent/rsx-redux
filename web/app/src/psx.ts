@@ -7,7 +7,6 @@ const FPS_INTERVAL = 1000 / 60
 export class Psx {
     private wasm: InitOutput|null = null
     private emulator: PsxWebEmulator|null = null
-    private canvas: HTMLCanvasElement|null = null
     private frameNumber = -1
     private previousTime = 0
     private realPreviousTime = 0
