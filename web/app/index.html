@@ -1,199 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RSX Redux</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSX Redux</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
-  <!-- ════════════════════════════════════════════
-       Navbar
-       ════════════════════════════════════════════ -->
-  <nav class="navbar" role="navigation" aria-label="main navigation">
-    <div class="navbar-brand">
-      <a class="navbar-item" href="#">
-        <i class="fa-solid fa-microchip"></i>
-        <span>RSX <span class="brand-accent">Redux</span></span>
-      </a>
-      <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="mainNav">
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-      </a>
+    <!-- ════════════════════════════════════════════
+             Navbar
+             ════════════════════════════════════════════ -->
+    <nav class="navbar" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="#">
+                <i class="fa-solid fa-microchip"></i>
+                <span>RSX <span class="brand-accent">Redux</span></span>
+            </a>
+            <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="mainNav">
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+            </a>
+        </div>
+        <div id="mainNav" class="navbar-menu">
+            <div class="navbar-start">
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">File</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" id="nav-load-bios">
+                            <span class="icon"><i class="fa-solid fa-memory"></i></span>&nbsp;Load BIOS
+                        </a>
+                        <a class="navbar-item" id="nav-load-game">
+                            <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>&nbsp;Load Game
+                        </a>
+                        <hr class="navbar-divider">
+                        <a class="navbar-item" id="nav-load-disc">
+                            <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>&nbsp;Swap Disc
+                        </a>
+                    </div>
+                </div>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Emulation</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" id="nav-pause">
+                            <span class="icon"><i class="fa-solid fa-pause"></i></span>&nbsp;Pause
+                        </a>
+                        <a class="navbar-item" id="nav-reset">
+                            <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>&nbsp;Reset
+                        </a>
+                        <hr class="navbar-divider">
+                        <a class="navbar-item" id="nav-save-state">
+                            <span class="icon"><i class="fa-solid fa-download"></i></span>&nbsp;Save State
+                        </a>
+                        <a class="navbar-item" id="nav-load-state">
+                            <span class="icon"><i class="fa-solid fa-upload"></i></span>&nbsp;Load State
+                        </a>
+                    </div>
+                </div>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Settings</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" id="nav-controller">
+                            <span class="icon"><i class="fa-solid fa-gamepad"></i></span>&nbsp;Controller Mapping
+                        </a>
+                        <a class="navbar-item" id="nav-video">
+                            <span class="icon"><i class="fa-solid fa-display"></i></span>&nbsp;Video
+                        </a>
+                        <a class="navbar-item" id="nav-audio">
+                            <span class="icon"><i class="fa-solid fa-volume-high"></i></span>&nbsp;Audio
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="navbar-end">
+                <a class="navbar-item" id="nav-fullscreen" title="Fullscreen">
+                    <span class="icon"><i class="fa-solid fa-expand"></i></span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ════════════════════════════════════════════
+             Main content
+             ════════════════════════════════════════════ -->
+    <section class="section py-5">
+        <div class="columns">
+
+            <!-- ── Left sidebar ── -->
+            <div class="column is-2 is-hidden-touch">
+                <div class="panel-card mb-4">
+                    <p class="panel-title">Quick Actions</p>
+                    <aside class="menu">
+                        <ul class="menu-list">
+                            <li><a id="side-load-bios"><span class="icon"><i class="fa-solid fa-memory"></i></span>Load BIOS</a></li>
+                            <li><a id="side-load-game"><span class="icon"><i class="fa-solid fa-compact-disc"></i></span>Load Game</a></li>
+                            <li><a id="side-swap-disc"><span class="icon"><i class="fa-solid fa-circle-notch"></i></span>Swap Disc</a></li>
+                        </ul>
+                    </aside>
+                </div>
+                <div class="panel-card">
+                    <p class="panel-title">Save States</p>
+                    <aside class="menu">
+                        <ul class="menu-list">
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 1 — Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 2 — Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 3 — Empty</a></li>
+                        </ul>
+                    </aside>
+                </div>
+            </div>
+
+            <!-- ── Center: display + controls ── -->
+            <div class="column">
+                <div class="canvas-wrapper mb-4" id="display">
+                    <div class="canvas-placeholder" id="placeholder">
+                        <i class="fa-solid fa-gamepad"></i>
+                        <p>Load a BIOS and game to start</p>
+                    </div>
+                </div>
+
+                <!-- Action bar (visible on all sizes) -->
+                <div class="action-bar">
+                    <div class="buttons is-centered gap-3">
+                        <button class="button is-psx" id="btn-load-bios" data-action="loadBios">
+                            <span class="icon"><i class="fa-solid fa-memory"></i></span>
+                            <span>Load BIOS</span>
+                        </button>
+                        <button class="button is-psx is-primary-action" disabled id="btn-load-game" data-action="loadGame">
+                            <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>
+                            <span>Load Game</span>
+                        </button>
+                        <button class="button is-psx" id="btn-swap-disc" disabled data-action="swapDisc">
+                            <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>
+                            <span>Swap Disc</span>
+                        </button>
+                        <span class="mx-2"></span>
+                        <button class="button is-psx" id="btn-pause" title="Pause">
+                            <span class="icon"><i class="fa-solid fa-pause"></i></span>
+                        </button>
+                        <button class="button is-psx" id="btn-reset" title="Reset">
+                            <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>
+                        </button>
+                        <button class="button is-psx" id="btn-fullscreen" title="Fullscreen">
+                            <span class="icon"><i class="fa-solid fa-expand"></i></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Right sidebar ── -->
+            <div class="column is-2 is-hidden-touch">
+                <div class="panel-card mb-4">
+                    <p class="panel-title">System</p>
+                    <aside class="menu">
+                        <ul class="menu-list">
+                            <li><a><span class="icon"><i class="fa-solid fa-gauge-high"></i></span>Performance</a></li>
+                            <li><a><span class="icon"><i class="fa-solid fa-terminal"></i></span>Debug Log</a></li>
+                        </ul>
+                    </aside>
+                </div>
+                <div class="panel-card">
+                    <p class="panel-title">Cloud</p>
+                    <aside class="menu">
+                        <ul class="menu-list">
+                            <li><a><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
+                            <li><a><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
+                        </ul>
+                    </aside>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════
+             Status bar
+             ════════════════════════════════════════════ -->
+    <div class="status-bar is-flex is-justify-content-space-between is-align-items-center" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;">
+        <div>
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">No BIOS loaded</span>
+        </div>
+        <div class="is-flex gap-3">
+            <span id="status-fps">— FPS</span>
+            <span>·</span>
+            <span id="status-region">NTSC-U</span>
+        </div>
     </div>
-    <div id="mainNav" class="navbar-menu">
-      <div class="navbar-start">
-        <div class="navbar-item has-dropdown is-hoverable">
-          <a class="navbar-link">File</a>
-          <div class="navbar-dropdown">
-            <a class="navbar-item" id="nav-load-bios">
-              <span class="icon"><i class="fa-solid fa-memory"></i></span>&nbsp;Load BIOS
-            </a>
-            <a class="navbar-item" id="nav-load-game">
-              <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>&nbsp;Load Game
-            </a>
-            <hr class="navbar-divider">
-            <a class="navbar-item" id="nav-load-disc">
-              <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>&nbsp;Swap Disc
-            </a>
-          </div>
-        </div>
-        <div class="navbar-item has-dropdown is-hoverable">
-          <a class="navbar-link">Emulation</a>
-          <div class="navbar-dropdown">
-            <a class="navbar-item" id="nav-pause">
-              <span class="icon"><i class="fa-solid fa-pause"></i></span>&nbsp;Pause
-            </a>
-            <a class="navbar-item" id="nav-reset">
-              <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>&nbsp;Reset
-            </a>
-            <hr class="navbar-divider">
-            <a class="navbar-item" id="nav-save-state">
-              <span class="icon"><i class="fa-solid fa-download"></i></span>&nbsp;Save State
-            </a>
-            <a class="navbar-item" id="nav-load-state">
-              <span class="icon"><i class="fa-solid fa-upload"></i></span>&nbsp;Load State
-            </a>
-          </div>
-        </div>
-        <div class="navbar-item has-dropdown is-hoverable">
-          <a class="navbar-link">Settings</a>
-          <div class="navbar-dropdown">
-            <a class="navbar-item" id="nav-controller">
-              <span class="icon"><i class="fa-solid fa-gamepad"></i></span>&nbsp;Controller Mapping
-            </a>
-            <a class="navbar-item" id="nav-video">
-              <span class="icon"><i class="fa-solid fa-display"></i></span>&nbsp;Video
-            </a>
-            <a class="navbar-item" id="nav-audio">
-              <span class="icon"><i class="fa-solid fa-volume-high"></i></span>&nbsp;Audio
-            </a>
-          </div>
-        </div>
-      </div>
-      <div class="navbar-end">
-        <a class="navbar-item" id="nav-fullscreen" title="Fullscreen">
-          <span class="icon"><i class="fa-solid fa-expand"></i></span>
-        </a>
-      </div>
-    </div>
-  </nav>
 
-  <!-- ════════════════════════════════════════════
-       Main content
-       ════════════════════════════════════════════ -->
-  <section class="section py-5">
-    <div class="columns">
-
-      <!-- ── Left sidebar ── -->
-      <div class="column is-2 is-hidden-touch">
-        <div class="panel-card mb-4">
-          <p class="panel-title">Quick Actions</p>
-          <aside class="menu">
-            <ul class="menu-list">
-              <li><a id="side-load-bios"><span class="icon"><i class="fa-solid fa-memory"></i></span>Load BIOS</a></li>
-              <li><a id="side-load-game"><span class="icon"><i class="fa-solid fa-compact-disc"></i></span>Load Game</a></li>
-              <li><a id="side-swap-disc"><span class="icon"><i class="fa-solid fa-circle-notch"></i></span>Swap Disc</a></li>
-            </ul>
-          </aside>
-        </div>
-        <div class="panel-card">
-          <p class="panel-title">Save States</p>
-          <aside class="menu">
-            <ul class="menu-list">
-              <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 1 — Empty</a></li>
-              <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 2 — Empty</a></li>
-              <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 3 — Empty</a></li>
-            </ul>
-          </aside>
-        </div>
-      </div>
-
-      <!-- ── Center: display + controls ── -->
-      <div class="column">
-        <div class="canvas-wrapper mb-4" id="display">
-          <div class="canvas-placeholder" id="placeholder">
-            <i class="fa-solid fa-gamepad"></i>
-            <p>Load a BIOS and game to start</p>
-          </div>
-        </div>
-
-        <!-- Action bar (visible on all sizes) -->
-        <div class="action-bar">
-          <div class="buttons is-centered gap-3">
-            <button class="button is-psx" id="btn-load-bios" data-action="loadBios">
-              <span class="icon"><i class="fa-solid fa-memory"></i></span>
-              <span>Load BIOS</span>
-            </button>
-            <button class="button is-psx is-primary-action" disabled id="btn-load-game" data-action="loadGame">
-              <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>
-              <span>Load Game</span>
-            </button>
-            <button class="button is-psx" id="btn-swap-disc" disabled data-action="swapDisc">
-              <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>
-              <span>Swap Disc</span>
-            </button>
-            <span class="mx-2"></span>
-            <button class="button is-psx" id="btn-pause" title="Pause">
-              <span class="icon"><i class="fa-solid fa-pause"></i></span>
-            </button>
-            <button class="button is-psx" id="btn-reset" title="Reset">
-              <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>
-            </button>
-            <button class="button is-psx" id="btn-fullscreen" title="Fullscreen">
-              <span class="icon"><i class="fa-solid fa-expand"></i></span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Right sidebar ── -->
-      <div class="column is-2 is-hidden-touch">
-        <div class="panel-card mb-4">
-          <p class="panel-title">System</p>
-          <aside class="menu">
-            <ul class="menu-list">
-              <li><a><span class="icon"><i class="fa-solid fa-gauge-high"></i></span>Performance</a></li>
-              <li><a><span class="icon"><i class="fa-solid fa-terminal"></i></span>Debug Log</a></li>
-            </ul>
-          </aside>
-        </div>
-        <div class="panel-card">
-          <p class="panel-title">Cloud</p>
-          <aside class="menu">
-            <ul class="menu-list">
-              <li><a><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
-              <li><a><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
-            </ul>
-          </aside>
-        </div>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ════════════════════════════════════════════
-       Status bar
-       ════════════════════════════════════════════ -->
-  <div class="status-bar is-flex is-justify-content-space-between is-align-items-center" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;">
-    <div>
-      <span class="status-dot" id="status-dot"></span>
-      <span id="status-text">No BIOS loaded</span>
-    </div>
-    <div class="is-flex gap-3">
-      <span id="status-fps">— FPS</span>
-      <span>·</span>
-      <span id="status-region">NTSC-U</span>
-    </div>
-  </div>
-
-  <!-- Hidden file inputs (wired up by your JS) -->
-  <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
-  <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
-  <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
-  <script src="dist/bundle.js"></script>
+    <!-- Hidden file inputs (wired up by your JS) -->
+    <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
+    <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+    <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+    <script src="dist/bundle.js"></script>
 </body>
 </html>
