@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RSX Redux</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    :root {
+      --psx-bg: #1a1a2e;
+      --psx-surface: #16213e;
+      --psx-surface-raised: #1c2a4a;
+      --psx-border: #2a3a5c;
+      --psx-text: #e0e0e0;
+      --psx-text-muted: #8892a4;
+      --psx-blue: #6c8cbf;
+      --psx-pink: #c2608e;
+      --psx-green: #5faa7d;
+      --psx-red: #c0524f;
+    }
+
+    html, body {
+      background-color: var(--psx-bg);
+      color: var(--psx-text);
+      min-height: 100vh;
+    }
+
+    /* ── Navbar ── */
+    .navbar {
+      background-color: var(--psx-surface);
+      border-bottom: 1px solid var(--psx-border);
+    }
+    .navbar-item, .navbar-burger {
+      color: var(--psx-text) !important;
+    }
+    .navbar-item:hover {
+      background-color: var(--psx-surface-raised) !important;
+      color: #fff !important;
+    }
+    .navbar-brand .navbar-item {
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: 0.04em;
+      gap: 0.5rem;
+    }
+    .navbar-brand .navbar-item .brand-accent {
+      color: var(--psx-blue);
+    }
+    .navbar-dropdown {
+      background-color: var(--psx-surface);
+      border-color: var(--psx-border);
+    }
+    .navbar-divider {
+      background-color: var(--psx-border);
+    }
+
+    /* ── Canvas area ── */
+    .canvas-wrapper {
+      background-color: #0d0d1a;
+      border: 2px solid var(--psx-border);
+      border-radius: 6px;
+      aspect-ratio: 4 / 3;
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .canvas-wrapper canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .canvas-placeholder {
+      text-align: center;
+      color: var(--psx-text-muted);
+      user-select: none;
+    }
+    .canvas-placeholder i {
+      font-size: 3rem;
+      margin-bottom: 0.75rem;
+      display: block;
+      color: var(--psx-border);
+    }
+
+    /* ── Action bar ── */
+    .action-bar {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    /* ── Buttons ── */
+    .button.is-psx {
+      background-color: var(--psx-surface-raised);
+      border: 1px solid var(--psx-border);
+      color: var(--psx-text);
+      font-weight: 500;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+    .button.is-psx:hover {
+      background-color: #223052;
+      border-color: var(--psx-blue);
+      color: #fff;
+    }
+    .button.is-psx:focus {
+      box-shadow: 0 0 0 2px rgba(108, 140, 191, 0.35);
+    }
+    .button.is-psx.is-primary-action {
+      background-color: var(--psx-blue);
+      border-color: var(--psx-blue);
+      color: #fff;
+    }
+    .button.is-psx.is-primary-action:hover {
+      background-color: #7d9ccc;
+      border-color: #7d9ccc;
+    }
+    .button.is-psx .icon {
+      color: var(--psx-blue);
+    }
+    .button.is-psx.is-primary-action .icon {
+      color: #fff;
+    }
+
+    /* ── Sidebar panels ── */
+    .panel-card {
+      background-color: var(--psx-surface);
+      border: 1px solid var(--psx-border);
+      border-radius: 6px;
+      padding: 1.25rem;
+    }
+    .panel-card .panel-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--psx-text-muted);
+      margin-bottom: 1rem;
+    }
+    .panel-card .menu-list a {
+      color: var(--psx-text);
+      border-radius: 4px;
+      padding: 0.5em 0.75em;
+    }
+    .panel-card .menu-list a:hover {
+      background-color: var(--psx-surface-raised);
+      color: #fff;
+    }
+    .panel-card .menu-list a .icon {
+      color: var(--psx-text-muted);
+      margin-right: 0.35em;
+    }
+
+    /* ── Status bar ── */
+    .status-bar {
+      background-color: var(--psx-surface);
+      border-top: 1px solid var(--psx-border);
+      font-size: 0.8rem;
+      color: var(--psx-text-muted);
+      padding: 0.4rem 1.5rem;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--psx-text-muted);
+      margin-right: 0.4rem;
+      vertical-align: middle;
+    }
+    .status-dot.is-active {
+      background-color: var(--psx-green);
+    }
+
+    /* ── Footer ── */
+    .footer {
+      background-color: var(--psx-bg);
+      padding: 2rem 1.5rem;
+      color: var(--psx-text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* ── Utilities ── */
+    .gap-2 { gap: 0.5rem; }
+    .gap-3 { gap: 0.75rem; }
+  </style>
+</head>
+<body>
+  <!-- ════════════════════════════════════════════
+       Navbar
+       ════════════════════════════════════════════ -->
+  <nav class="navbar" role="navigation" aria-label="main navigation">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="#">
+        <i class="fa-solid fa-microchip"></i>
+        <span>RSX <span class="brand-accent">Redux</span></span>
+      </a>
+      <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="mainNav">
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </a>
+    </div>
+    <div id="mainNav" class="navbar-menu">
+      <div class="navbar-start">
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">File</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" id="nav-load-bios">
+              <span class="icon"><i class="fa-solid fa-memory"></i></span>&nbsp;Load BIOS
+            </a>
+            <a class="navbar-item" id="nav-load-game">
+              <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>&nbsp;Load Game
+            </a>
+            <hr class="navbar-divider">
+            <a class="navbar-item" id="nav-load-disc">
+              <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>&nbsp;Swap Disc
+            </a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Emulation</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" id="nav-pause">
+              <span class="icon"><i class="fa-solid fa-pause"></i></span>&nbsp;Pause
+            </a>
+            <a class="navbar-item" id="nav-reset">
+              <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>&nbsp;Reset
+            </a>
+            <hr class="navbar-divider">
+            <a class="navbar-item" id="nav-save-state">
+              <span class="icon"><i class="fa-solid fa-download"></i></span>&nbsp;Save State
+            </a>
+            <a class="navbar-item" id="nav-load-state">
+              <span class="icon"><i class="fa-solid fa-upload"></i></span>&nbsp;Load State
+            </a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link">Settings</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" id="nav-controller">
+              <span class="icon"><i class="fa-solid fa-gamepad"></i></span>&nbsp;Controller Mapping
+            </a>
+            <a class="navbar-item" id="nav-video">
+              <span class="icon"><i class="fa-solid fa-display"></i></span>&nbsp;Video
+            </a>
+            <a class="navbar-item" id="nav-audio">
+              <span class="icon"><i class="fa-solid fa-volume-high"></i></span>&nbsp;Audio
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="navbar-end">
+        <a class="navbar-item" id="nav-fullscreen" title="Fullscreen">
+          <span class="icon"><i class="fa-solid fa-expand"></i></span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ════════════════════════════════════════════
+       Main content
+       ════════════════════════════════════════════ -->
+  <section class="section py-5">
+    <div class="columns">
+
+      <!-- ── Left sidebar ── -->
+      <div class="column is-2 is-hidden-touch">
+        <div class="panel-card mb-4">
+          <p class="panel-title">Quick Actions</p>
+          <aside class="menu">
+            <ul class="menu-list">
+              <li><a id="side-load-bios"><span class="icon"><i class="fa-solid fa-memory"></i></span>Load BIOS</a></li>
+              <li><a id="side-load-game"><span class="icon"><i class="fa-solid fa-compact-disc"></i></span>Load Game</a></li>
+              <li><a id="side-swap-disc"><span class="icon"><i class="fa-solid fa-circle-notch"></i></span>Swap Disc</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="panel-card">
+          <p class="panel-title">Save States</p>
+          <aside class="menu">
+            <ul class="menu-list">
+              <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 1 — Empty</a></li>
+              <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 2 — Empty</a></li>
+              <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 3 — Empty</a></li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+
+      <!-- ── Center: display + controls ── -->
+      <div class="column">
+        <div class="canvas-wrapper mb-4" id="display">
+          <!-- <canvas> will be inserted here by WASM -->
+          <div class="canvas-placeholder">
+            <i class="fa-solid fa-gamepad"></i>
+            <p>Load a BIOS and game to start</p>
+          </div>
+        </div>
+
+        <!-- Action bar (visible on all sizes) -->
+        <div class="action-bar">
+          <div class="buttons is-centered gap-3">
+            <button class="button is-psx" id="btn-load-bios">
+              <span class="icon"><i class="fa-solid fa-memory"></i></span>
+              <span>Load BIOS</span>
+            </button>
+            <button class="button is-psx is-primary-action" id="btn-load-game">
+              <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>
+              <span>Load Game</span>
+            </button>
+            <button class="button is-psx" id="btn-swap-disc">
+              <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>
+              <span>Swap Disc</span>
+            </button>
+            <span class="mx-2"></span>
+            <button class="button is-psx" id="btn-pause" title="Pause">
+              <span class="icon"><i class="fa-solid fa-pause"></i></span>
+            </button>
+            <button class="button is-psx" id="btn-reset" title="Reset">
+              <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>
+            </button>
+            <button class="button is-psx" id="btn-fullscreen" title="Fullscreen">
+              <span class="icon"><i class="fa-solid fa-expand"></i></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Right sidebar ── -->
+      <div class="column is-2 is-hidden-touch">
+        <div class="panel-card mb-4">
+          <p class="panel-title">System</p>
+          <aside class="menu">
+            <ul class="menu-list">
+              <li><a><span class="icon"><i class="fa-solid fa-gauge-high"></i></span>Performance</a></li>
+              <li><a><span class="icon"><i class="fa-solid fa-terminal"></i></span>Debug Log</a></li>
+            </ul>
+          </aside>
+        </div>
+        <div class="panel-card">
+          <p class="panel-title">Cloud</p>
+          <aside class="menu">
+            <ul class="menu-list">
+              <li><a><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
+              <li><a><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════
+       Status bar
+       ════════════════════════════════════════════ -->
+  <div class="status-bar is-flex is-justify-content-space-between is-align-items-center" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;">
+    <div>
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">No BIOS loaded</span>
+    </div>
+    <div class="is-flex gap-3">
+      <span id="status-fps">— FPS</span>
+      <span>·</span>
+      <span id="status-region">NTSC-U</span>
+    </div>
+  </div>
+
+  <!-- Hidden file inputs (wired up by your JS) -->
+  <input type="file" id="file-bios" accept=".bin,.rom,.BIN" hidden>
+  <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+  <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+  <script src="dist/bundle.js"></script>
+</body>
+</html>

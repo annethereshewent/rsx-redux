@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+      "skipLibCheck": true,
+      "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
+      "strict": true,
+      "forceConsistentCasingInFileNames": true,
+      "noFallthroughCasesInSwitch": true,
+      "module": "nodenext",
+      "moduleResolution": "nodenext",
+      "target": "es6",
+      "sourceMap": true,
+      "lib": [
+        "ES6",
+        "WebWorker",
+        "DOM",
+        "DOM.Iterable"
+      ],
+    }
+  }
