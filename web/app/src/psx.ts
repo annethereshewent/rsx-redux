@@ -1,6 +1,7 @@
 import init, { PsxWebEmulator, InitOutput } from "../../pkg/rsx_redux_web"
 import wasmData from '../../pkg/rsx_redux_web_bg.wasm'
 import { Joypad } from "./input/joypad"
+import { AudioOutput } from "./output/audio_output"
 import { VideoOutput } from "./output/video_output"
 
 const FPS_INTERVAL = 1000 / 60
@@ -34,6 +35,7 @@ export class Psx {
     private fps = 0
     private frames = 0
     private videoOutput: VideoOutput|null = null
+    private audioOutput: AudioOutput|null = null
     private keyMap = new Map<string, string>([
         ['select', 'tab'],
         ['l3', 'z'],
@@ -274,6 +276,7 @@ export class Psx {
         document.getElementById('display')!.append(canvas)
 
         this.videoOutput = new VideoOutput(canvas, this.emulator!, this.wasm!)
+        this.audioOutput = new AudioOutput(this.emulator!, this.wasm!)
         this.paused = false
 
         document.getElementById('status-dot')!.classList.add('is-active')
@@ -336,6 +339,7 @@ export class Psx {
             if (diff >= FPS_INTERVAL || this.previousTime == 0) {
                 this.emulator!.step_frame()
                 this.videoOutput?.updateCanvas()
+                this.audioOutput?.pushSamples()
                 this.joypad?.handleInputAndVibration()
             }
 
