@@ -3,6 +3,7 @@ import wasmData from '../../pkg/rsx_redux_web_bg.wasm'
 import { Joypad } from "./input/joypad"
 import { AudioOutput } from "./output/audio_output"
 import { VideoOutput } from "./output/video_output"
+import { WaveVisualizer } from "./util/wave_visualizer"
 
 const FPS_INTERVAL = 1000 / 60
 
@@ -59,6 +60,7 @@ export class Psx {
     private biosReady = false
     private gameReady = false
     private joypad: Joypad|null = null
+    private waveVisualizer = new WaveVisualizer()
 
     private controllerClickListener = (event: Event) => {
         const modal = document.getElementById('controller-modal')
@@ -321,6 +323,10 @@ export class Psx {
         })
     }
 
+    toggleWaveform() {
+        this.waveVisualizer.toggle()
+    }
+
     runFrame(time: number) {
         const diff = time - this.previousTime
 
@@ -339,7 +345,10 @@ export class Psx {
             if (diff >= FPS_INTERVAL || this.previousTime == 0) {
                 this.emulator!.step_frame()
                 this.videoOutput?.updateCanvas()
-                this.audioOutput?.pushSamples()
+                const samples = this.audioOutput?.pushSamples()
+
+                this.waveVisualizer.plot(samples!)
+
                 this.joypad?.handleInputAndVibration()
             }
 

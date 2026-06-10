@@ -1,178 +1,241 @@
 :root {
-  --psx-bg: #1a1a2e;
-  --psx-surface: #16213e;
-  --psx-surface-raised: #1c2a4a;
-  --psx-border: #2a3a5c;
-  --psx-text: #e0e0e0;
-  --psx-text-muted: #8892a4;
-  --psx-blue: #6c8cbf;
-  --psx-pink: #c2608e;
-  --psx-green: #5faa7d;
-  --psx-red: #c0524f;
+    --psx-bg: #1a1a2e;
+    --psx-surface: #16213e;
+    --psx-surface-raised: #1c2a4a;
+    --psx-border: #2a3a5c;
+    --psx-text: #e0e0e0;
+    --psx-text-muted: #8892a4;
+    --psx-blue: #6c8cbf;
+    --psx-pink: #c2608e;
+    --psx-green: #5faa7d;
+    --psx-red: #c0524f;
 }
 
 html, body {
-  background-color: var(--psx-bg);
-  color: var(--psx-text);
-  min-height: 100vh;
+    background-color: var(--psx-bg);
+    color: var(--psx-text);
+    min-height: 100vh;
 }
 
 /* ── Navbar ── */
 .navbar {
-  background-color: var(--psx-surface);
-  border-bottom: 1px solid var(--psx-border);
+    background-color: var(--psx-surface);
+    border-bottom: 1px solid var(--psx-border);
 }
 .navbar-item, .navbar-burger {
-  color: var(--psx-text) !important;
+    color: var(--psx-text) !important;
 }
 .navbar-item:hover {
-  background-color: var(--psx-surface-raised) !important;
-  color: #fff !important;
+    background-color: var(--psx-surface-raised) !important;
+    color: #fff !important;
 }
 .navbar-brand .navbar-item {
-  font-weight: 700;
-  font-size: 1.15rem;
-  letter-spacing: 0.04em;
-  gap: 0.5rem;
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: 0.04em;
+    gap: 0.5rem;
 }
 .navbar-brand .navbar-item .brand-accent {
-  color: var(--psx-blue);
+    color: var(--psx-blue);
 }
 .navbar-dropdown {
-  background-color: var(--psx-surface);
-  border-color: var(--psx-border);
+    background-color: var(--psx-surface);
+    border-color: var(--psx-border);
 }
 .navbar-divider {
-  background-color: var(--psx-border);
+    background-color: var(--psx-border);
 }
 
 /* ── Canvas area ── */
 .canvas-wrapper {
-  background-color: #0d0d1a;
-  border: 2px solid var(--psx-border);
-  border-radius: 6px;
-  aspect-ratio: 4 / 3;
-  max-width: 800px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
+    background-color: #0d0d1a;
+    border: 2px solid var(--psx-border);
+    border-radius: 6px;
+    aspect-ratio: 4 / 3;
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
 }
 .canvas-wrapper canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
+    width: 100%;
+    height: 100%;
+    display: block;
 }
 .canvas-placeholder {
-  text-align: center;
-  color: var(--psx-text-muted);
-  user-select: none;
+    text-align: center;
+    color: var(--psx-text-muted);
+    user-select: none;
 }
 .canvas-placeholder i {
-  font-size: 3rem;
-  margin-bottom: 0.75rem;
-  display: block;
-  color: var(--psx-border);
+    font-size: 3rem;
+    margin-bottom: 0.75rem;
+    display: block;
+    color: var(--psx-border);
 }
 
 /* ── Action bar ── */
 .action-bar {
-  max-width: 800px;
-  margin: 0 auto;
+    max-width: 800px;
+    margin: 0 auto;
 }
 
 /* ── Buttons ── */
 .button.is-psx {
-  background-color: var(--psx-surface-raised);
-  border: 1px solid var(--psx-border);
-  color: var(--psx-text);
-  font-weight: 500;
-  transition: border-color 0.15s, background-color 0.15s;
+    background-color: var(--psx-surface-raised);
+    border: 1px solid var(--psx-border);
+    color: var(--psx-text);
+    font-weight: 500;
+    transition: border-color 0.15s, background-color 0.15s;
 }
 .button.is-psx:hover {
-  background-color: #223052;
-  border-color: var(--psx-blue);
-  color: #fff;
+    background-color: #223052;
+    border-color: var(--psx-blue);
+    color: #fff;
 }
 .button.is-psx:focus {
-  box-shadow: 0 0 0 2px rgba(108, 140, 191, 0.35);
+    box-shadow: 0 0 0 2px rgba(108, 140, 191, 0.35);
 }
 .button.is-psx.is-primary-action {
-  background-color: var(--psx-blue);
-  border-color: var(--psx-blue);
-  color: #fff;
+    background-color: var(--psx-blue);
+    border-color: var(--psx-blue);
+    color: #fff;
 }
 .button.is-psx.is-primary-action:hover {
-  background-color: #7d9ccc;
-  border-color: #7d9ccc;
+    background-color: #7d9ccc;
+    border-color: #7d9ccc;
 }
 .button.is-psx .icon {
-  color: var(--psx-blue);
+    color: var(--psx-blue);
 }
 .button.is-psx.is-primary-action .icon {
-  color: #fff;
+    color: #fff;
 }
 
 /* ── Sidebar panels ── */
 .panel-card {
-  background-color: var(--psx-surface);
-  border: 1px solid var(--psx-border);
-  border-radius: 6px;
-  padding: 1.25rem;
+    background-color: var(--psx-surface);
+    border: 1px solid var(--psx-border);
+    border-radius: 6px;
+    padding: 1.25rem;
 }
 .panel-card .panel-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--psx-text-muted);
-  margin-bottom: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--psx-text-muted);
+    margin-bottom: 1rem;
 }
 .panel-card .menu-list a {
-  color: var(--psx-text);
-  border-radius: 4px;
-  padding: 0.5em 0.75em;
+    color: var(--psx-text);
+    border-radius: 4px;
+    padding: 0.5em 0.75em;
 }
 .panel-card .menu-list a:hover {
-  background-color: var(--psx-surface-raised);
-  color: #fff;
+    background-color: var(--psx-surface-raised);
+    color: #fff;
 }
 .panel-card .menu-list a .icon {
-  color: var(--psx-text-muted);
-  margin-right: 0.35em;
+    color: var(--psx-text-muted);
+    margin-right: 0.35em;
 }
 
 /* ── Status bar ── */
 .status-bar {
-  background-color: var(--psx-surface);
-  border-top: 1px solid var(--psx-border);
-  font-size: 0.8rem;
-  color: var(--psx-text-muted);
-  padding: 0.4rem 1.5rem;
+    background-color: var(--psx-surface);
+    border-top: 1px solid var(--psx-border);
+    font-size: 0.8rem;
+    color: var(--psx-text-muted);
+    padding: 0.4rem 1.5rem;
 }
 .status-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--psx-text-muted);
-  margin-right: 0.4rem;
-  vertical-align: middle;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--psx-text-muted);
+    margin-right: 0.4rem;
+    vertical-align: middle;
 }
 .status-dot.is-active {
-  background-color: var(--psx-green);
+    background-color: var(--psx-green);
 }
 
 /* ── Footer ── */
 .footer {
-  background-color: var(--psx-bg);
-  padding: 2rem 1.5rem;
-  color: var(--psx-text-muted);
-  font-size: 0.85rem;
+    background-color: var(--psx-bg);
+    padding: 2rem 1.5rem;
+    color: var(--psx-text-muted);
+    font-size: 0.85rem;
 }
 
 /* ── Utilities ── */
 .gap-2 { gap: 0.5rem; }
 .gap-3 { gap: 0.75rem; }
+
+.waveform-wrapper {
+    max-width: 800px;
+    margin: 1rem auto 0;
+    background: #0d0d1a;
+    border: 1px solid var(--psx-border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem 0.5rem;
+}
+
+.waveform-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.waveform-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--psx-text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.waveform-label i {
+    color: var(--psx-blue);
+}
+
+.waveform-channels {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.channel-tag {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+.channel-l { background: rgba(108, 140, 191, 0.18); color: var(--psx-blue); }
+.channel-r { background: rgba(194, 96, 142, 0.18); color: var(--psx-pink); }
+
+.waveform-canvas {
+    display: block;
+    width: 100%;
+    height: 200px;
+    border-radius: 4px;
+}
+
+/* active state for the System panel toggle */
+.menu-list a.is-active-toggle {
+    background-color: var(--psx-surface-raised);
+    color: #fff;
+}
+.menu-list a.is-active-toggle .icon {
+    color: var(--psx-blue);
+}

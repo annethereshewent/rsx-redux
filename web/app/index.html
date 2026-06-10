@@ -158,6 +158,11 @@
                         <ul class="menu-list">
                             <li><a><span class="icon"><i class="fa-solid fa-gauge-high"></i></span>Performance</a></li>
                             <li><a><span class="icon"><i class="fa-solid fa-terminal"></i></span>Debug Log</a></li>
+                            <li>
+                                <a id="toggle-waveform" data-action="toggleWaveform">
+                                    <span class="icon"><i class="fa-solid fa-wave-square"></i></span>Waveform
+                                </a>
+                            </li>
                         </ul>
                     </aside>
                 </div>
@@ -188,6 +193,18 @@
             <span>·</span>
             <span id="status-region">NTSC-U</span>
         </div>
+    </div>
+    <div class="waveform-wrapper" id="waveform-wrapper" style="display: none;">
+        <div class="waveform-header">
+            <span class="waveform-label">
+                <i class="fa-solid fa-wave-square"></i> Waveform
+            </span>
+            <div class="waveform-channels">
+                <span class="channel-tag channel-l">L</span>
+                <span class="channel-tag channel-r">R</span>
+            </div>
+        </div>
+        <canvas id="waveform-canvas" class="waveform-canvas"></canvas>
     </div>
 
     <!-- Hidden file inputs (wired up by your JS) -->
