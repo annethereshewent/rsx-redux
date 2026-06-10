@@ -30,6 +30,22 @@ export class Psx {
 
                 target?.classList.toggle('is-active')
 
+                if (target?.classList.contains('is-active')) {
+                    const clickListener = (event: Event) => {
+                        const modals = document.getElementsByClassName('modal-box')
+
+                        for (const modal of modals) {
+                            if (!modal.contains((event.target as HTMLElement)!) && modal.parentElement?.classList.contains('is-active')) {
+                                modal.parentElement?.classList.remove('is-active')
+                                document.removeEventListener('click', clickListener)
+                                return
+                            }
+                        }
+                    }
+
+                    document.addEventListener('click', clickListener)
+                }
+
                 return
             }
 

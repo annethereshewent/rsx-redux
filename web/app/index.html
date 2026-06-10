@@ -10,7 +10,7 @@
 <body>
     <!-- ════════════════════════════════════════════
              Navbar
-             ════════════════════════════════════════════ -->
+        ════════════════════════════════════════════ -->
     <nav class="navbar" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
             <a class="navbar-item" href="#">
@@ -62,7 +62,7 @@
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Settings</a>
                     <div class="navbar-dropdown">
-                        <a class="navbar-item" id="nav-controller">
+                        <a class="navbar-item" id="nav-controller" data-action="toggle" data-target="controller-modal">
                             <span class="icon"><i class="fa-solid fa-gamepad"></i></span>&nbsp;Controller Mapping
                         </a>
                         <a class="navbar-item" id="nav-video">
@@ -84,7 +84,7 @@
 
     <!-- ════════════════════════════════════════════
              Main content
-             ════════════════════════════════════════════ -->
+        ════════════════════════════════════════════ -->
     <section class="section py-5">
         <div class="columns">
 
@@ -177,7 +177,7 @@
 
     <!-- ════════════════════════════════════════════
              Status bar
-             ════════════════════════════════════════════ -->
+        ════════════════════════════════════════════ -->
     <div class="status-bar is-flex is-justify-content-space-between is-align-items-center" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;">
         <div>
             <span class="status-dot" id="status-dot"></span>
@@ -194,6 +194,117 @@
     <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
     <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
     <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+    <div class="modal-backdrop" id="controller-modal">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="controller-modal-title">
+
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <i class="fa-solid fa-gamepad"></i>
+                    <p class="modal-title" id="controller-modal-title">Controller mapping — keyboard</p>
+                </div>
+                <button class="modal-close-btn" id="controller-modal-close" aria-label="Close" data-action="toggle" data-target="controller-modal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <!-- Face buttons -->
+                <p class="section-label">Face buttons</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-cross">✕</span> Cross</span>
+                        <button class="key-pill" data-action="remapKey" data-button="cross">K</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-circle">○</span> Circle</span>
+                        <button class="key-pill" data-action="remapKey" data-button="circle">L</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-square">□</span> Square</span>
+                        <button class="key-pill" data-action="remapKey" data-button="square">J</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-triangle">△</span> Triangle</span>
+                        <button class="key-pill" data-action="remapKey" data-button="triangle">I</button>
+                    </div>
+                </div>
+
+                <!-- D-pad -->
+                <p class="section-label">D-pad</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ↑</span>
+                        <button class="key-pill" data-action="remapKey" data-button="up">W</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ↓</span>
+                        <button class="key-pill" data-action="remapKey" data-button="down">S</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ←</span>
+                        <button class="key-pill" data-action="remapKey" data-button="left">A</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> →</span>
+                        <button class="key-pill" data-action="remapKey" data-button="right">D</button>
+                    </div>
+                </div>
+
+                <!-- Shoulder buttons -->
+                <p class="section-label">Shoulder buttons</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">L1</span> L1</span>
+                        <button class="key-pill" data-action="remapKey" data-button="l1">U</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">R1</span> R1</span>
+                        <button class="key-pill" data-action="remapKey" data-button="r1">O</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">L2</span> L2</span>
+                        <button class="key-pill" data-action="remapKey" data-button="l2">7</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">R2</span> R2</span>
+                        <button class="key-pill" data-action="remapKey" data-button="r2">9</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">L3</span> L3</span>
+                        <button class="key-pill" data-action="remapKey" data-button="l3">LeftShift</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">R3</span> R3</span>
+                        <button class="key-pill" data-action="remapKey" data-button="r3">RightShift</button>
+                    </div>
+                </div>
+
+                <!-- System -->
+                <p class="section-label">System</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-system">SYS</span> Start</span>
+                        <button class="key-pill" data-action="remapKey" data-button="start">Enter</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-system">SYS</span> Select</span>
+                        <button class="key-pill" data-action="remapKey" data-button="select">Tab</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="button is-psx" id="controller-reset" style="color: var(--psx-red); margin-right: auto;">
+                    Reset to defaults
+                </button>
+                <button class="button is-psx" id="controller-cancel" data-action="toggle" data-target="controller-modal">Cancel</button>
+                <button class="button is-psx is-primary-action" id="controller-save" data-action="saveMappings">Save</button>
+            </div>
+
+        </div>
+    </div>
     <script src="dist/bundle.js"></script>
 </body>
 </html>
