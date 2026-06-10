@@ -103,7 +103,7 @@ export class Psx {
         const savedKeyMap = JSON.parse(localStorage.getItem('psx-keyboard-mappings') || 'null')
 
         if (savedKeyMap != null) {
-            this.keyMap = savedKeyMap
+            this.keyMap = new Map(savedKeyMap)
             this.updateBindings()
         }
 
@@ -144,7 +144,7 @@ export class Psx {
     }
 
     saveMappings() {
-        localStorage.setItem('psx-keyboard-mappings', JSON.stringify(this.keyMap))
+        localStorage.setItem('psx-keyboard-mappings', JSON.stringify(Array.from(this.keyMap.entries())))
 
         const modal = document.getElementById('controller-modal')
         modal?.classList.remove('is-active')
