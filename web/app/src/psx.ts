@@ -4,6 +4,25 @@ import { VideoOutput } from "./output/video_output"
 
 const FPS_INTERVAL = 1000 / 60
 
+const keyToCode = {
+    "select": 0,
+    "l3": 1,
+    "r3": 2,
+    "start": 3,
+    "up": 4,
+    "right": 5,
+    "down": 6,
+    "left": 7,
+    'l2': 8,
+    'r2': 9,
+    "l1": 10,
+    "r1": 11,
+    "triangle": 12,
+    "circle": 13,
+    "cross": 14,
+    "square": 15
+}
+
 export class Psx {
     private wasm: InitOutput|null = null
     private emulator: PsxWebEmulator|null = null
@@ -14,6 +33,33 @@ export class Psx {
     private fps = 0
     private frames = 0
     private videoOutput: VideoOutput|null = null
+    private keyMap = new Map<string, string>([
+        ['select', 'tab'],
+        ['l3', 'z'],
+        ['r3', 'm'],
+        ['start', 'enter'],
+        ['up', 'w'],
+        ['right', 'd'],
+        ['down', 's'],
+        ['left', 'a'],
+        ['l2', '7'],
+        ['r2', '9'],
+        ['l1', 'u'],
+        ['r1', 'o'],
+        ['triangle', 'i'],
+        ['circle', 'l'],
+        ['cross', 'k'],
+        ['square', 'j']
+    ])
+    private previousKeyMap = new Map()
+
+    private controllerClickListener = (event: Event) => {
+        const modal = document.getElementById('controller-modal')
+        const modalBox = modal?.children[0]
+        if (!modalBox?.contains((event.target as HTMLElement)!) && modal?.classList.contains('is-active')) {
+            this.undoMappings()
+        }
+    }
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -50,11 +96,59 @@ export class Psx {
             }
 
             if (action && action in this) {
-                (this as any)[action]()
+                (this as any)[action](el)
             }
         })
 
+        const savedKeyMap = JSON.parse(localStorage.getItem('psx-keyboard-mappings') || 'null')
+
+        if (savedKeyMap != null) {
+            this.keyMap = savedKeyMap
+            this.updateBindings()
+        }
+
         this.initializeEmulator()
+    }
+
+    updateBindings() {
+        this.keyMap.forEach((value, key, _map) => {
+            const element = document.getElementById(`button-${key}`)
+
+            if (element != null) {
+                element.innerText = this.formattedKey(value)
+            }
+        })
+    }
+
+    openControllerModal() {
+        this.updateBindings()
+
+        const modal = document.getElementById('controller-modal')
+
+        document.removeEventListener('click', this.controllerClickListener)
+
+        modal?.classList.add('is-active')
+
+        this.previousKeyMap = new Map(this.keyMap)
+
+        if (modal?.classList.contains('is-active')) {
+            document.addEventListener('click', this.controllerClickListener)
+        }
+    }
+
+    undoMappings() {
+        this.keyMap = new Map(this.previousKeyMap)
+        const modal = document.getElementById('controller-modal')
+        modal?.classList.remove('is-active')
+        document.removeEventListener('click', this.controllerClickListener)
+    }
+
+    saveMappings() {
+        localStorage.setItem('psx-keyboard-mappings', JSON.stringify(this.keyMap))
+
+        const modal = document.getElementById('controller-modal')
+        modal?.classList.remove('is-active')
+        document.removeEventListener('click', this.controllerClickListener)
     }
 
     async initializeEmulator() {
@@ -76,11 +170,37 @@ export class Psx {
         document.getElementById('btn-load-game')!.removeAttribute('disabled')
     }
 
+    private formattedKey(key: string) {
+        return key.charAt(0).toUpperCase() + key.slice(1, key.length).toLowerCase()
+    }
+
+    remapKey(el: HTMLElement) {
+        const previousKey = el.innerText.toLowerCase().replace('arrow', '')
+        el.innerText = "Listening...."
+        const remapListener = (ev: KeyboardEvent) => {
+            ev.preventDefault()
+            const selectedKey = ev.key.toLowerCase().replace('arrow', '')
+
+            this.keyMap.forEach((value, key, map) => {
+                if (value.toLowerCase() == selectedKey) {
+                    map.set(key, previousKey)
+                    document.getElementById(`button-${key}`)!.innerText = this.formattedKey(previousKey)
+                }
+            })
+
+            el.innerText = this.formattedKey(selectedKey)
+
+            this.keyMap.set(el.dataset.button!, selectedKey)
+
+            el.removeEventListener('keydown', remapListener)
+        }
+        el.removeEventListener('keydown', remapListener)
+        el.addEventListener('keydown', remapListener)
+    }
+
     async initWasm() {
-        console.log('initialized emulator!')
         this.wasm = await init(wasmData)
         this.emulator = new PsxWebEmulator()
-        console.log(this.emulator)
     }
 
     loadBios() {

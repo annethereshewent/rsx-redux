@@ -62,7 +62,7 @@
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Settings</a>
                     <div class="navbar-dropdown">
-                        <a class="navbar-item" id="nav-controller" data-action="toggle" data-target="controller-modal">
+                        <a class="navbar-item" id="nav-controller" data-action="openControllerModal"">
                             <span class="icon"><i class="fa-solid fa-gamepad"></i></span>&nbsp;Controller Mapping
                         </a>
                         <a class="navbar-item" id="nav-video">
@@ -202,7 +202,7 @@
                     <i class="fa-solid fa-gamepad"></i>
                     <p class="modal-title" id="controller-modal-title">Controller mapping — keyboard</p>
                 </div>
-                <button class="modal-close-btn" id="controller-modal-close" aria-label="Close" data-action="toggle" data-target="controller-modal">
+                <button class="modal-close-btn" id="controller-modal-close" aria-label="Close" data-action="undoMappings">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -214,19 +214,19 @@
                 <div class="bindings-grid">
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-cross">✕</span> Cross</span>
-                        <button class="key-pill" data-action="remapKey" data-button="cross">K</button>
+                        <button class="key-pill" id="button-cross" data-action="remapKey" data-button="cross">K</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-circle">○</span> Circle</span>
-                        <button class="key-pill" data-action="remapKey" data-button="circle">L</button>
+                        <button class="key-pill" id="button-circle" data-action="remapKey" data-button="circle">L</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-square">□</span> Square</span>
-                        <button class="key-pill" data-action="remapKey" data-button="square">J</button>
+                        <button class="key-pill" id="button-square" data-action="remapKey" data-button="square">J</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-triangle">△</span> Triangle</span>
-                        <button class="key-pill" data-action="remapKey" data-button="triangle">I</button>
+                        <button class="key-pill" id="button-triangle" data-action="remapKey" data-button="triangle">I</button>
                     </div>
                 </div>
 
@@ -235,19 +235,19 @@
                 <div class="bindings-grid">
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ↑</span>
-                        <button class="key-pill" data-action="remapKey" data-button="up">W</button>
+                        <button class="key-pill" id="button-up" data-action="remapKey" data-button="up">W</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ↓</span>
-                        <button class="key-pill" data-action="remapKey" data-button="down">S</button>
+                        <button class="key-pill" if="button-down" data-action="remapKey" data-button="down">S</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ←</span>
-                        <button class="key-pill" data-action="remapKey" data-button="left">A</button>
+                        <button class="key-pill" id="button-left" data-action="remapKey" data-button="left">A</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> →</span>
-                        <button class="key-pill" data-action="remapKey" data-button="right">D</button>
+                        <button class="key-pill" id="button-right" data-action="remapKey" data-button="right">D</button>
                     </div>
                 </div>
 
@@ -256,27 +256,27 @@
                 <div class="bindings-grid">
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-shoulder">L1</span> L1</span>
-                        <button class="key-pill" data-action="remapKey" data-button="l1">U</button>
+                        <button class="key-pill" id="button-l1" data-action="remapKey" data-button="l1">U</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-shoulder">R1</span> R1</span>
-                        <button class="key-pill" data-action="remapKey" data-button="r1">O</button>
+                        <button class="key-pill id="button-r1" data-action="remapKey" data-button="r1">O</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-shoulder">L2</span> L2</span>
-                        <button class="key-pill" data-action="remapKey" data-button="l2">7</button>
+                        <button class="key-pill" id="button-l2" data-action="remapKey" data-button="l2">7</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-shoulder">R2</span> R2</span>
-                        <button class="key-pill" data-action="remapKey" data-button="r2">9</button>
+                        <button class="key-pill" id="button-r2" data-action="remapKey" data-button="r2">9</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-shoulder">L3</span> L3</span>
-                        <button class="key-pill" data-action="remapKey" data-button="l3">LeftShift</button>
+                        <button class="key-pill" id="button-l3" data-action="remapKey" data-button="l3">Z</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-shoulder">R3</span> R3</span>
-                        <button class="key-pill" data-action="remapKey" data-button="r3">RightShift</button>
+                        <button class="key-pill" id="button-r3" data-action="remapKey" data-button="r3">M</button>
                     </div>
                 </div>
 
@@ -285,11 +285,11 @@
                 <div class="bindings-grid">
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-system">SYS</span> Start</span>
-                        <button class="key-pill" data-action="remapKey" data-button="start">Enter</button>
+                        <button class="key-pill" id="button-start" data-action="remapKey" data-button="start">Enter</button>
                     </div>
                     <div class="binding-row">
                         <span class="binding-label"><span class="btn-badge badge-system">SYS</span> Select</span>
-                        <button class="key-pill" data-action="remapKey" data-button="select">Tab</button>
+                        <button class="key-pill" id="button-select" data-action="remapKey" data-button="select">Tab</button>
                     </div>
                 </div>
 
@@ -299,7 +299,7 @@
                 <button class="button is-psx" id="controller-reset" style="color: var(--psx-red); margin-right: auto;">
                     Reset to defaults
                 </button>
-                <button class="button is-psx" id="controller-cancel" data-action="toggle" data-target="controller-modal">Cancel</button>
+                <button class="button is-psx" id="controller-cancel" data-action="undoMappings">Cancel</button>
                 <button class="button is-psx is-primary-action" id="controller-save" data-action="saveMappings">Save</button>
             </div>
 
