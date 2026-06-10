@@ -4,24 +4,24 @@ import { VideoOutput } from "./output/video_output"
 
 const FPS_INTERVAL = 1000 / 60
 
-const keyToCode = {
-    "select": 0,
-    "l3": 1,
-    "r3": 2,
-    "start": 3,
-    "up": 4,
-    "right": 5,
-    "down": 6,
-    "left": 7,
-    'l2': 8,
-    'r2': 9,
-    "l1": 10,
-    "r1": 11,
-    "triangle": 12,
-    "circle": 13,
-    "cross": 14,
-    "square": 15
-}
+const keyToCode = new Map<string, number>([
+    ["select", 0],
+    ["l3", 1],
+    ["r3", 2],
+    ["start", 3],
+    ["up", 4],
+    ["right", 5],
+    ["down", 6],
+    ["left", 7],
+    ["l2", 8],
+    ["r2", 9],
+    ["l1", 10],
+    ["r1", 11],
+    ["triangle", 12],
+    ["circle", 13],
+    ["cross", 14],
+    ["square", 15]
+])
 
 export class Psx {
     private wasm: InitOutput|null = null
@@ -52,6 +52,9 @@ export class Psx {
         ['square', 'j']
     ])
     private previousKeyMap = new Map()
+    private buttonMap = new Map<string, number>()
+    private biosReady = false
+    private gameReady = false
 
     private controllerClickListener = (event: Event) => {
         const modal = document.getElementById('controller-modal')
@@ -110,6 +113,17 @@ export class Psx {
         this.initializeEmulator()
     }
 
+    updateButtonMap() {
+        this.buttonMap = new Map()
+
+        this.keyMap.forEach((value, key, map) => {
+            const entry = keyToCode.get(key)
+            if (entry != null) {
+                this.buttonMap.set(value, entry)
+            }
+        })
+    }
+
     updateBindings() {
         this.keyMap.forEach((value, key, _map) => {
             const element = document.getElementById(`button-${key}`)
@@ -149,6 +163,7 @@ export class Psx {
         const modal = document.getElementById('controller-modal')
         modal?.classList.remove('is-active')
         document.removeEventListener('click', this.controllerClickListener)
+        this.updateButtonMap()
     }
 
     async initializeEmulator() {
@@ -167,6 +182,7 @@ export class Psx {
 
     enableGameButton() {
         document.getElementById('status-text')!.innerText = 'BIOS loaded'
+        this.biosReady = true
         document.getElementById('btn-load-game')!.removeAttribute('disabled')
     }
 
@@ -221,6 +237,9 @@ export class Psx {
     }
 
     loadGame() {
+        if (!this.biosReady) {
+            return
+        }
         const gameInput = document.getElementById('file-game')
 
         if (gameInput != null) {
@@ -258,8 +277,40 @@ export class Psx {
         document.getElementById('status-dot')!.classList.add('is-active')
         document.getElementById('status-text')!.innerText = 'Game running'
 
+        this.updateButtonMap()
+        this.addKeyboardControllerListeners()
+        this.enableSwapDisc()
+
         this.frameNumber = requestAnimationFrame((time) => {
             this.runFrame(time)
+        })
+    }
+
+    enableSwapDisc() {
+        this.gameReady = true
+        const swapDisc = document.getElementById('btn-swap-disc')
+        swapDisc?.removeAttribute('disabled')
+    }
+
+    addKeyboardControllerListeners() {
+        document.addEventListener('keydown', (e) => {
+            const buttonCode = this.buttonMap.get(e.key.toLowerCase().replace('arrow', ''))
+
+            if (buttonCode != null) {
+                e.preventDefault()
+
+                this.emulator!.update_input(buttonCode, true)
+            }
+        })
+
+        document.addEventListener('keyup', (e) => {
+            const buttonCode = this.buttonMap.get(e.key.toLowerCase().replace('arrow', ''))
+
+            if (buttonCode != null) {
+                e.preventDefault()
+
+                this.emulator!.update_input(buttonCode, false)
+            }
         })
     }
 
@@ -324,6 +375,8 @@ export class Psx {
     }
 
     swapDisc() {
-
+        if (!this.gameReady) {
+            return
+        }
     }
 }

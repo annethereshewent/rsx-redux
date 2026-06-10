@@ -29,14 +29,14 @@
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">File</a>
                     <div class="navbar-dropdown">
-                        <a class="navbar-item" id="nav-load-bios">
+                        <a class="navbar-item" id="nav-load-bios" data-action="loadBios">
                             <span class="icon"><i class="fa-solid fa-memory"></i></span>&nbsp;Load BIOS
                         </a>
-                        <a class="navbar-item" id="nav-load-game">
+                        <a class="navbar-item" id="nav-load-game" data-action="loadGame">
                             <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>&nbsp;Load Game
                         </a>
                         <hr class="navbar-divider">
-                        <a class="navbar-item" id="nav-load-disc">
+                        <a class="navbar-item" id="nav-load-disc" data-action="swapDisc">
                             <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>&nbsp;Swap Disc
                         </a>
                     </div>
@@ -94,9 +94,9 @@
                     <p class="panel-title">Quick Actions</p>
                     <aside class="menu">
                         <ul class="menu-list">
-                            <li><a id="side-load-bios"><span class="icon"><i class="fa-solid fa-memory"></i></span>Load BIOS</a></li>
-                            <li><a id="side-load-game"><span class="icon"><i class="fa-solid fa-compact-disc"></i></span>Load Game</a></li>
-                            <li><a id="side-swap-disc"><span class="icon"><i class="fa-solid fa-circle-notch"></i></span>Swap Disc</a></li>
+                            <li><a id="side-load-bios" data-action="loadBios"><span class="icon" ><i class="fa-solid fa-memory"></i></span>Load BIOS</a></li>
+                            <li><a id="side-load-game" data-action="loadGame"><span class="icon" "><i class="fa-solid fa-compact-disc"></i></span>Load Game</a></li>
+                            <li><a id="side-swap-disc" data-action="swapDisc"><span class="icon"><i class="fa-solid fa-circle-notch"></i></span>Swap Disc</a></li>
                         </ul>
                     </aside>
                 </div>

@@ -119,8 +119,6 @@ impl PsxWebEmulator {
     pub fn get_dimensions(&self) -> Vec<u32> {
         let (width, height) = self.cpu.bus.gpu.get_dimensions();
 
-        console_log!("width = {width} height = {height}");
-
         let vec = vec![width, height];
 
         vec
