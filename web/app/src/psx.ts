@@ -1,5 +1,6 @@
 import init, { PsxWebEmulator, InitOutput } from "../../pkg/rsx_redux_web"
 import wasmData from '../../pkg/rsx_redux_web_bg.wasm'
+import { Joypad } from "./input/joypad"
 import { VideoOutput } from "./output/video_output"
 
 const FPS_INTERVAL = 1000 / 60
@@ -55,6 +56,7 @@ export class Psx {
     private buttonMap = new Map<string, number>()
     private biosReady = false
     private gameReady = false
+    private joypad: Joypad|null = null
 
     private controllerClickListener = (event: Event) => {
         const modal = document.getElementById('controller-modal')
@@ -281,6 +283,8 @@ export class Psx {
         this.addKeyboardControllerListeners()
         this.enableSwapDisc()
 
+        this.joypad = new Joypad(this.emulator!)
+
         this.frameNumber = requestAnimationFrame((time) => {
             this.runFrame(time)
         })
@@ -332,6 +336,7 @@ export class Psx {
             if (diff >= FPS_INTERVAL || this.previousTime == 0) {
                 this.emulator!.step_frame()
                 this.videoOutput?.updateCanvas()
+                this.joypad?.handleInput()
             }
 
             this.previousTime = time - (diff % FPS_INTERVAL)
