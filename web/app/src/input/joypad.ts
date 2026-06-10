@@ -51,9 +51,12 @@ export class Joypad {
         })
     }
 
-    async handleInput() {
+    async handleInputAndVibration() {
         const gamepad = navigator.getGamepads()[this.gamepadIndex]
+
         if (gamepad != null) {
+            this.handleVibration(gamepad)
+
             this.emulator.update_input(PsxButtons.SELECT, gamepad.buttons[GamepadButtons.Select].pressed)
             this.emulator.update_input(PsxButtons.L3, gamepad.buttons[GamepadButtons.LeftStick].pressed)
             this.emulator.update_input(PsxButtons.R3, gamepad.buttons[GamepadButtons.RightStick].pressed)
@@ -98,5 +101,19 @@ export class Joypad {
         normalized += 128
 
         return normalized
+    }
+
+    handleVibration(gamepad: Gamepad) {
+        let [smallMotor, largeMotor] = this.emulator.get_rumble()
+
+        smallMotor *= 0.2
+        largeMotor /= 255
+
+        gamepad.vibrationActuator.playEffect("dual-rumble", {
+            startDelay: 0,
+            duration: 100,
+            weakMagnitude: smallMotor,
+            strongMagnitude: largeMotor,
+        })
     }
 }

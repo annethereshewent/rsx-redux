@@ -129,12 +129,12 @@ impl PsxWebEmulator {
         self.cpu.load_exe(path);
     }
 
-    pub fn get_rumble(&self) -> *const u8 {
+    pub fn get_rumble(&self) -> Vec<u8> {
         let (small_motor, large_motor) = self.cpu.bus.peripherals.controller.get_rumble();
 
         let vec = vec![small_motor as u8, large_motor];
 
-        vec.as_ptr()
+        vec
     }
 
     pub fn get_digital_mode(&self) -> bool {

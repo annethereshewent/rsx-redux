@@ -336,7 +336,7 @@ export class Psx {
             if (diff >= FPS_INTERVAL || this.previousTime == 0) {
                 this.emulator!.step_frame()
                 this.videoOutput?.updateCanvas()
-                this.joypad?.handleInput()
+                this.joypad?.handleInputAndVibration()
             }
 
             this.previousTime = time - (diff % FPS_INTERVAL)
