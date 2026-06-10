@@ -111,7 +111,7 @@ export class Joypad {
 
         gamepad.vibrationActuator.playEffect("dual-rumble", {
             startDelay: 0,
-            duration: 100,
+            duration: 200,
             weakMagnitude: smallMotor,
             strongMagnitude: largeMotor,
         })
