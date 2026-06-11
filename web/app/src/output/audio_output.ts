@@ -22,8 +22,6 @@ export class AudioOutput {
             this.volumeLevel = parseInt((ev.target as HTMLInputElement).value)
             document.getElementById('volume-value')!.textContent = `${this.volumeLevel}%`
 
-            console.log(this.volumeLevel)
-
             this.gainNode.gain.value = this.volumeLevel / 100
         })
     }
