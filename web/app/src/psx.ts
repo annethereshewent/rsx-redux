@@ -146,6 +146,11 @@ export class Psx {
         if (!this.biosReady) {
             return
         }
+
+        this.openFile((file) => this.startGame(file))
+    }
+
+    openFile(callback: (file: File) => void) {
         const gameInput = document.getElementById('file-game')
 
         if (gameInput != null) {
@@ -155,7 +160,7 @@ export class Psx {
                 if (files != null) {
                     const file = files[0]
 
-                    this.handleGameFile(file)
+                    callback(file)
                 }
             }
             gameInput.click()
@@ -178,7 +183,7 @@ export class Psx {
         this.joypad.openControllerModal()
     }
 
-    async handleGameFile(gameFile: File) {
+    async startGame(gameFile: File) {
         this.isPaused = false
         this.isRunning = true
 
@@ -314,5 +319,15 @@ export class Psx {
         if (!this.gameReady) {
             return
         }
+
+        this.openFile((file) => this.swapDiscInner(file))
+    }
+
+    async swapDiscInner(gameFile: File) {
+        const data = await this.readFile(gameFile)
+
+        const bytes = new Uint8Array(data)
+
+        this.emulator?.load_rom(bytes)
     }
 }
