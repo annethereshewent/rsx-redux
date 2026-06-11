@@ -131,11 +131,12 @@
                     <p class="panel-title">Save States</p>
                     <aside class="menu">
                         <ul class="menu-list">
-                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 1 — Empty</a></li>
-                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 2 — Empty</a></li>
-                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 3 — Empty</a></li>
-                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 4 — Empty</a></li>
-                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 5 — Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Quick - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 1 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 2 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 3 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 4 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 5 - Empty</a></li>
                         </ul>
                     </aside>
                 </div>
@@ -373,8 +374,13 @@
                             <span class="save-slot-label is-quick">Quick save</span>
                         </div>
                         <p class="save-slot-game is-empty-text" id="game-name-quick">No save data</p>
+                        <p class="save-slot-date"></p>
                         <div class="save-slot-actions">
-                            <button class="button is-psx is-small" data-action="saveState" data-slot="quick">Save here</button>
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="quick" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="quick">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="quick" aria-label="Delete quick slot" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -391,8 +397,13 @@
                             <span class="save-slot-label">Slot 1</span>
                         </div>
                         <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
                         <div class="save-slot-actions">
-                            <button class="button is-psx is-small" data-action="saveState" data-slot="1">Save here</button>
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="1" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="1">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="1" aria-label="Delete slot 1" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -409,8 +420,13 @@
                             <span class="save-slot-label">Slot 2</span>
                         </div>
                         <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
                         <div class="save-slot-actions">
-                            <button class="button is-psx is-small" data-action="saveState" data-slot="2">Save here</button>
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="2" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="2">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="2" aria-label="Delete slot 2" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -427,8 +443,13 @@
                             <span class="save-slot-label">Slot 3</span>
                         </div>
                         <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
                         <div class="save-slot-actions">
-                            <button class="button is-psx is-small" data-action="saveState" data-slot="3">Save here</button>
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="3" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="3">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="3" aria-label="Delete slot 3" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -445,8 +466,13 @@
                             <span class="save-slot-label">Slot 4</span>
                         </div>
                         <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
                         <div class="save-slot-actions">
-                            <button class="button is-psx is-small" data-action="saveState" data-slot="4">Save here</button>
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="4" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="4">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="4" aria-label="Delete slot 4" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -463,8 +489,13 @@
                             <span class="save-slot-label">Slot 5</span>
                         </div>
                         <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
                         <div class="save-slot-actions">
-                            <button class="button is-psx is-small" data-action="saveState" data-slot="5">Save here</button>
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="5" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="5">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="5" aria-label="Delete slot 5" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -477,6 +508,7 @@
 
         </div>
     </div>
+    <canvas id="save-state-canvas" style="display:none"></canvas>
 
     <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
     <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>

@@ -3,7 +3,7 @@ import wasmData from '../../pkg/rsx_redux_web_bg.wasm'
 import { Joypad } from "./input/joypad"
 import { AudioOutput } from "./output/audio_output"
 import { VideoOutput } from "./output/video_output"
-import { RsxDb } from "./saves/rsx_db"
+import { RsxDb, SaveState } from "./saves/rsx_db"
 import { StateManager } from "./saves/state_manager"
 import { WaveVisualizer } from "./util/wave_visualizer"
 
@@ -75,6 +75,10 @@ export class Psx {
         const card = localStorage.getItem('psx-memory-card')
 
         if (card != null) {
+            const dropdown = document.getElementById('memory-card-select') as HTMLSelectElement
+
+            dropdown.value = card
+
             this.memoryCard = card
         }
 
@@ -103,6 +107,8 @@ export class Psx {
             this.memoryCardData = new Uint8Array(MEMORY_CARD_SIZE)
             document.getElementById('mem-card-status')!.textContent = 'No saves'
         }
+
+        this.emulator?.set_memory_card(this.memoryCardData)
     }
 
     setMemoryCard(card: string) {
@@ -125,6 +131,53 @@ export class Psx {
 
     closeSaveStatesModal() {
         this.stateManager?.closeModal()
+    }
+
+    async saveState(el: HTMLElement) {
+        const index = el.dataset.slot == 'quick' ? 0 : parseInt(el.dataset.slot || "0")
+        const imageUrl = this.getImageUrl()
+
+        this.stateManager!.createSaveState(index, imageUrl)
+    }
+
+    async loadState(el: HTMLElement) {
+        const index = el.dataset.slot == 'quick' ? 0 : parseInt(el.dataset.slot || "0")
+
+        const data = await this.stateManager!.loadSaveState(index)
+
+        if (data != null) {
+            this.emulator!.load_state(data)
+        }
+    }
+
+    getImageUrl() {
+        const memory = new Uint8Array(this.wasm!.memory.buffer, this.emulator!.get_framebuffer(), this.emulator!.get_framebuffer_size())
+        const [width, height] = this.emulator!.get_dimensions()
+
+        const canvas = document.getElementById('save-state-canvas')! as HTMLCanvasElement
+
+        canvas.setAttribute('width', `${width}`)
+        canvas.setAttribute('height', `${height}`)
+
+        const context = canvas.getContext('2d')
+
+        const imageData = context!.getImageData(0, 0, width, height)
+
+        for (let y = 0; y < width; y++) {
+            for (let x = 0; x < height; x++) {
+                const index = x * 3 + y * height * 3
+                const canvasIndex = x * 4 + y * height * 4
+
+                imageData.data[canvasIndex] = memory[index]
+                imageData.data[canvasIndex + 1] = memory[index + 1]
+                imageData.data[canvasIndex + 2] = memory[index + 2]
+                imageData.data[canvasIndex + 3] = 255
+            }
+        }
+
+        context!.putImageData(imageData, 0, 0)
+
+        return canvas.toDataURL()
     }
 
     togglePause() {

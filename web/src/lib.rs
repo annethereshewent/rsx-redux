@@ -91,10 +91,12 @@ impl PsxWebEmulator {
             .set_memory_bytes(self.memory_bytes.clone());
     }
 
-    pub fn load_state(&mut self, data: &[u8], game_data: &[u8]) {
+    pub fn load_state(&mut self, data: &[u8]) {
+        let game_data = self.cpu.bus.cdrom.game_bytes.clone().unwrap();
+
         self.cpu.load_save_state(data);
 
-        self.cpu.bus.cdrom.load_game_web(game_data.to_vec());
+        self.cpu.bus.cdrom.load_game_web(game_data);
 
         self.cpu.reload_instructions();
 
@@ -167,8 +169,9 @@ impl PsxWebEmulator {
         self.cpu.bus.cdrom.load_game_web(game_bytes);
     }
 
-    pub fn get_memory_bytes(&self) -> Option<Vec<u8>> {
+    pub fn get_memory_bytes(&mut self) -> Option<Vec<u8>> {
         if self.cpu.bus.peripherals.memory_card.is_memory_dirty() {
+            self.cpu.bus.peripherals.memory_card.clear_dirty();
             return self.cpu.bus.peripherals.memory_card.get_memory_bytes();
         }
 

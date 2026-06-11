@@ -300,4 +300,8 @@ impl MemoryCard {
     pub fn is_memory_dirty(&self) -> bool {
         self.memory_card_dirty
     }
+    #[cfg(target_arch = "wasm32")]
+    pub fn clear_dirty(&mut self) {
+        self.memory_card_dirty = false;
+    }
 }

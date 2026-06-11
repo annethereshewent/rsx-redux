@@ -1,10 +1,17 @@
 import { DBSchema, IDBPDatabase, openDB } from "idb"
+import moment from "moment"
 
-const currentVersion = 2
+const currentVersion = 1
 
-interface SaveState {
-    data: Uint8Array,
+export interface SaveState {
+    data: Uint8Array
     imageUrl: string
+    timestamp: number
+}
+
+interface GameEntry {
+    gameName: string
+    saveStates: SaveState[]
 }
 
 interface RsxDB extends DBSchema {
@@ -19,7 +26,7 @@ interface RsxDB extends DBSchema {
         key: string,
         value: {
             name: string,
-            data: Uint8Array
+            data: Uint8Array,
         }
     }
 }
@@ -33,10 +40,11 @@ export class RsxDb {
 
     async loadDb() {
         const db = await openDB<RsxDB>('rsx-db', currentVersion, {
-            upgrade(db) {
+            async upgrade(db) {
                 db.createObjectStore('rsx-memory-cards', {
                     keyPath: 'name'
                 })
+
                 db.createObjectStore('rsx-save-states', {
                     keyPath: 'gameName'
                 })
@@ -46,7 +54,7 @@ export class RsxDb {
         this.db = db
     }
 
-    async saveState(gameName: string, index: number, data: Uint8Array, imageUrl: string) {
+    async saveState(gameName: string, index: number, data: Uint8Array, imageUrl: string): Promise<SaveState|null> {
         if (this.db == null) {
             this.db = await openDB('rsx-db', currentVersion)
         }
@@ -54,11 +62,41 @@ export class RsxDb {
         const entry = await this.db.get('rsx-save-states', gameName)
 
         if (entry != null) {
-            entry.saveStates[index].data = data
-            entry.saveStates[index].imageUrl = imageUrl
+            entry.saveStates[index] = {
+                data,
+                imageUrl,
+                timestamp: moment().unix()
+            }
 
             this.db.put('rsx-save-states', entry)
+
+            return entry.saveStates[index]
+        } else {
+            const entry: GameEntry = {
+                gameName,
+                saveStates: []
+            }
+
+            entry.saveStates[index] = {
+                data,
+                imageUrl,
+                timestamp: moment().unix()
+            }
+
+            this.db.put('rsx-save-states', entry)
+
+            return entry.saveStates[index]
         }
+    }
+
+    async getSaveStates(gameName: string) {
+        if (this.db == null) {
+            this.db = await openDB('rsx-db', currentVersion)
+        }
+
+        const entry = await this.db.get('rsx-save-states', gameName)
+
+        return entry?.saveStates
     }
 
     async loadState(gameName: string, index: number) {

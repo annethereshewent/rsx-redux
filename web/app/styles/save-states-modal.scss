@@ -9,7 +9,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-height: 500px;
+    max-height: 70vh;
     overflow-y: auto;
 }
 
@@ -21,6 +21,7 @@
     border-radius: 6px;
     overflow: hidden;
     transition: border-color 0.15s;
+    min-height: 150px;
 }
 
 .save-slot:hover {
@@ -31,15 +32,14 @@
     border-color: #3a5a8c;
 }
 
-/* ── Screenshot thumbnail ── */
 .save-slot-thumb {
-    width: 140px;
+    width: 200px;
+    height: 150px;
     flex-shrink: 0;
     background: #0d0d1a;
     display: flex;
     align-items: center;
     justify-content: center;
-    aspect-ratio: 4 / 3;
 }
 
 .save-slot-screenshot {
@@ -118,14 +118,13 @@
     margin: 0;
 }
 
-/* ── Slot action buttons ── */
 .save-slot-actions {
     display: flex;
     gap: 6px;
     margin-top: 8px;
 }
 
-.button.is-psx.is-small {
+.button.is-psx.is-sm {
     padding: 4px 12px;
     font-size: 12px;
     height: auto;
