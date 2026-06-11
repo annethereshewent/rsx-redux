@@ -56,13 +56,9 @@
                             <span>Reset</span>
                         </a>
                         <hr class="navbar-divider">
-                        <a class="navbar-item" id="nav-save-state">
+                        <a class="navbar-item" id="nav-save-state" data-action="openSaveStatesModal">
                             <span class="icon"><i class="fa-solid fa-download"></i></span>
-                            <span>Save State</span>
-                        </a>
-                        <a class="navbar-item" id="nav-load-state">
-                            <span class="icon"><i class="fa-solid fa-upload"></i></span>
-                            <span>Load State</span>
+                            <span>Save States</span>
                         </a>
                     </div>
                 </div>
@@ -240,10 +236,6 @@
         <canvas id="waveform-canvas" class="waveform-canvas"></canvas>
     </div>
 
-    <!-- Hidden file inputs (wired up by your JS) -->
-    <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
-    <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
-    <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
     <div class="modal-backdrop" id="controller-modal">
         <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="controller-modal-title">
 
@@ -355,6 +347,140 @@
 
         </div>
     </div>
+    <div class="modal-backdrop" id="save-states-modal">
+        <div class="modal-box save-states-box" role="dialog" aria-modal="true" aria-labelledby="save-states-title">
+
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <p class="modal-title" id="save-states-title">Save states</p>
+                </div>
+                <button class="modal-close-btn" id="save-states-close" aria-label="Close" data-action="closeSaveStatesModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body save-states-list" id="save-states-list">
+                <div class="save-slot is-empty is-quick-save" data-slot="quick">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label is-quick">Quick save</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text" id="game-name-quick">No save data</p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="quick">Save here</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="1">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 1</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="1">Save here</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="2">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 2</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="2">Save here</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="3">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 3</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="3">Save here</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="4">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 4</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="4">Save here</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="5">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 5</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="5">Save here</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="button is-psx" id="save-states-modal-close" data-action="closeSaveStatesModal">Close</button>
+            </div>
+
+        </div>
+    </div>
+
+    <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
+    <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+    <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
     <script src="dist/bundle.js"></script>
 </body>
 </html>

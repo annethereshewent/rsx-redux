@@ -145,9 +145,7 @@ export class Joypad {
 
         this.previousKeyMap = new Map(this.keyMap)
 
-        if (modal?.classList.contains('is-active')) {
-            document.addEventListener('click', this.controllerClickListener)
-        }
+        document.addEventListener('click', this.controllerClickListener)
     }
 
     updateBindings() {

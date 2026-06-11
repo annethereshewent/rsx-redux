@@ -86,6 +86,10 @@ export class Psx {
             this.setMemoryCard(memoryCard)
         })
 
+        document.addEventListener('savestatemodalchange', () => {
+            this.togglePause()
+        })
+
         this.initializeEmulator()
     }
 
@@ -113,6 +117,14 @@ export class Psx {
         } else {
             document.exitFullscreen()
         }
+    }
+
+    openSaveStatesModal() {
+        this.stateManager?.openSaveStatesModal()
+    }
+
+    closeSaveStatesModal() {
+        this.stateManager?.closeModal()
     }
 
     togglePause() {
