@@ -1,0 +1,33 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_psxwebemulator_free: (a: number, b: number) => void;
+export const psxwebemulator_new: () => number;
+export const psxwebemulator_load_bios: (a: number, b: number, c: number) => void;
+export const psxwebemulator_load_rom: (a: number, b: number, c: number) => void;
+export const psxwebemulator_step_frame: (a: number) => void;
+export const psxwebemulator_drain_samples: (a: number) => [number, number];
+export const psxwebemulator_update_input: (a: number, b: number, c: number) => void;
+export const psxwebemulator_toggle_digital_mode: (a: number) => void;
+export const psxwebemulator_set_left_thumbstick: (a: number, b: number, c: number) => void;
+export const psxwebemulator_set_right_thumbstick: (a: number, b: number, c: number) => void;
+export const psxwebemulator_set_left_x: (a: number, b: number) => void;
+export const psxwebemulator_set_left_y: (a: number, b: number) => void;
+export const psxwebemulator_set_memory_card: (a: number, b: number, c: number) => void;
+export const psxwebemulator_load_state: (a: number, b: number, c: number) => void;
+export const psxwebemulator_save_state: (a: number) => [number, number];
+export const psxwebemulator_get_dimensions: (a: number) => [number, number];
+export const psxwebemulator_start_exe: (a: number, b: number, c: number) => void;
+export const psxwebemulator_get_rumble: (a: number) => [number, number];
+export const psxwebemulator_get_digital_mode: (a: number) => number;
+export const psxwebemulator_set_digital_mode: (a: number, b: number) => void;
+export const psxwebemulator_switch_selected_controller: (a: number, b: number) => void;
+export const psxwebemulator_get_framebuffer: (a: number) => number;
+export const psxwebemulator_get_framebuffer_size: (a: number) => number;
+export const psxwebemulator_reset: (a: number) => void;
+export const psxwebemulator_get_memory_bytes: (a: number) => [number, number];
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_start: () => void;

@@ -1,0 +1,15 @@
+{
+  "name": "rsx-redux-web",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "rsx_redux_web_bg.wasm",
+    "rsx_redux_web.js",
+    "rsx_redux_web.d.ts"
+  ],
+  "main": "rsx_redux_web.js",
+  "types": "rsx_redux_web.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

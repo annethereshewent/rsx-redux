@@ -17,11 +17,11 @@ pub enum EventType {
 
 #[derive(Serialize, Deserialize)]
 pub struct Scheduler {
-    pub cycles: usize,
+    pub cycles: u64,
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
-    pub queue: PriorityQueue<EventType, Reverse<usize>>,
-    pub queue_serialized: HashMap<EventType, usize>,
+    pub queue: PriorityQueue<EventType, Reverse<u64>>,
+    pub queue_serialized: HashMap<EventType, u64>,
 }
 
 impl Default for Scheduler {
@@ -40,7 +40,7 @@ impl Scheduler {
     }
 
     pub fn schedule(&mut self, event_type: EventType, time: usize) {
-        self.queue.push(event_type, Reverse(self.cycles + time));
+        self.queue.push(event_type, Reverse(self.cycles + time as u64));
     }
 
     pub fn remove(&mut self, event_type: EventType) {
@@ -48,7 +48,7 @@ impl Scheduler {
     }
 
     pub fn tick(&mut self, cycles: usize) {
-        self.cycles += cycles;
+        self.cycles += cycles as u64;
     }
 
     pub fn get_next_event(&mut self) -> Option<(EventType, usize)> {
@@ -57,18 +57,18 @@ impl Scheduler {
         if self.cycles >= *cycles {
             let cycles_left = self.cycles - *cycles;
             let (event_type, _) = self.queue.pop().unwrap();
-            return Some((event_type, cycles_left));
+            return Some((event_type, cycles_left as usize));
         }
 
         None
     }
 
-    pub fn rebase_cycles(&mut self) -> usize {
+    pub fn rebase_cycles(&mut self) -> u64 {
         let to_subtract = self.cycles;
 
         self.cycles = 0;
 
-        let mut vec: Vec<(EventType, usize)> = Vec::new();
+        let mut vec: Vec<(EventType, u64)> = Vec::new();
 
         while let Some((event_type, Reverse(cycles))) = self.queue.pop() {
             let new_cycles = cycles - to_subtract;
@@ -83,7 +83,7 @@ impl Scheduler {
         to_subtract
     }
 
-    pub fn get_cycles_to_next_event(&mut self) -> usize {
+    pub fn get_cycles_to_next_event(&mut self) -> u64 {
         if let Some((_, Reverse(cycles))) = self.queue.peek() {
             *cycles
         } else {

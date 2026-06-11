@@ -1,0 +1,18 @@
+[package]
+name = "rsx-redux-web"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path="src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rsx-redux = { path = "../", default-features = false, features=["software_gpu"] }
+console_error_panic_hook = "0.1.7"
+wasm-bindgen = "0.2.123"
+
+[features]
+default = ["software_gpu"]
+hardware_gpu_web = []
+software_gpu = []

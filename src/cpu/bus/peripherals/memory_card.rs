@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 use memmap2::MmapMut;
 use serde::{Deserialize, Serialize};
 
@@ -24,9 +25,16 @@ pub struct MemoryCard {
     checksum: u8,
     checksum_match: bool,
     previous: u8,
+    #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     memory_file: Option<MmapMut>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(target_arch = "wasm32")]
+    memory_bytes: Option<Vec<u8>>,
+    #[cfg(target_arch = "wasm32")]
+    memory_card_dirty: bool,
 }
 
 impl MemoryCard {
@@ -44,7 +52,12 @@ impl MemoryCard {
             checksum: 0,
             previous: 0,
             checksum_match: false,
+            #[cfg(not(target_arch = "wasm32"))]
             memory_file: None,
+            #[cfg(target_arch = "wasm32")]
+            memory_bytes: None,
+            #[cfg(target_arch = "wasm32")]
+            memory_card_dirty: false,
         }
     }
     pub fn reply(&mut self, command: u8) -> u8 {
@@ -147,14 +160,24 @@ impl MemoryCard {
                 self.previous = command;
                 self.checksum ^= command;
 
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(memory_file) = &mut self.memory_file {
                     memory_file[(128 * self.current_sector as usize) + self.current_byte] = command;
+                }
+                #[cfg(target_arch = "wasm32")]
+                if let Some(memory_bytes) = &mut self.memory_bytes {
+                    memory_bytes[(128 * self.current_sector as usize) + self.current_byte] = command;
                 }
 
                 self.current_byte += 1;
                 if self.current_byte == 128 {
+                    #[cfg(not(target_arch = "wasm32"))]
                     if let Some(memory_file) = &mut self.memory_file {
                         memory_file.flush().unwrap();
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    if self.memory_bytes.is_some() {
+                        self.memory_card_dirty = true;
                     }
                     self.finished_transferring = true;
                 }
@@ -216,8 +239,15 @@ impl MemoryCard {
                 return_byte
             }
             8 => {
+                #[cfg(not(target_arch = "wasm32"))]
                 let return_byte = if let Some(memory_file) = &self.memory_file {
                     memory_file[(128 * self.current_sector as usize) + self.current_byte]
+                } else {
+                    0xff
+                };
+                #[cfg(target_arch = "wasm32")]
+                let return_byte = if let Some(memory_bytes) = &self.memory_bytes {
+                    memory_bytes[(128 * self.current_sector as usize) + self.current_byte]
                 } else {
                     0xff
                 };
@@ -251,7 +281,27 @@ impl MemoryCard {
         self.step = 0;
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn set_memory_file(&mut self, memory_file: Option<MmapMut>) {
         self.memory_file = memory_file;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_memory_bytes(&mut self, memory_bytes: Vec<u8>) {
+        self.memory_bytes = Some(memory_bytes);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_memory_bytes(&self) -> Option<Vec<u8>> {
+        self.memory_bytes.clone()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn is_memory_dirty(&self) -> bool {
+        self.memory_card_dirty
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn clear_dirty(&mut self) {
+        self.memory_card_dirty = false;
     }
 }

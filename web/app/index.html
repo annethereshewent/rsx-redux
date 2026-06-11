@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSX Redux</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <!-- ════════════════════════════════════════════
+             Navbar
+        ════════════════════════════════════════════ -->
+    <nav class="navbar" role="navigation" aria-label="main navigation">
+        <div class="navbar-brand">
+            <a class="navbar-item" href="#">
+                <i class="fa-solid fa-microchip"></i>
+                <span>RSX <span class="brand-accent">Redux</span></span>
+            </a>
+            <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="mainNav">
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+                <span aria-hidden="true"></span>
+            </a>
+        </div>
+        <div id="mainNav" class="navbar-menu">
+            <div class="navbar-start">
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">File</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" id="nav-load-bios" data-action="loadBios">
+                            <span class="icon"><i class="fa-solid fa-memory"></i></span>
+                            <span>Load BIOS</span>
+                        </a>
+                        <a class="navbar-item" id="nav-load-game" data-action="loadGame">
+                            <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>
+                            <span>Load Game</span>
+                        </a>
+                        <hr class="navbar-divider">
+                        <a class="navbar-item" id="nav-load-disc" data-action="swapDisc">
+                            <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>
+                            <span>Swap Disc</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Emulation</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" id="nav-pause" data-action="togglePause">
+                            <span class="icon"><i class="fa-solid fa-pause"></i></span>
+                            <span>Pause</span>
+                        </a>
+                        <a class="navbar-item" id="nav-reset" data-action="reset">
+                            <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>
+                            <span>Reset</span>
+                        </a>
+                        <hr class="navbar-divider">
+                        <a class="navbar-item" id="nav-save-state" data-action="openSaveStatesModal">
+                            <span class="icon"><i class="fa-solid fa-download"></i></span>
+                            <span>Save States</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="navbar-item has-dropdown is-hoverable">
+                    <a class="navbar-link">Settings</a>
+                    <div class="navbar-dropdown">
+                        <a class="navbar-item" id="nav-controller" data-action="openControllerModal"">
+                            <span class="icon"><i class="fa-solid fa-gamepad"></i></span>
+                            <span>Controller Mapping</span>
+                        </a>
+                        <!-- TODO after hardware rendering implemented -->
+                        <!-- <a class="navbar-item" id="nav-video">
+                            <span class="icon"><i class="fa-solid fa-display"></i></span>
+                            <span>Video</span>
+                        </a> -->
+                        <a class="navbar-item" id="nav-audio" data-action="openAudioModal">
+                            <span class="icon"><i class="fa-solid fa-volume-high"></i></span>
+                            <span>Audio</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="navbar-end">
+                <a class="navbar-item" id="nav-fullscreen" title="Fullscreen" data-action="toggleFullscreen">
+                    <span class="icon"><i class="fa-solid fa-expand"></i></span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ════════════════════════════════════════════
+             Main content
+        ════════════════════════════════════════════ -->
+    <section class="section py-5">
+        <div class="columns">
+
+            <!-- ── Left sidebar ── -->
+            <div class="column is-2 is-hidden-touch">
+                <div class="panel-card mb-4">
+                    <p class="panel-title">Quick Actions</p>
+                    <aside class="menu">
+                        <ul class="menu-list">
+                            <li><a id="side-load-bios" data-action="loadBios"><span class="icon" ><i class="fa-solid fa-memory"></i></span>Load BIOS</a></li>
+                            <li><a id="side-load-game" data-action="loadGame"><span class="icon" "><i class="fa-solid fa-compact-disc"></i></span>Load Game</a></li>
+                            <li><a id="side-swap-disc" data-action="swapDisc"><span class="icon"><i class="fa-solid fa-circle-notch"></i></span>Swap Disc</a></li>
+                        </ul>
+                    </aside>
+                </div>
+                <div class="panel-card mb-4">
+                    <p class="panel-title">Memory Card</p>
+                    <div class="mem-card-select-wrapper">
+                        <div class="mem-card-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <select class="mem-card-select" id="memory-card-select">
+                            <option value="memory_card1">Card 1</option>
+                            <option value="memory_card2">Card 2</option>
+                            <option value="memory_card3">Card 3</option>
+                            <option value="memory_card4">Card 4</option>
+                            <option value="memory_card5">Card 5</option>
+                        </select>
+                        <div class="mem-card-chevron">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <p class="mem-card-status" id="mem-card-status">
+                        <i class="fa-solid fa-circle-check"></i> No saves
+                    </p>
+                </div>
+                <div class="panel-card">
+                    <p class="panel-title">Save States</p>
+                    <aside class="menu">
+                        <ul class="menu-list" id="save-states-side-panel">
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Quick - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 1 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 2 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 3 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 4 - Empty</a></li>
+                            <li><a><span class="icon"><i class="fa-regular fa-square"></i></span>Slot 5 - Empty</a></li>
+                        </ul>
+                    </aside>
+                </div>
+            </div>
+
+            <!-- ── Center: display + controls ── -->
+            <div class="column">
+                <div class="canvas-wrapper mb-4" id="display">
+                    <div class="canvas-placeholder" id="placeholder">
+                        <i class="fa-solid fa-gamepad"></i>
+                        <p>Load a BIOS and game to start</p>
+                    </div>
+                </div>
+
+                <!-- Action bar (visible on all sizes) -->
+                <div class="action-bar">
+                    <div class="buttons is-centered gap-3">
+                        <button class="button is-psx" id="btn-load-bios" data-action="loadBios">
+                            <span class="icon"><i class="fa-solid fa-memory"></i></span>
+                            <span>Load BIOS</span>
+                        </button>
+                        <button class="button is-psx is-primary-action" disabled id="btn-load-game" data-action="loadGame">
+                            <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>
+                            <span>Load Game</span>
+                        </button>
+                        <button class="button is-psx" id="btn-swap-disc" disabled data-action="swapDisc">
+                            <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>
+                            <span>Swap Disc</span>
+                        </button>
+                        <span class="mx-2"></span>
+                        <button class="button is-psx" id="btn-pause" title="Pause" data-action="togglePause">
+                            <span class="icon"><i class="fa-solid fa-pause"></i></span>
+                        </button>
+                        <button class="button is-psx" id="btn-reset" title="Reset" data-action="reset">
+                            <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>
+                        </button>
+                        <button class="button is-psx" id="btn-fullscreen" title="Fullscreen" data-action="toggleFullscreen">
+                            <span class="icon"><i class="fa-solid fa-expand"></i></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column is-2 is-hidden-touch">
+                <div class="panel-card mb-4">
+                    <p class="panel-title">System</p>
+                    <aside class="menu">
+                        <ul class="menu-list">
+                            <!-- TODO -->
+                            <!-- <li><a><span class="icon"><i class="fa-solid fa-gauge-high"></i></span>Performance</a></li>
+                            <li><a><span class="icon"><i class="fa-solid fa-terminal"></i></span>Debug Log</a></li> -->
+                            <li>
+                                <a id="toggle-waveform" data-action="toggleWaveform">
+                                    <span class="icon"><i class="fa-solid fa-wave-square"></i></span>Waveform
+                                </a>
+                            </li>
+                        </ul>
+                    </aside>
+                </div>
+                <div class="panel-card">
+                    <p class="panel-title">Cloud</p>
+                    <aside class="menu">
+                        <ul class="menu-list">
+                            <li><a><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
+                            <li><a><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
+                        </ul>
+                    </aside>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════
+             Status bar
+        ════════════════════════════════════════════ -->
+    <div class="status-bar is-flex is-justify-content-space-between is-align-items-center" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;">
+        <div>
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">No BIOS loaded</span>
+        </div>
+        <div class="is-flex gap-3">
+            <span id="status-fps">— FPS</span>
+            <span>·</span>
+            <span id="status-region">NTSC-U</span>
+        </div>
+    </div>
+    <div class="waveform-wrapper" id="waveform-wrapper" style="display: none;">
+        <div class="waveform-header">
+            <span class="waveform-label">
+                <i class="fa-solid fa-wave-square"></i> Waveform
+            </span>
+            <div class="waveform-channels">
+                <span class="channel-tag channel-l">L</span>
+                <span class="channel-tag channel-r">R</span>
+            </div>
+        </div>
+        <canvas id="waveform-canvas" class="waveform-canvas"></canvas>
+    </div>
+
+    <div class="modal-backdrop" id="controller-modal">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="controller-modal-title">
+
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <i class="fa-solid fa-gamepad"></i>
+                    <p class="modal-title" id="controller-modal-title">Controller mapping — keyboard</p>
+                </div>
+                <button class="modal-close-btn" id="controller-modal-close" aria-label="Close" data-action="undoMappings">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <!-- Face buttons -->
+                <p class="section-label">Face buttons</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-cross">✕</span> Cross</span>
+                        <button class="key-pill" id="button-cross" data-action="remapKey" data-button="cross">K</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-circle">○</span> Circle</span>
+                        <button class="key-pill" id="button-circle" data-action="remapKey" data-button="circle">L</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-square">□</span> Square</span>
+                        <button class="key-pill" id="button-square" data-action="remapKey" data-button="square">J</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-triangle">△</span> Triangle</span>
+                        <button class="key-pill" id="button-triangle" data-action="remapKey" data-button="triangle">I</button>
+                    </div>
+                </div>
+
+                <!-- D-pad -->
+                <p class="section-label">D-pad</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ↑</span>
+                        <button class="key-pill" id="button-up" data-action="remapKey" data-button="up">W</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ↓</span>
+                        <button class="key-pill" id="button-down" data-action="remapKey" data-button="down">S</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> ←</span>
+                        <button class="key-pill" id="button-left" data-action="remapKey" data-button="left">A</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-dpad">D-pad</span> →</span>
+                        <button class="key-pill" id="button-right" data-action="remapKey" data-button="right">D</button>
+                    </div>
+                </div>
+
+                <!-- Shoulder buttons -->
+                <p class="section-label">Shoulder buttons</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">L1</span> L1</span>
+                        <button class="key-pill" id="button-l1" data-action="remapKey" data-button="l1">U</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">R1</span> R1</span>
+                        <button class="key-pill id="button-r1" data-action="remapKey" data-button="r1">O</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">L2</span> L2</span>
+                        <button class="key-pill" id="button-l2" data-action="remapKey" data-button="l2">7</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">R2</span> R2</span>
+                        <button class="key-pill" id="button-r2" data-action="remapKey" data-button="r2">9</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">L3</span> L3</span>
+                        <button class="key-pill" id="button-l3" data-action="remapKey" data-button="l3">Z</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-shoulder">R3</span> R3</span>
+                        <button class="key-pill" id="button-r3" data-action="remapKey" data-button="r3">M</button>
+                    </div>
+                </div>
+
+                <!-- System -->
+                <p class="section-label">System</p>
+                <div class="bindings-grid">
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-system">SYS</span> Start</span>
+                        <button class="key-pill" id="button-start" data-action="remapKey" data-button="start">Enter</button>
+                    </div>
+                    <div class="binding-row">
+                        <span class="binding-label"><span class="btn-badge badge-system">SYS</span> Select</span>
+                        <button class="key-pill" id="button-select" data-action="remapKey" data-button="select">Tab</button>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="button is-psx" id="controller-reset" style="color: var(--psx-red); margin-right: auto;" data-action="resetToDefaults">
+                    Reset to defaults
+                </button>
+                <button class="button is-psx" id="controller-cancel" data-action="undoMappings">Cancel</button>
+                <button class="button is-psx is-primary-action" id="controller-save" data-action="saveMappings">Save</button>
+            </div>
+
+        </div>
+    </div>
+    <div class="modal-backdrop" id="save-states-modal">
+        <div class="modal-box save-states-box" role="dialog" aria-modal="true" aria-labelledby="save-states-title">
+
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <p class="modal-title" id="save-states-title">Save states</p>
+                </div>
+                <button class="modal-close-btn" id="save-states-close" aria-label="Close" data-action="closeSaveStatesModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body save-states-list" id="save-states-list">
+                <div class="save-slot is-empty is-quick-save" data-slot="quick">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label is-quick">Quick save</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text" id="game-name-quick">No save data</p>
+                        <p class="save-slot-date"></p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="quick" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="quick">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="quick" aria-label="Delete quick slot" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="1">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 1</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="1" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="1">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="1" aria-label="Delete slot 1" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="2">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 2</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="2" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="2">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="2" aria-label="Delete slot 2" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="3">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 3</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="3" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="3">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="3" aria-label="Delete slot 3" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="4">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 4</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="4" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="4">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="4" aria-label="Delete slot 4" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="save-slot is-empty" data-slot="5">
+                    <div class="save-slot-thumb">
+                        <div class="save-slot-placeholder">
+                            <i class="fa-solid fa-image"></i>
+                            <span>Empty</span>
+                        </div>
+                    </div>
+                    <div class="save-slot-info">
+                        <div class="save-slot-header">
+                            <span class="save-slot-label">Slot 5</span>
+                        </div>
+                        <p class="save-slot-game is-empty-text">No save data</p>
+                        <p class="save-slot-date"></p>
+                        <div class="save-slot-actions">
+                            <button class="button is-psx is-primary-action is-small" data-action="loadState" data-slot="5" style="display:none">Load</button>
+                            <button class="button is-psx is-small" data-action="saveState" data-slot="5">Save</button>
+                            <button class="button is-psx is-small is-delete" data-action="deleteState" data-slot="5" aria-label="Delete slot 5" style="display:none">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="button is-psx" id="save-states-modal-close" data-action="closeSaveStatesModal">Close</button>
+            </div>
+
+        </div>
+    </div>
+    <div class="modal-backdrop" id="audio-modal">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="audio-modal-title" style="max-width: 400px;">
+
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <i class="fa-solid fa-volume-high"></i>
+                    <p class="modal-title" id="audio-modal-title">Audio</p>
+                </div>
+                <button class="modal-close-btn" id="audio-modal-close" aria-label="Close" data-action="closeAudioModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="audio-option">
+                    <div class="audio-option-row">
+                        <label class="audio-label" for="volume-slider">Volume</label>
+                        <span class="audio-value" id="volume-value">100%</span>
+                    </div>
+                    <input type="range" class="audio-slider" id="volume-slider" min="0" max="100" value="100">
+                </div>
+                <div class="audio-option">
+                    <div class="audio-option-row">
+                        <label class="audio-label" for="mute-toggle">Mute</label>
+                        <button class="mute-btn" id="mute-toggle" data-action="toggleMute">
+                            <i class="fa-solid fa-volume-high" id="mute-icon"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="button is-psx" id="audio-modal-done" data-action="closeAudioModal">Done</button>
+            </div>
+
+        </div>
+    </div>
+    <canvas id="save-state-canvas" style="display:none"></canvas>
+
+    <input type="file" id="file-bios" accept=".bin,.BIN" hidden>
+    <input type="file" id="file-game" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+    <input type="file" id="file-disc" accept=".bin,.cue,.iso,.img,.chd,.BIN,.CUE,.ISO,.IMG,.CHD" hidden>
+    <script src="dist/bundle.js"></script>
+</body>
+</html>
