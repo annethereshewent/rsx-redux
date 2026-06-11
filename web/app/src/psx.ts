@@ -68,6 +68,14 @@ export class Psx {
         this.initializeEmulator()
     }
 
+    toggleFullscreen() {
+        if (document.fullscreenElement == null) {
+            document.documentElement.requestFullscreen()
+        } else {
+            document.exitFullscreen()
+        }
+    }
+
     togglePause() {
         if (this.isRunning) {
             const pause = document.getElementById('nav-pause')!
