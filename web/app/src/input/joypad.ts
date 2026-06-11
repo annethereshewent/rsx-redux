@@ -39,6 +39,25 @@ enum PsxButtons {
     SQUARE = 15,
 }
 
+const DEFAULT_KEY_MAP = new Map<string, string>([
+    ['select', 'tab'],
+    ['l3', 'z'],
+    ['r3', 'm'],
+    ['start', 'enter'],
+    ['up', 'w'],
+    ['right', 'd'],
+    ['down', 's'],
+    ['left', 'a'],
+    ['l2', '7'],
+    ['r2', '9'],
+    ['l1', 'u'],
+    ['r1', 'o'],
+    ['triangle', 'i'],
+    ['circle', 'l'],
+    ['cross', 'k'],
+    ['square', 'j']
+])
+
 const keyToCode = new Map<string, number>([
     ["select", 0],
     ["l3", 1],
@@ -92,7 +111,6 @@ export class Joypad {
 
         if (savedKeyMap != null) {
             this.keyMap = new Map(savedKeyMap)
-            this.updateBindings()
         }
     }
 
@@ -106,17 +124,13 @@ export class Joypad {
 
     undoMappings() {
         this.keyMap = new Map(this.previousKeyMap)
-        const modal = document.getElementById('controller-modal')
-        modal?.classList.remove('is-active')
-        document.removeEventListener('click', this.controllerClickListener)
+        this.closeModal()
     }
 
     saveMappings() {
         localStorage.setItem('psx-keyboard-mappings', JSON.stringify(Array.from(this.keyMap.entries())))
 
-        const modal = document.getElementById('controller-modal')
-        modal?.classList.remove('is-active')
-        document.removeEventListener('click', this.controllerClickListener)
+        this.closeModal()
         this.updateButtonMap()
     }
 
@@ -144,6 +158,18 @@ export class Joypad {
                 element.innerText = this.formattedKey(value)
             }
         })
+    }
+
+    resetToDefaults() {
+        this.keyMap = new Map(DEFAULT_KEY_MAP)
+        this.closeModal()
+        this.updateButtonMap()
+    }
+
+    closeModal() {
+        const modal = document.getElementById('controller-modal')
+        modal?.classList.remove('is-active')
+        document.removeEventListener('click', this.controllerClickListener)
     }
 
     addKeyboardControllerListeners() {

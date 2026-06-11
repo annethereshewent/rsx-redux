@@ -149,17 +149,25 @@ export class Psx {
 
         const gameBytes = new Uint8Array(data)
 
+        cancelAnimationFrame(this.frameNumber)
+
         this.emulator!.load_rom(gameBytes)
 
-        const canvas = document.createElement('canvas')
+        const placeholder = document.getElementById('placeholder')
 
-        canvas.setAttribute('width', '640');
-        canvas.setAttribute('height', '480')
+        if (placeholder != null) {
+            placeholder.remove()
+            const canvas = document.createElement('canvas')
 
-        document.getElementById('placeholder')!.remove()
-        document.getElementById('display')!.append(canvas)
+            canvas.setAttribute('width', '640');
+            canvas.setAttribute('height', '480')
 
-        this.videoOutput = new VideoOutput(canvas, this.emulator!, this.wasm!)
+            document.getElementById('display')!.append(canvas)
+            this.videoOutput = new VideoOutput(canvas, this.emulator!, this.wasm!)
+        } else {
+            this.emulator!.reset()
+        }
+
         this.audioOutput = new AudioOutput(this.emulator!, this.wasm!)
         this.paused = false
 
@@ -175,6 +183,19 @@ export class Psx {
         this.frameNumber = requestAnimationFrame((time) => {
             this.runFrame(time)
         })
+    }
+
+    reset() {
+        if (this.emulator != null) {
+            cancelAnimationFrame(this.frameNumber)
+            this.emulator.reset()
+
+            this.frameNumber = requestAnimationFrame((time) => this.runFrame(time))
+        }
+    }
+
+    resetToDefaults() {
+        this.joypad.resetToDefaults()
     }
 
     enableSwapDisc() {

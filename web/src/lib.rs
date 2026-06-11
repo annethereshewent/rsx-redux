@@ -156,4 +156,14 @@ impl PsxWebEmulator {
     pub fn get_framebuffer_size(&self) -> usize {
         self.cpu.bus.gpu.picture.len()
     }
+
+    pub fn reset(&mut self) {
+        let game_bytes = self.cpu.bus.cdrom.game_bytes.clone().unwrap();
+        let bios = self.cpu.bus.get_bios();
+
+        self.cpu = CPU::new(None, "".to_string());
+
+        self.cpu.bus.load_bios(bios);
+        self.cpu.bus.cdrom.load_game_web(game_bytes);
+    }
 }

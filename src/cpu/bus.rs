@@ -97,6 +97,10 @@ impl Bus {
         }
     }
 
+    pub fn get_bios(&self) -> Vec<u8> {
+        self.bios.clone()
+    }
+
     pub fn tick(&mut self, cycles: usize) {
         // Note: This emulator generally uses a scheduler based system to schedule events
         // Except for timers. Most components like GPU, DMA, controllers, etc. are deterministic enough

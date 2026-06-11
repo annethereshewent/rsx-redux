@@ -47,7 +47,7 @@
                         <a class="navbar-item" id="nav-pause">
                             <span class="icon"><i class="fa-solid fa-pause"></i></span>&nbsp;Pause
                         </a>
-                        <a class="navbar-item" id="nav-reset">
+                        <a class="navbar-item" id="nav-reset" data-action="reset">
                             <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>&nbsp;Reset
                         </a>
                         <hr class="navbar-divider">
@@ -140,7 +140,7 @@
                         <button class="button is-psx" id="btn-pause" title="Pause">
                             <span class="icon"><i class="fa-solid fa-pause"></i></span>
                         </button>
-                        <button class="button is-psx" id="btn-reset" title="Reset">
+                        <button class="button is-psx" id="btn-reset" title="Reset" data-action="reset">
                             <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>
                         </button>
                         <button class="button is-psx" id="btn-fullscreen" title="Fullscreen">
@@ -313,7 +313,7 @@
             </div>
 
             <div class="modal-footer">
-                <button class="button is-psx" id="controller-reset" style="color: var(--psx-red); margin-right: auto;">
+                <button class="button is-psx" id="controller-reset" style="color: var(--psx-red); margin-right: auto;" data-action="resetToDefaults">
                     Reset to defaults
                 </button>
                 <button class="button is-psx" id="controller-cancel" data-action="undoMappings">Cancel</button>
