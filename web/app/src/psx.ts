@@ -4,6 +4,7 @@ import { Joypad } from "./input/joypad"
 import { AudioOutput } from "./output/audio_output"
 import { VideoOutput } from "./output/video_output"
 import { RsxDb } from "./saves/rsx_db"
+import { StateManager } from "./saves/state_manager"
 import { WaveVisualizer } from "./util/wave_visualizer"
 
 const FPS_INTERVAL = 1000 / 60
@@ -30,6 +31,7 @@ export class Psx {
     private memoryCard = "memory_card1"
     private memoryCardData = new Uint8Array(MEMORY_CARD_SIZE)
     private rsxDb = new RsxDb()
+    private stateManager: StateManager|null = null
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -223,12 +225,16 @@ export class Psx {
 
         const data = await this.readFile(gameFile)
 
+        const gameName = gameFile.name.substring(0, gameFile.name.lastIndexOf('.'))
+
         const gameBytes = new Uint8Array(data)
 
         cancelAnimationFrame(this.frameNumber)
 
         this.emulator!.load_rom(gameBytes)
         this.emulator!.set_memory_card(this.memoryCardData)
+
+        this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
 
         const placeholder = document.getElementById('placeholder')
 

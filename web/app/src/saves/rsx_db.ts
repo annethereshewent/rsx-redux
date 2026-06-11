@@ -1,9 +1,10 @@
 import { DBSchema, IDBPDatabase, openDB } from "idb"
 
-const currentVersion = 1
+const currentVersion = 2
 
 interface SaveState {
-    data: Uint8Array
+    data: Uint8Array,
+    imageUrl: string
 }
 
 interface RsxDB extends DBSchema {
@@ -37,12 +38,37 @@ export class RsxDb {
                     keyPath: 'name'
                 })
                 db.createObjectStore('rsx-save-states', {
-                    keyPath: 'name'
+                    keyPath: 'gameName'
                 })
             },
         })
 
         this.db = db
+    }
+
+    async saveState(gameName: string, index: number, data: Uint8Array, imageUrl: string) {
+        if (this.db == null) {
+            this.db = await openDB('rsx-db', currentVersion)
+        }
+
+        const entry = await this.db.get('rsx-save-states', gameName)
+
+        if (entry != null) {
+            entry.saveStates[index].data = data
+            entry.saveStates[index].imageUrl = imageUrl
+
+            this.db.put('rsx-save-states', entry)
+        }
+    }
+
+    async loadState(gameName: string, index: number) {
+        if (this.db == null) {
+            this.db = await openDB('rsx-db', currentVersion)
+        }
+
+        const entry = await this.db.get('rsx-save-states', gameName)
+
+        return entry?.saveStates[index].data || new Uint8Array([])
     }
 
     async getMemoryCard(memoryCard: string) {
