@@ -170,6 +170,12 @@ export class Psx {
         }
     }
 
+    async deleteState(el: HTMLElement) {
+        const index = el.dataset.slot == 'quick' ? 0 : parseInt(el.dataset.slot || "0")
+
+        this.stateManager!.deleteState(index)
+    }
+
     getImageUrl() {
         const memory = new Uint8Array(this.wasm!.memory.buffer, this.emulator!.get_framebuffer(), this.emulator!.get_framebuffer_size())
         const [width, height] = this.emulator!.get_dimensions()

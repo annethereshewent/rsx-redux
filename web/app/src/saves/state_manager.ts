@@ -94,6 +94,13 @@ export class StateManager {
         })
     }
 
+    async deleteState(index: number) {
+        this.db.deleteState(this.gameName, index)
+
+        this.clearStateMenuListItem(index)
+        this.clearStateModalEntry(index)
+    }
+
     updateStateMenuListItem(index: number, state: SaveState) {
         const list = document.getElementById('save-states-side-panel')!
 

@@ -89,6 +89,19 @@ export class RsxDb {
         }
     }
 
+    async deleteState(gameName: string, index: number) {
+        if (this.db == null) {
+            this.db = await openDB('rsx-db', currentVersion)
+        }
+        const entry = await this.db.get('rsx-save-states', gameName)
+
+        if (entry != null) {
+            delete(entry.saveStates[index])
+
+            this.db.put('rsx-save-states', entry)
+        }
+    }
+
     async getSaveStates(gameName: string) {
         if (this.db == null) {
             this.db = await openDB('rsx-db', currentVersion)
