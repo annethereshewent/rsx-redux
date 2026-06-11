@@ -166,4 +166,12 @@ impl PsxWebEmulator {
         self.cpu.bus.load_bios(bios);
         self.cpu.bus.cdrom.load_game_web(game_bytes);
     }
+
+    pub fn get_memory_bytes(&self) -> Option<Vec<u8>> {
+        if self.cpu.bus.peripherals.memory_card.is_memory_dirty() {
+            return self.cpu.bus.peripherals.memory_card.get_memory_bytes();
+        }
+
+        None
+    }
 }

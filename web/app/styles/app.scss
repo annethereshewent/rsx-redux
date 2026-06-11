@@ -239,6 +239,69 @@ html, body {
 .menu-list a.is-active-toggle .icon {
     color: var(--psx-blue);
 }
+.mem-card-select-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--psx-bg);
+    border: 1px solid var(--psx-border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+
+    &:hover, &:focus-within {
+        border-color: var(--psx-blue);
+    }
+}
+
+.mem-card-icon {
+    padding: 0 0.6rem;
+    color: var(--psx-blue);
+    font-size: 0.85rem;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+.mem-card-select {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--psx-text);
+    font-size: 0.875rem;
+    padding: 0.5rem 0.25rem 0.5rem 0;
+    width: 100%;
+    cursor: pointer;
+    outline: none;
+
+    option {
+        background: var(--psx-surface);
+        color: var(--psx-text);
+    }
+}
+
+.mem-card-chevron {
+    padding: 0 0.6rem;
+    color: var(--psx-text-muted);
+    font-size: 0.7rem;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+.mem-card-status {
+    font-size: 0.72rem;
+    color: var(--psx-text-muted);
+    margin-top: 0.5rem;
+    padding-left: 0.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+
+    i { font-size: 0.65rem; }
+
+    &.has-saves {
+        color: var(--psx-green);
+    }
+}
 
 @media all and (display-mode: fullscreen) {
     .action-bar, .status-bar, .panel-card, .column.is-2 {

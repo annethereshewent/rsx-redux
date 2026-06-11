@@ -3,9 +3,11 @@ import wasmData from '../../pkg/rsx_redux_web_bg.wasm'
 import { Joypad } from "./input/joypad"
 import { AudioOutput } from "./output/audio_output"
 import { VideoOutput } from "./output/video_output"
+import { RsxDb } from "./saves/rsx_db"
 import { WaveVisualizer } from "./util/wave_visualizer"
 
 const FPS_INTERVAL = 1000 / 60
+const MEMORY_CARD_SIZE = 0x20000
 
 export class Psx {
     private wasm: InitOutput|null = null
@@ -25,6 +27,9 @@ export class Psx {
     private waveVisualizer = new WaveVisualizer()
     private isPaused = true
     private isRunning = false
+    private memoryCard = "memory_card1"
+    private memoryCardData = new Uint8Array(MEMORY_CARD_SIZE)
+    private rsxDb = new RsxDb()
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -65,7 +70,39 @@ export class Psx {
             }
         })
 
+        const card = localStorage.getItem('psx-memory-card')
+
+        if (card != null) {
+            this.memoryCard = card
+        }
+
+        this.loadMemoryCard()
+
+        document.getElementById('memory-card-select')!.addEventListener('change', (ev) => {
+            const memoryCard = (ev.target as HTMLSelectElement).value
+
+            this.setMemoryCard(memoryCard)
+        })
+
         this.initializeEmulator()
+    }
+
+    async loadMemoryCard() {
+        const data = await this.rsxDb.getMemoryCard(this.memoryCard)
+
+        if (data != null) {
+            this.memoryCardData = data as Uint8Array<ArrayBuffer>
+            document.getElementById('mem-card-status')!.textContent = 'Saves found'
+        } else {
+            this.memoryCardData = new Uint8Array(MEMORY_CARD_SIZE)
+            document.getElementById('mem-card-status')!.textContent = 'No saves'
+        }
+    }
+
+    setMemoryCard(card: string) {
+        localStorage.setItem('psx-memory-card', card)
+        this.memoryCard = card
+        this.loadMemoryCard()
     }
 
     toggleFullscreen() {
@@ -82,14 +119,11 @@ export class Psx {
             const pauseButton = document.getElementById('btn-pause')!
 
             if (!this.isPaused) {
-                console.log(pause.children[0].innerHTML)
-                console.log(pause.children[0].children)
                 pause.children[0].innerHTML = `<i class="fa-solid fa-play"></i>`
                 pause.children[1].textContent = 'Resume'
                 pauseButton.children[0].innerHTML = `<i class="fa-solid fa-play"></i>`
                 cancelAnimationFrame(this.frameNumber)
             } else {
-                console.log(pause.children)
                 pause.children[0].innerHTML = `<i class="fa-solid fa-pause"></i>`
                 pause.children[1].textContent = 'Pause'
                 pauseButton.children[0].innerHTML = `<i class="fa-solid fa-pause"></i>`
@@ -194,6 +228,7 @@ export class Psx {
         cancelAnimationFrame(this.frameNumber)
 
         this.emulator!.load_rom(gameBytes)
+        this.emulator!.set_memory_card(this.memoryCardData)
 
         const placeholder = document.getElementById('placeholder')
 
@@ -273,6 +308,8 @@ export class Psx {
                 this.waveVisualizer.plot(samples!)
 
                 this.joypad.handleInputAndVibration()
+
+                this.checkSaveStatus()
             }
 
             this.previousTime = time - (diff % FPS_INTERVAL)
@@ -280,6 +317,16 @@ export class Psx {
             this.frameNumber = requestAnimationFrame((time) => this.runFrame(time))
         }
 
+    }
+
+    async checkSaveStatus() {
+        const memoryCardData = this.emulator!.get_memory_bytes() as Uint8Array<ArrayBuffer>
+
+        if (memoryCardData != null) {
+            this.memoryCardData = memoryCardData
+            await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+            document.getElementById('mem-card-status')!.textContent = "Saves found"
+        }
     }
 
     updateFps() {

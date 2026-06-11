@@ -32,7 +32,9 @@ pub struct MemoryCard {
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     #[cfg(target_arch = "wasm32")]
-    memory_bytes: Option<Vec<u8>>
+    memory_bytes: Option<Vec<u8>>,
+    #[cfg(target_arch = "wasm32")]
+    memory_card_dirty: bool,
 }
 
 impl MemoryCard {
@@ -54,6 +56,8 @@ impl MemoryCard {
             memory_file: None,
             #[cfg(target_arch = "wasm32")]
             memory_bytes: None,
+            #[cfg(target_arch = "wasm32")]
+            memory_card_dirty: false,
         }
     }
     pub fn reply(&mut self, command: u8) -> u8 {
@@ -171,6 +175,10 @@ impl MemoryCard {
                     if let Some(memory_file) = &mut self.memory_file {
                         memory_file.flush().unwrap();
                     }
+                    #[cfg(target_arch = "wasm32")]
+                    if self.memory_bytes.is_some() {
+                        self.memory_card_dirty = true;
+                    }
                     self.finished_transferring = true;
                 }
                 previous
@@ -281,5 +289,15 @@ impl MemoryCard {
     #[cfg(target_arch = "wasm32")]
     pub fn set_memory_bytes(&mut self, memory_bytes: Vec<u8>) {
         self.memory_bytes = Some(memory_bytes);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_memory_bytes(&self) -> Option<Vec<u8>> {
+        self.memory_bytes.clone()
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn is_memory_dirty(&self) -> bool {
+        self.memory_card_dirty
     }
 }

@@ -1,10 +1,11 @@
 {
-  "name": "gbc-plus-web",
+  "name": "rsx-redux-web",
   "version": "1.0.0",
   "description": "",
   "main": "webpack.config.js",
   "dependencies": {
     "fflate": "^0.8.2",
+    "idb": "^8.0.3",
     "jszip": "^3.10.1",
     "moment": "^2.30.1"
   },
