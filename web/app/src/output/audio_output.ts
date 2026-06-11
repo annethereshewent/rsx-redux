@@ -8,6 +8,7 @@ export class AudioOutput {
     private workletNode: AudioWorkletNode|null = null
     private volumeLevel = 100
     private gainNode = this.audioContext.createGain()
+    private isMuted = false
 
     private audioClickListener = (event: Event) => {
         const modal = document.getElementById('audio-modal')
@@ -24,6 +25,29 @@ export class AudioOutput {
 
             this.gainNode.gain.value = this.volumeLevel / 100
         })
+    }
+
+    toggleMute() {
+        const muteIcon = document.getElementById('mute-icon')!
+        const slider = document.getElementById('volume-slider') as HTMLInputElement
+        const volumeValue = document.getElementById('volume-value')!
+        if (this.isMuted) {
+            this.gainNode.gain.value = this.volumeLevel / 100
+            muteIcon.classList.remove('fa-volume-xmark')
+            muteIcon.classList.add('fa-volume-high')
+
+            slider.value = `${this.volumeLevel}`
+            volumeValue.textContent = `${this.volumeLevel}%`
+        } else {
+            this.gainNode.gain.value = 0
+            muteIcon?.classList.remove('fa-volume-high')
+            muteIcon?.classList.add('fa-volume-xmark')
+
+            slider.value = '0'
+            volumeValue.textContent = '0%'
+        }
+
+        this.isMuted = !this.isMuted
     }
 
     closeModal() {

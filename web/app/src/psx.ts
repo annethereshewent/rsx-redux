@@ -373,6 +373,10 @@ export class Psx {
         }
     }
 
+    toggleMute() {
+        this.audioOutput.toggleMute()
+    }
+
     resetToDefaults() {
         this.joypad.resetToDefaults()
     }
