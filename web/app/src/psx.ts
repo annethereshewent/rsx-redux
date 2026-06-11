@@ -7,25 +7,6 @@ import { WaveVisualizer } from "./util/wave_visualizer"
 
 const FPS_INTERVAL = 1000 / 60
 
-const keyToCode = new Map<string, number>([
-    ["select", 0],
-    ["l3", 1],
-    ["r3", 2],
-    ["start", 3],
-    ["up", 4],
-    ["right", 5],
-    ["down", 6],
-    ["left", 7],
-    ["l2", 8],
-    ["r2", 9],
-    ["l1", 10],
-    ["r1", 11],
-    ["triangle", 12],
-    ["circle", 13],
-    ["cross", 14],
-    ["square", 15]
-])
-
 export class Psx {
     private wasm: InitOutput|null = null
     private emulator: PsxWebEmulator|null = null
@@ -37,38 +18,11 @@ export class Psx {
     private frames = 0
     private videoOutput: VideoOutput|null = null
     private audioOutput: AudioOutput|null = null
-    private keyMap = new Map<string, string>([
-        ['select', 'tab'],
-        ['l3', 'z'],
-        ['r3', 'm'],
-        ['start', 'enter'],
-        ['up', 'w'],
-        ['right', 'd'],
-        ['down', 's'],
-        ['left', 'a'],
-        ['l2', '7'],
-        ['r2', '9'],
-        ['l1', 'u'],
-        ['r1', 'o'],
-        ['triangle', 'i'],
-        ['circle', 'l'],
-        ['cross', 'k'],
-        ['square', 'j']
-    ])
-    private previousKeyMap = new Map()
-    private buttonMap = new Map<string, number>()
+
     private biosReady = false
     private gameReady = false
-    private joypad: Joypad|null = null
+    private joypad = new Joypad()
     private waveVisualizer = new WaveVisualizer()
-
-    private controllerClickListener = (event: Event) => {
-        const modal = document.getElementById('controller-modal')
-        const modalBox = modal?.children[0]
-        if (!modalBox?.contains((event.target as HTMLElement)!) && modal?.classList.contains('is-active')) {
-            this.undoMappings()
-        }
-    }
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -109,67 +63,7 @@ export class Psx {
             }
         })
 
-        const savedKeyMap = JSON.parse(localStorage.getItem('psx-keyboard-mappings') || 'null')
-
-        if (savedKeyMap != null) {
-            this.keyMap = new Map(savedKeyMap)
-            this.updateBindings()
-        }
-
         this.initializeEmulator()
-    }
-
-    updateButtonMap() {
-        this.buttonMap = new Map()
-
-        this.keyMap.forEach((value, key, map) => {
-            const entry = keyToCode.get(key)
-            if (entry != null) {
-                this.buttonMap.set(value, entry)
-            }
-        })
-    }
-
-    updateBindings() {
-        this.keyMap.forEach((value, key, _map) => {
-            const element = document.getElementById(`button-${key}`)
-
-            if (element != null) {
-                element.innerText = this.formattedKey(value)
-            }
-        })
-    }
-
-    openControllerModal() {
-        this.updateBindings()
-
-        const modal = document.getElementById('controller-modal')
-
-        document.removeEventListener('click', this.controllerClickListener)
-
-        modal?.classList.add('is-active')
-
-        this.previousKeyMap = new Map(this.keyMap)
-
-        if (modal?.classList.contains('is-active')) {
-            document.addEventListener('click', this.controllerClickListener)
-        }
-    }
-
-    undoMappings() {
-        this.keyMap = new Map(this.previousKeyMap)
-        const modal = document.getElementById('controller-modal')
-        modal?.classList.remove('is-active')
-        document.removeEventListener('click', this.controllerClickListener)
-    }
-
-    saveMappings() {
-        localStorage.setItem('psx-keyboard-mappings', JSON.stringify(Array.from(this.keyMap.entries())))
-
-        const modal = document.getElementById('controller-modal')
-        modal?.classList.remove('is-active')
-        document.removeEventListener('click', this.controllerClickListener)
-        this.updateButtonMap()
     }
 
     async initializeEmulator() {
@@ -190,34 +84,6 @@ export class Psx {
         document.getElementById('status-text')!.innerText = 'BIOS loaded'
         this.biosReady = true
         document.getElementById('btn-load-game')!.removeAttribute('disabled')
-    }
-
-    private formattedKey(key: string) {
-        return key.charAt(0).toUpperCase() + key.slice(1, key.length).toLowerCase()
-    }
-
-    remapKey(el: HTMLElement) {
-        const previousKey = el.innerText.toLowerCase().replace('arrow', '')
-        el.innerText = "Listening...."
-        const remapListener = (ev: KeyboardEvent) => {
-            ev.preventDefault()
-            const selectedKey = ev.key.toLowerCase().replace('arrow', '')
-
-            this.keyMap.forEach((value, key, map) => {
-                if (value.toLowerCase() == selectedKey) {
-                    map.set(key, previousKey)
-                    document.getElementById(`button-${key}`)!.innerText = this.formattedKey(previousKey)
-                }
-            })
-
-            el.innerText = this.formattedKey(selectedKey)
-
-            this.keyMap.set(el.dataset.button!, selectedKey)
-
-            el.removeEventListener('keydown', remapListener)
-        }
-        el.removeEventListener('keydown', remapListener)
-        el.addEventListener('keydown', remapListener)
     }
 
     async initWasm() {
@@ -262,6 +128,22 @@ export class Psx {
         }
     }
 
+    undoMappings() {
+        this.joypad.undoMappings()
+    }
+
+    saveMappings() {
+        this.joypad.saveMappings()
+    }
+
+    remapKey(el: HTMLElement) {
+        this.joypad.remapKey(el)
+    }
+
+    openControllerModal() {
+        this.joypad.openControllerModal()
+    }
+
     async handleGameFile(gameFile: File) {
         const data = await this.readFile(gameFile)
 
@@ -284,11 +166,11 @@ export class Psx {
         document.getElementById('status-dot')!.classList.add('is-active')
         document.getElementById('status-text')!.innerText = 'Game running'
 
-        this.updateButtonMap()
-        this.addKeyboardControllerListeners()
+        this.joypad.updateButtonMap()
+        this.joypad.addKeyboardControllerListeners()
         this.enableSwapDisc()
 
-        this.joypad = new Joypad(this.emulator!)
+        this.joypad.setEmulator(this.emulator)
 
         this.frameNumber = requestAnimationFrame((time) => {
             this.runFrame(time)
@@ -299,28 +181,6 @@ export class Psx {
         this.gameReady = true
         const swapDisc = document.getElementById('btn-swap-disc')
         swapDisc?.removeAttribute('disabled')
-    }
-
-    addKeyboardControllerListeners() {
-        document.addEventListener('keydown', (e) => {
-            const buttonCode = this.buttonMap.get(e.key.toLowerCase().replace('arrow', ''))
-
-            if (buttonCode != null) {
-                e.preventDefault()
-
-                this.emulator!.update_input(buttonCode, true)
-            }
-        })
-
-        document.addEventListener('keyup', (e) => {
-            const buttonCode = this.buttonMap.get(e.key.toLowerCase().replace('arrow', ''))
-
-            if (buttonCode != null) {
-                e.preventDefault()
-
-                this.emulator!.update_input(buttonCode, false)
-            }
-        })
     }
 
     toggleWaveform() {
@@ -349,7 +209,7 @@ export class Psx {
 
                 this.waveVisualizer.plot(samples!)
 
-                this.joypad?.handleInputAndVibration()
+                this.joypad.handleInputAndVibration()
             }
 
             this.previousTime = time - (diff % FPS_INTERVAL)
