@@ -98,10 +98,12 @@ export class Psx {
             if (ev.key.toLowerCase() == 'f5') {
                 ev.preventDefault()
                 const imageUrl = this.getImageUrl()
-                this.stateManager?.createSaveState(0, imageUrl)
+                const state = await this.stateManager?.createSaveState(0, imageUrl)
 
-                this.stateManager?.updateStateMenuList()
-                this.stateManager?.updateStateModal()
+                if (state != null) {
+                    this.stateManager?.updateStateMenuListItem(0, state)
+                    this.stateManager?.updateStateModalEntry(0, state)
+                }
             } else if (ev.key.toLowerCase() == 'f7') {
                 ev.preventDefault()
                 const data = await this.stateManager?.loadSaveState(0)

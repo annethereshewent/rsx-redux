@@ -59,7 +59,7 @@ export class StateManager {
 
                     if (state != null) {
                         this.updateStateModalEntry(index, state)
-                        this.updateStateMenuList()
+                        this.updateStateMenuListItem(index, state)
                     }
 
                     resolve(state)
@@ -94,20 +94,25 @@ export class StateManager {
         })
     }
 
+    updateStateMenuListItem(index: number, state: SaveState) {
+        const list = document.getElementById('save-states-side-panel')!
+
+        const elementA = list.children[index].children[0] as HTMLElement
+        elementA.dataset.action = 'loadState'
+        elementA.dataset.slot = index == 0 ? 'quick' : `${index}`
+
+        const date = moment.unix(state.timestamp).fromNow()
+        const stateName = index == 0 ? 'Quick' : `Slot ${index}`
+        elementA.innerHTML = `<span class="icon"><i class="fa-regular fa-check-square"></i></span>${stateName} - ${date}`
+    }
+
     async updateStateMenuList() {
         const saveStates = await this.db.getSaveStates(this.gameName)
 
         if (saveStates != null) {
-            const list = document.getElementById('save-states-side-panel')!
             for (let i = 0; i <= 5; i++) {
                 if (saveStates[i] != null) {
-                    const elementA = list.children[i].children[0] as HTMLElement
-                    elementA.dataset.action = 'loadState'
-                    elementA.dataset.slot = i == 0 ? 'quick' : `${i}`
-
-                    const date = moment.unix(saveStates[i].timestamp).fromNow()
-                    const stateName = i == 0 ? 'Quick' : `Slot ${i}`
-                    elementA.innerHTML = `<span class="icon"><i class="fa-regular fa-check-square"></i></span>${stateName} - ${date}`
+                    this.updateStateMenuListItem(i, saveStates[i])
                 }
             }
         }
