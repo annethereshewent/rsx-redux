@@ -113,8 +113,59 @@ export class StateManager {
             for (let i = 0; i <= 5; i++) {
                 if (saveStates[i] != null) {
                     this.updateStateMenuListItem(i, saveStates[i])
+                } else {
+                    this.clearStateMenuListItem(i)
                 }
             }
+        } else {
+            for (let i = 0; i <= 5; i++) {
+                this.clearStateMenuListItem(i)
+            }
+        }
+    }
+
+    clearStateMenuListItem(index: number) {
+        const stateTitle = index == 0 ? 'Quick - Empty' : `State ${index} - Empty`
+
+        const list = document.getElementById('save-states-side-panel')!
+
+        const elementA = list.children[index].children[0] as HTMLElement
+        elementA.dataset.action = undefined
+        elementA.dataset.slot = undefined
+
+        elementA.innerHTML = `<span class="icon"><i class="fa-regular fa-square"></i></span>${stateTitle}`
+    }
+
+    clearStateModalEntry(index: number) {
+        const indexName = index == 0 ? 'quick' : `${index}`
+        const slot = document.querySelector(`.save-slot[data-slot="${indexName}"]`)
+
+        if (slot != null) {
+            const saveSlotThumb = slot.querySelector('.save-slot-thumb')
+            const screenshot = slot.querySelector('.save-slot-screenshot') as HTMLImageElement|null
+            const gameName = slot.querySelector('.save-slot-game')
+            const saveDate = slot.querySelector('.save-slot-date')
+
+            const actions = slot.querySelector('.save-slot-actions')
+
+            if (screenshot != null) {
+                screenshot.remove()
+            }
+
+            gameName!.textContent = 'No save data'
+            gameName!.classList.add('is-empty-text')
+            saveDate!.textContent = ''
+            saveSlotThumb!.innerHTML = `
+                <div class="save-slot-placeholder">
+                    <i class="fa-solid fa-image"></i>
+                    <span>Empty</span>
+                </div>
+            `
+
+            for (const child of actions!.children) {
+                (child as HTMLElement).style.display = 'none'
+            }
+            (actions!.children[1] as HTMLElement).style.display = 'block'
         }
     }
 
@@ -159,7 +210,13 @@ export class StateManager {
             for (let i = 0; i <= 5; i++) {
                 if (saveStates[i] != null) {
                     this.updateStateModalEntry(i, saveStates[i])
+                } else {
+                    this.clearStateModalEntry(i)
                 }
+            }
+        } else {
+            for (let i = 0; i <= 5; i++) {
+                this.clearStateModalEntry(i)
             }
         }
     }
