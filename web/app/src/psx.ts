@@ -94,6 +94,24 @@ export class Psx {
             this.togglePause()
         })
 
+        document.addEventListener('keydown', async (ev) => {
+            if (ev.key.toLowerCase() == 'f5') {
+                ev.preventDefault()
+                const imageUrl = this.getImageUrl()
+                this.stateManager?.createSaveState(0, imageUrl)
+
+                this.stateManager?.updateStateMenuList()
+                this.stateManager?.updateStateModal()
+            } else if (ev.key.toLowerCase() == 'f7') {
+                ev.preventDefault()
+                const data = await this.stateManager?.loadSaveState(0)
+
+                if (data != null) {
+                    this.emulator!.load_state(data)
+                }
+            }
+        })
+
         this.initializeEmulator()
     }
 
@@ -300,6 +318,7 @@ export class Psx {
         this.emulator!.set_memory_card(this.memoryCardData)
 
         this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
+        this.stateManager.updateStateMenuList()
 
         const placeholder = document.getElementById('placeholder')
 

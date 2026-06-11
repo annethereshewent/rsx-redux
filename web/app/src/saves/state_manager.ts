@@ -59,6 +59,7 @@ export class StateManager {
 
                     if (state != null) {
                         this.updateStateModalEntry(index, state)
+                        this.updateStateMenuList()
                     }
 
                     resolve(state)
@@ -69,7 +70,9 @@ export class StateManager {
     async loadSaveState(index: number): Promise<Uint8Array|null> {
         const compressed = await this.db.loadState(this.gameName, index)
 
-        this.closeModal()
+        if (document.getElementById('save-states-modal')?.classList.contains('is-active')) {
+            this.closeModal()
+        }
 
         if (compressed != null) {
             return await this.decompress(compressed)
@@ -89,6 +92,25 @@ export class StateManager {
                 }
             })
         })
+    }
+
+    async updateStateMenuList() {
+        const saveStates = await this.db.getSaveStates(this.gameName)
+
+        if (saveStates != null) {
+            const list = document.getElementById('save-states-side-panel')!
+            for (let i = 0; i <= 5; i++) {
+                if (saveStates[i] != null) {
+                    const elementA = list.children[i].children[0] as HTMLElement
+                    elementA.dataset.action = 'loadState'
+                    elementA.dataset.slot = i == 0 ? 'quick' : `${i}`
+
+                    const date = moment.unix(saveStates[i].timestamp).fromNow()
+                    const stateName = i == 0 ? 'Quick' : `Slot ${i}`
+                    elementA.innerHTML = `<span class="icon"><i class="fa-regular fa-check-square"></i></span>${stateName} - ${date}`
+                }
+            }
+        }
     }
 
     updateStateModalEntry(index: number, state: SaveState) {
