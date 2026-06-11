@@ -2,17 +2,17 @@
 
 ## About
 
-This is a Playstation emulator written in Rust. It's a rewrite of the <a href="https://github.com/annethereshewent/RSX">RSX emulator</a>, with hardware rendering being the primary feature. Currently only supports Metal, but OpenGL and WebGL coming soon! Web version and iOS ports will eventually be available. There is now a MacOS app available for use at https://github.com/annethereshewent/rsx-redux-macos!
+This is a Playstation emulator written in Rust. It's a rewrite of the <a href="https://github.com/annethereshewent/RSX">RSX emulator</a>, with hardware rendering being the primary feature. Currently only supports Metal, but OpenGL and WebGL coming soon! Web version is now available at https://rsx-redux.onrender.com/, and there is also a MacOS app available for use at https://github.com/annethereshewent/rsx-redux-macos. iOS port will eventually be available. 
 
 ## How to run
 
-To run on your desktop locally, use the two scripts provided in the desktop directory:
+To run on your desktop locally, ensure you have a copy of the Playstation BIOS in the desktop/ directory, and use the two scripts provided in the desktop/ directory:
 
 For the software renderer (works on any OS):
 
 `./software.sh <path-to-rom-or-exe>`
 
-For the hardware renderer (MacOS only), do something similar:
+For the hardware renderer (ARM MacOS only), do something similar:
 
 `./hardware.sh <path-to-rom-or-exe>`
 
@@ -22,7 +22,7 @@ To compile the binary, use `cargo build --release` but remember to specify wheth
 
 Works great with a dualshock-like controller! Supports Xbox 360, dualshock, and dualsense controllers. Controls are exactly like on the Playstation.
 
-For keyboard support (custom keyboard mappings coming soon), use:
+For keyboard support (custom keyboard mappings available on the MacOS app), use:
 
 * **Up**: W
 * **Down**: S
@@ -40,10 +40,10 @@ For keyboard support (custom keyboard mappings coming soon), use:
 * **Select**: Tab
 * **Left stick button**: Left shift
 * **Right stick button**: Right shift
-* **Waveform visualizer (MacOS only right now)**: F4 key
+* **Waveform visualizer (MacOS and web apps only)**: F4 key
 * **Quick save state**: F5 key
 * **Quick load state**: F7 key
-* **Toggle digital mode on/off**: E Key
+* **Toggle digital mode on/off**: E Key on keyboard, touchpad button (and similar on Xbox) for controllers
 
 ## Screenshots
 
