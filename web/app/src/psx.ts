@@ -23,6 +23,8 @@ export class Psx {
     private gameReady = false
     private joypad = new Joypad()
     private waveVisualizer = new WaveVisualizer()
+    private isPaused = true
+    private isRunning = false
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -64,6 +66,30 @@ export class Psx {
         })
 
         this.initializeEmulator()
+    }
+
+    togglePause() {
+        if (this.isRunning) {
+            const pause = document.getElementById('nav-pause')!
+            const pauseButton = document.getElementById('btn-pause')!
+
+            if (!this.isPaused) {
+                console.log(pause.children[0].innerHTML)
+                console.log(pause.children[0].children)
+                pause.children[0].innerHTML = `<i class="fa-solid fa-play"></i>`
+                pause.children[1].textContent = 'Resume'
+                pauseButton.children[0].innerHTML = `<i class="fa-solid fa-play"></i>`
+                cancelAnimationFrame(this.frameNumber)
+            } else {
+                console.log(pause.children)
+                pause.children[0].innerHTML = `<i class="fa-solid fa-pause"></i>`
+                pause.children[1].textContent = 'Pause'
+                pauseButton.children[0].innerHTML = `<i class="fa-solid fa-pause"></i>`
+                this.frameNumber = requestAnimationFrame((time) => this.runFrame(time))
+            }
+
+            this.isPaused = !this.isPaused
+        }
     }
 
     async initializeEmulator() {
@@ -145,6 +171,9 @@ export class Psx {
     }
 
     async handleGameFile(gameFile: File) {
+        this.isPaused = false
+        this.isRunning = true
+
         const data = await this.readFile(gameFile)
 
         const gameBytes = new Uint8Array(data)

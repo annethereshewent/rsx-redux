@@ -30,32 +30,39 @@
                     <a class="navbar-link">File</a>
                     <div class="navbar-dropdown">
                         <a class="navbar-item" id="nav-load-bios" data-action="loadBios">
-                            <span class="icon"><i class="fa-solid fa-memory"></i></span>&nbsp;Load BIOS
+                            <span class="icon"><i class="fa-solid fa-memory"></i></span>
+                            <span>Load BIOS</span>
                         </a>
                         <a class="navbar-item" id="nav-load-game" data-action="loadGame">
-                            <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>&nbsp;Load Game
+                            <span class="icon"><i class="fa-solid fa-compact-disc"></i></span>
+                            <span>Load Game</span>
                         </a>
                         <hr class="navbar-divider">
                         <a class="navbar-item" id="nav-load-disc" data-action="swapDisc">
-                            <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>&nbsp;Swap Disc
+                            <span class="icon"><i class="fa-solid fa-circle-notch"></i></span>
+                            <span>Swap Disc</span>
                         </a>
                     </div>
                 </div>
                 <div class="navbar-item has-dropdown is-hoverable">
                     <a class="navbar-link">Emulation</a>
                     <div class="navbar-dropdown">
-                        <a class="navbar-item" id="nav-pause">
-                            <span class="icon"><i class="fa-solid fa-pause"></i></span>&nbsp;Pause
+                        <a class="navbar-item" id="nav-pause" data-action="togglePause">
+                            <span class="icon"><i class="fa-solid fa-pause"></i></span>
+                            <span>Pause</span>
                         </a>
                         <a class="navbar-item" id="nav-reset" data-action="reset">
-                            <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>&nbsp;Reset
+                            <span class="icon"><i class="fa-solid fa-rotate-right"></i></span>
+                            <span>Reset</span>
                         </a>
                         <hr class="navbar-divider">
                         <a class="navbar-item" id="nav-save-state">
-                            <span class="icon"><i class="fa-solid fa-download"></i></span>&nbsp;Save State
+                            <span class="icon"><i class="fa-solid fa-download"></i></span>
+                            <span>Save State</span>
                         </a>
                         <a class="navbar-item" id="nav-load-state">
-                            <span class="icon"><i class="fa-solid fa-upload"></i></span>&nbsp;Load State
+                            <span class="icon"><i class="fa-solid fa-upload"></i></span>
+                            <span>Load State</span>
                         </a>
                     </div>
                 </div>
@@ -63,13 +70,16 @@
                     <a class="navbar-link">Settings</a>
                     <div class="navbar-dropdown">
                         <a class="navbar-item" id="nav-controller" data-action="openControllerModal"">
-                            <span class="icon"><i class="fa-solid fa-gamepad"></i></span>&nbsp;Controller Mapping
+                            <span class="icon"><i class="fa-solid fa-gamepad"></i></span>
+                            <span>Controller Mapping</span>
                         </a>
                         <a class="navbar-item" id="nav-video">
-                            <span class="icon"><i class="fa-solid fa-display"></i></span>&nbsp;Video
+                            <span class="icon"><i class="fa-solid fa-display"></i></span>
+                            <span>Video</span>
                         </a>
                         <a class="navbar-item" id="nav-audio">
-                            <span class="icon"><i class="fa-solid fa-volume-high"></i></span>&nbsp;Audio
+                            <span class="icon"><i class="fa-solid fa-volume-high"></i></span>
+                            <span>Audio</span>
                         </a>
                     </div>
                 </div>
@@ -137,7 +147,7 @@
                             <span>Swap Disc</span>
                         </button>
                         <span class="mx-2"></span>
-                        <button class="button is-psx" id="btn-pause" title="Pause">
+                        <button class="button is-psx" id="btn-pause" title="Pause" data-action="togglePause">
                             <span class="icon"><i class="fa-solid fa-pause"></i></span>
                         </button>
                         <button class="button is-psx" id="btn-reset" title="Reset" data-action="reset">
