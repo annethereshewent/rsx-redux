@@ -74,7 +74,7 @@
                             <span class="icon"><i class="fa-solid fa-display"></i></span>
                             <span>Video</span>
                         </a> -->
-                        <a class="navbar-item" id="nav-audio">
+                        <a class="navbar-item" id="nav-audio" data-action="openAudioModal">
                             <span class="icon"><i class="fa-solid fa-volume-high"></i></span>
                             <span>Audio</span>
                         </a>
@@ -505,6 +505,43 @@
 
             <div class="modal-footer">
                 <button class="button is-psx" id="save-states-modal-close" data-action="closeSaveStatesModal">Close</button>
+            </div>
+
+        </div>
+    </div>
+    <div class="modal-backdrop" id="audio-modal">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="audio-modal-title" style="max-width: 400px;">
+
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <i class="fa-solid fa-volume-high"></i>
+                    <p class="modal-title" id="audio-modal-title">Audio</p>
+                </div>
+                <button class="modal-close-btn" id="audio-modal-close" aria-label="Close" data-action="closeAudioModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div class="audio-option">
+                    <div class="audio-option-row">
+                        <label class="audio-label" for="volume-slider">Volume</label>
+                        <span class="audio-value" id="volume-value">100%</span>
+                    </div>
+                    <input type="range" class="audio-slider" id="volume-slider" min="0" max="100" value="100">
+                </div>
+                <div class="audio-option">
+                    <div class="audio-option-row">
+                        <label class="audio-label" for="mute-toggle">Mute</label>
+                        <button class="mute-btn" id="mute-toggle" data-action="toggleMute">
+                            <i class="fa-solid fa-volume-high" id="mute-icon"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="button is-psx" id="audio-modal-done" data-action="closeAudioModal">Done</button>
             </div>
 
         </div>

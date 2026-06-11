@@ -101,6 +101,13 @@ export class Joypad {
         ['square', 'j']
     ])
 
+    private controllerClickListener = (event: Event) => {
+        const modal = document.getElementById('controller-modal')
+        const modalBox = modal?.children[0]
+        if (!modalBox?.contains((event.target as HTMLElement)!) && modal?.classList.contains('is-active')) {
+            this.undoMappings()
+        }
+    }
 
     constructor() {
         window.addEventListener('gamepadconnected', (e) => {
@@ -111,14 +118,6 @@ export class Joypad {
 
         if (savedKeyMap != null) {
             this.keyMap = new Map(savedKeyMap)
-        }
-    }
-
-    private controllerClickListener = (event: Event) => {
-        const modal = document.getElementById('controller-modal')
-        const modalBox = modal?.children[0]
-        if (!modalBox?.contains((event.target as HTMLElement)!) && modal?.classList.contains('is-active')) {
-            this.undoMappings()
         }
     }
 

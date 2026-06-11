@@ -20,7 +20,7 @@ export class Psx {
     private fps = 0
     private frames = 0
     private videoOutput: VideoOutput|null = null
-    private audioOutput: AudioOutput|null = null
+    private audioOutput = new AudioOutput()
 
     private biosReady = false
     private gameReady = false
@@ -304,6 +304,14 @@ export class Psx {
         this.joypad.openControllerModal()
     }
 
+    openAudioModal() {
+        this.audioOutput.openModal()
+    }
+
+    closeAudioModal() {
+        this.audioOutput.closeModal()
+    }
+
     async startGame(gameFile: File) {
         this.isPaused = false
         this.isRunning = true
@@ -337,7 +345,9 @@ export class Psx {
             this.emulator!.reset()
         }
 
-        this.audioOutput = new AudioOutput(this.emulator!, this.wasm!)
+        this.audioOutput.setEmulator(this.emulator!)
+        this.audioOutput.initAudio()
+
         this.paused = false
 
         document.getElementById('status-dot')!.classList.add('is-active')
@@ -395,7 +405,7 @@ export class Psx {
             if (diff >= FPS_INTERVAL || this.previousTime == 0) {
                 this.emulator!.step_frame()
                 this.videoOutput?.updateCanvas()
-                const samples = this.audioOutput?.pushSamples()
+                const samples = this.audioOutput.pushSamples()
 
                 this.waveVisualizer.plot(samples!)
 
