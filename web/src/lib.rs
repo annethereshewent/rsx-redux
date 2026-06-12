@@ -1,3 +1,4 @@
+use renderer_webgl::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -14,17 +15,19 @@ macro_rules! console_log {
 #[wasm_bindgen]
 pub struct PsxWebEmulator {
     cpu: CPU,
-    memory_bytes: Vec<u8>
+    memory_bytes: Vec<u8>,
+    renderer: Renderer,
 }
 
 
 #[wasm_bindgen]
 impl PsxWebEmulator {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    pub fn new(canvas_id: &str) -> Self {
         Self {
             cpu: CPU::new(None, "".to_string()),
             memory_bytes: Vec::new(),
+            renderer: Renderer::new(canvas_id),
         }
     }
 
@@ -39,10 +42,12 @@ impl PsxWebEmulator {
     pub fn step_frame(&mut self) {
         while !self.cpu.bus.gpu.frame_finished {
             self.cpu.step();
+            self.renderer.process(&mut self.cpu.bus.gpu);
         }
 
         self.cpu.bus.gpu.frame_finished = false;
 
+        #[cfg(feature = "software_gpu")]
         self.cpu.bus.gpu.update_framebuffer();
     }
 
@@ -151,10 +156,12 @@ impl PsxWebEmulator {
         self.cpu.bus.peripherals.selected_controller = controller_id;
     }
 
+    #[cfg(feature = "software_gpu")]
     pub fn get_framebuffer(&self) -> *const u8 {
         self.cpu.bus.gpu.picture.as_ptr()
     }
 
+    #[cfg(feature = "software_gpu")]
     pub fn get_framebuffer_size(&self) -> usize {
         self.cpu.bus.gpu.picture.len()
     }

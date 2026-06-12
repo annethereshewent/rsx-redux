@@ -249,7 +249,6 @@ export class Psx {
 
     async initWasm() {
         this.wasm = await init(wasmData)
-        this.emulator = new PsxWebEmulator()
     }
 
     loadBios() {
@@ -342,10 +341,15 @@ export class Psx {
             placeholder.remove()
             const canvas = document.createElement('canvas')
 
+            canvas.id = 'psx-canvas'
+
             canvas.setAttribute('width', '640');
             canvas.setAttribute('height', '480')
 
             document.getElementById('display')!.append(canvas)
+
+            this.emulator = new PsxWebEmulator('psx-canvas')
+
             this.videoOutput = new VideoOutput(canvas, this.emulator!, this.wasm!)
         } else {
             this.emulator!.reset()

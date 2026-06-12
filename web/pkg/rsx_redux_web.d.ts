@@ -7,14 +7,12 @@ export class PsxWebEmulator {
     drain_samples(): Int16Array;
     get_digital_mode(): boolean;
     get_dimensions(): Uint32Array;
-    get_framebuffer(): number;
-    get_framebuffer_size(): number;
     get_memory_bytes(): Uint8Array | undefined;
     get_rumble(): Uint8Array;
     load_bios(bios_bytes: Uint8Array): void;
     load_rom(game_bytes: Uint8Array): void;
     load_state(data: Uint8Array): void;
-    constructor();
+    constructor(canvas_id: string);
     reset(): void;
     save_state(): Uint8Array;
     set_digital_mode(mode: boolean): void;
@@ -35,7 +33,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_psxwebemulator_free: (a: number, b: number) => void;
-    readonly psxwebemulator_new: () => number;
+    readonly psxwebemulator_new: (a: number, b: number) => number;
     readonly psxwebemulator_load_bios: (a: number, b: number, c: number) => void;
     readonly psxwebemulator_load_rom: (a: number, b: number, c: number) => void;
     readonly psxwebemulator_step_frame: (a: number) => void;
@@ -55,14 +53,14 @@ export interface InitOutput {
     readonly psxwebemulator_get_digital_mode: (a: number) => number;
     readonly psxwebemulator_set_digital_mode: (a: number, b: number) => void;
     readonly psxwebemulator_switch_selected_controller: (a: number, b: number) => void;
-    readonly psxwebemulator_get_framebuffer: (a: number) => number;
-    readonly psxwebemulator_get_framebuffer_size: (a: number) => number;
     readonly psxwebemulator_reset: (a: number) => void;
     readonly psxwebemulator_get_memory_bytes: (a: number) => [number, number];
-    readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+    readonly __externref_table_alloc: () => number;
+    readonly __wbindgen_externrefs: WebAssembly.Table;
+    readonly __wbindgen_exn_store: (a: number) => void;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;
 }
 

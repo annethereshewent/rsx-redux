@@ -1,0 +1,25 @@
+[package]
+name = "renderer-webgl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+js-sys = "0.3.100"
+rsx-redux = { path = "..", default-features = false }
+web-sys = { version = "0.3.100", features = [
+    "Window",
+    "Document",
+    "HtmlCanvasElement",
+    "WebGl2RenderingContext",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlBuffer",
+    "WebGlTexture",
+    "WebGlUniformLocation",
+    "WebGlVertexArrayObject",
+    "WebGlFramebuffer",
+]}
+
+[features]
+default = ["hardware_gpu_web"]
+hardware_gpu_web = ["rsx-redux/hardware_gpu_web"]
