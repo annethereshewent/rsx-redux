@@ -487,8 +487,8 @@ impl Renderer {
     pub fn present(&self, gpu: &mut GPU) {
         let (width, height) = gpu.get_dimensions();
 
-        self.canvas.set_width(width);
-        self.canvas.set_height(height);
+        // self.canvas.set_width(width);
+        // self.canvas.set_height(height);
         self.canvas.set_attribute("width", &format!("{width}")).unwrap();
         self.canvas.set_attribute("height", &format!("{height}")).unwrap();
         self.gl.viewport(0, 0, width as i32, height as i32);

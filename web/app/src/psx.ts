@@ -423,7 +423,7 @@ export class Psx {
             this.realPreviousTime = time
             if (diff >= FPS_INTERVAL || this.previousTime == 0) {
                 this.emulator!.step_frame()
-                // this.videoOutput?.updateCanvas()
+
                 const samples = this.audioOutput.pushSamples()
 
                 this.waveVisualizer.plot(samples!)

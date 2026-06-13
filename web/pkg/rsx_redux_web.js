@@ -344,12 +344,6 @@ function __wbg_get_imports() {
         __wbg_setAttribute_68c00da2a51113e3: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
             arg0.setAttribute(getStringFromWasm0(arg1, arg2), getStringFromWasm0(arg3, arg4));
         }, arguments); },
-        __wbg_set_height_490773009db619eb: function(arg0, arg1) {
-            arg0.height = arg1 >>> 0;
-        },
-        __wbg_set_width_5e8d872fae03f8b5: function(arg0, arg1) {
-            arg0.width = arg1 >>> 0;
-        },
         __wbg_shaderSource_d01f3003544bc127: function(arg0, arg1, arg2, arg3) {
             arg0.shaderSource(arg1, getStringFromWasm0(arg2, arg3));
         },
