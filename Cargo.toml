@@ -1,3 +1,7 @@
+[workspace]
+members = ["desktop", "renderer-metal", "macos"]
+resolver = "2"
+
 [package]
 name = "rsx-redux"
 version = "0.1.0"
