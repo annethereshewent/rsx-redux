@@ -16,28 +16,28 @@ export class VideoOutput {
         this.wasm = wasm
     }
 
-    updateCanvas() {
-        const emu = this.emulator
-        const memory = new Uint8Array(this.wasm.memory.buffer, emu.get_framebuffer(), emu.get_framebuffer_size())
-        const [width, height] = emu.get_dimensions()
+    // updateCanvas() {
+    //     const emu = this.emulator
+    //     const memory = new Uint8Array(this.wasm.memory.buffer, emu.get_framebuffer(), emu.get_framebuffer_size())
+    //     const [width, height] = emu.get_dimensions()
 
-        const imageData = this.context.getImageData(0, 0, width, height)
+    //     const imageData = this.context.getImageData(0, 0, width, height)
 
-        this.canvas.setAttribute('width', `${width}`)
-        this.canvas.setAttribute('height', `${height}`)
+    //     this.canvas.setAttribute('width', `${width}`)
+    //     this.canvas.setAttribute('height', `${height}`)
 
-        for (let y = 0; y < width; y++) {
-            for (let x = 0; x < height; x++) {
-                const index = x * 3 + y * height * 3
-                const canvasIndex = x * 4 + y * height * 4
+    //     for (let y = 0; y < width; y++) {
+    //         for (let x = 0; x < height; x++) {
+    //             const index = x * 3 + y * height * 3
+    //             const canvasIndex = x * 4 + y * height * 4
 
-                imageData.data[canvasIndex] = memory[index]
-                imageData.data[canvasIndex + 1] = memory[index + 1]
-                imageData.data[canvasIndex + 2] = memory[index + 2]
-                imageData.data[canvasIndex + 3] = 255
-            }
-        }
+    //             imageData.data[canvasIndex] = memory[index]
+    //             imageData.data[canvasIndex + 1] = memory[index + 1]
+    //             imageData.data[canvasIndex + 2] = memory[index + 2]
+    //             imageData.data[canvasIndex + 3] = 255
+    //         }
+    //     }
 
-        this.context.putImageData(imageData, 0, 0)
-    }
+    //     this.context.putImageData(imageData, 0, 0)
+    // }
 }

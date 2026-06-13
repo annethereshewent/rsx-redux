@@ -1,3 +1,5 @@
+use std::panic;
+
 use renderer_webgl::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -24,6 +26,7 @@ pub struct PsxWebEmulator {
 impl PsxWebEmulator {
     #[wasm_bindgen(constructor)]
     pub fn new(canvas_id: &str) -> Self {
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
         Self {
             cpu: CPU::new(None, "".to_string()),
             memory_bytes: Vec::new(),
