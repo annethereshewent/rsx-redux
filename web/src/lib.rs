@@ -43,12 +43,15 @@ impl PsxWebEmulator {
     }
 
     pub fn step_frame(&mut self) {
+        self.renderer.clear_color();
         while !self.cpu.bus.gpu.frame_finished {
             self.cpu.step();
             self.renderer.process(&mut self.cpu.bus.gpu);
         }
 
         self.cpu.bus.gpu.frame_finished = false;
+
+        self.renderer.present(&mut self.cpu.bus.gpu);
 
         #[cfg(feature = "software_gpu")]
         self.cpu.bus.gpu.update_framebuffer();

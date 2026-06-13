@@ -40,4 +40,13 @@ export class VideoOutput {
 
     //     this.context.putImageData(imageData, 0, 0)
     // }
+
+    updateCanvas() {
+        const [width, height] = this.emulator.get_dimensions();
+
+        console.log(`width = ${width} height = ${height}`);
+
+        this.canvas.setAttribute('width', `${width}`)
+        this.canvas.setAttribute('height', `${height}`)
+    }
 }

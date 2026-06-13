@@ -195,20 +195,39 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_bbadd78c1bac3a77: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
+        __wbg_activeTexture_51dd9740bba533be: function(arg0, arg1) {
+            arg0.activeTexture(arg1 >>> 0);
+        },
         __wbg_attachShader_48ba0270304eee26: function(arg0, arg1, arg2) {
             arg0.attachShader(arg1, arg2);
         },
         __wbg_bindBuffer_dfde53745eda44ea: function(arg0, arg1, arg2) {
             arg0.bindBuffer(arg1 >>> 0, arg2);
         },
+        __wbg_bindFramebuffer_2fdf6633b08d43bf: function(arg0, arg1, arg2) {
+            arg0.bindFramebuffer(arg1 >>> 0, arg2);
+        },
+        __wbg_bindTexture_c04307052b3a8aa1: function(arg0, arg1, arg2) {
+            arg0.bindTexture(arg1 >>> 0, arg2);
+        },
         __wbg_bufferData_2d6bae8abc15a466: function(arg0, arg1, arg2, arg3) {
             arg0.bufferData(arg1 >>> 0, arg2, arg3 >>> 0);
+        },
+        __wbg_clearColor_dacd73712caa0f0c: function(arg0, arg1, arg2, arg3, arg4) {
+            arg0.clearColor(arg1, arg2, arg3, arg4);
+        },
+        __wbg_clear_a555f947eaf303c8: function(arg0, arg1) {
+            arg0.clear(arg1 >>> 0);
         },
         __wbg_compileShader_c3ac43642f1ad1db: function(arg0, arg1) {
             arg0.compileShader(arg1);
         },
         __wbg_createBuffer_3eee22ef467812a5: function(arg0) {
             const ret = arg0.createBuffer();
+            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+        },
+        __wbg_createFramebuffer_d65f221322124a8b: function(arg0) {
+            const ret = arg0.createFramebuffer();
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
         __wbg_createProgram_744ae1ca637b4df8: function(arg0) {
@@ -244,6 +263,9 @@ function __wbg_get_imports() {
                 wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
             }
         },
+        __wbg_framebufferTexture2D_68e724d71dfebb63: function(arg0, arg1, arg2, arg3, arg4, arg5) {
+            arg0.framebufferTexture2D(arg1 >>> 0, arg2 >>> 0, arg3 >>> 0, arg4, arg5);
+        },
         __wbg_getContext_db5f8ccb275883ba: function() { return handleError(function (arg0, arg1, arg2) {
             const ret = arg0.getContext(getStringFromWasm0(arg1, arg2));
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
@@ -273,6 +295,10 @@ function __wbg_get_imports() {
         __wbg_getShaderParameter_d696375a64186e76: function(arg0, arg1, arg2) {
             const ret = arg0.getShaderParameter(arg1, arg2 >>> 0);
             return ret;
+        },
+        __wbg_getUniformLocation_26d9ffb74889272a: function(arg0, arg1, arg2, arg3) {
+            const ret = arg0.getUniformLocation(arg1, getStringFromWasm0(arg2, arg3));
+            return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
         __wbg_instanceof_HtmlCanvasElement_089857e172ddb0f6: function(arg0) {
             let result;
@@ -315,6 +341,15 @@ function __wbg_get_imports() {
             const ret = new Float32Array(getArrayF32FromWasm0(arg0, arg1));
             return ret;
         },
+        __wbg_setAttribute_68c00da2a51113e3: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
+            arg0.setAttribute(getStringFromWasm0(arg1, arg2), getStringFromWasm0(arg3, arg4));
+        }, arguments); },
+        __wbg_set_height_490773009db619eb: function(arg0, arg1) {
+            arg0.height = arg1 >>> 0;
+        },
+        __wbg_set_width_5e8d872fae03f8b5: function(arg0, arg1) {
+            arg0.width = arg1 >>> 0;
+        },
         __wbg_shaderSource_d01f3003544bc127: function(arg0, arg1, arg2, arg3) {
             arg0.shaderSource(arg1, getStringFromWasm0(arg2, arg3));
         },
@@ -340,6 +375,21 @@ function __wbg_get_imports() {
         __wbg_static_accessor_WINDOW_44b435597f9e9ee7: function() {
             const ret = typeof window === 'undefined' ? null : window;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+        },
+        __wbg_texParameteri_c27d4121af7b04c5: function(arg0, arg1, arg2, arg3) {
+            arg0.texParameteri(arg1 >>> 0, arg2 >>> 0, arg3);
+        },
+        __wbg_texStorage2D_39a0974e9998d587: function(arg0, arg1, arg2, arg3, arg4, arg5) {
+            arg0.texStorage2D(arg1 >>> 0, arg2, arg3 >>> 0, arg4, arg5);
+        },
+        __wbg_uniform1i_dbddbbfe71b1bb7f: function(arg0, arg1, arg2) {
+            arg0.uniform1i(arg1, arg2);
+        },
+        __wbg_uniform1ui_82c0068dbf21b011: function(arg0, arg1, arg2) {
+            arg0.uniform1ui(arg1, arg2 >>> 0);
+        },
+        __wbg_uniform2ui_cdad99403fc43206: function(arg0, arg1, arg2, arg3) {
+            arg0.uniform2ui(arg1, arg2 >>> 0, arg3 >>> 0);
         },
         __wbg_useProgram_52771949c03e5936: function(arg0, arg1) {
             arg0.useProgram(arg1);

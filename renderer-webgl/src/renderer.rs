@@ -2,11 +2,20 @@ use std::cmp;
 
 use bytemuck::{cast_slice, Pod, Zeroable};
 use js_sys::{wasm_bindgen::JsCast, Float32Array};
-use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH};
-use web_sys::{window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlProgram, WebGlShader, WebGlTexture};
+use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_HEIGHT, VRAM_WIDTH};
+use web_sys::{window, Document, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
 
 
-pub const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
+const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
+const QUAD_VERTS: [f32; 24] = [
+    // pos        uv
+    -1.0, -1.0,   0.0, 0.0,
+     1.0, -1.0,   1.0, 0.0,
+    -1.0,  1.0,   0.0, 1.0,
+    -1.0,  1.0,   0.0, 1.0,
+     1.0, -1.0,   1.0, 0.0,
+     1.0,  1.0,   1.0, 1.0,
+];
 
 #[derive(PartialEq)]
 enum TextureType {
@@ -85,6 +94,9 @@ pub struct Renderer {
     vram_write: WebGlTexture,
     program: WebGlProgram,
     vertex_buffer: WebGlBuffer,
+    quad_buffer: WebGlBuffer,
+    fbo_write: WebGlFramebuffer,
+    fb_program: WebGlProgram,
 }
 
 impl Renderer {
@@ -108,6 +120,8 @@ impl Renderer {
 
         let fragment_shader_str = include_str!("shaders/fragment.glsl");
         let vertex_shader_str = include_str!("shaders/vertex.glsl");
+        let fb_frag_shader_str = include_str!("shaders/fragment_fb.glsl");
+        let fb_vert_shader_str = include_str!("shaders/vertex_fb.glsl");
 
         let fragment_shader = Self::compile_shader(
             &gl,
@@ -119,10 +133,65 @@ impl Renderer {
             WebGl2RenderingContext::VERTEX_SHADER,
             vertex_shader_str
         ).unwrap();
+        let fb_frag_shader = Self::compile_shader(
+            &gl,
+            WebGl2RenderingContext::FRAGMENT_SHADER,
+            fb_frag_shader_str
+        ).unwrap();
+        let fb_vert_shader = Self::compile_shader(
+            &gl,
+            WebGl2RenderingContext::VERTEX_SHADER,
+            fb_vert_shader_str
+        ).unwrap();
 
         let program = Self::link_program(&gl, &vertex_shader, &fragment_shader).unwrap();
+        let fb_program = Self::link_program(&gl, &fb_vert_shader, &fb_frag_shader).unwrap();
 
         let vertex_buffer = gl.create_buffer().unwrap();
+        let quad_buffer = gl.create_buffer().unwrap();
+
+        gl.active_texture(WebGl2RenderingContext::TEXTURE0);
+        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&vram_write));
+
+        gl.tex_storage_2d(
+            WebGl2RenderingContext::TEXTURE_2D,
+            1,
+            WebGl2RenderingContext::RGBA8,
+            VRAM_WIDTH as i32,
+            VRAM_HEIGHT as i32,
+        );
+
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MIN_FILTER, WebGl2RenderingContext::NEAREST as i32);
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MAG_FILTER, WebGl2RenderingContext::NEAREST as i32);
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_S, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_T, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
+
+        gl.active_texture(WebGl2RenderingContext::TEXTURE1);
+        gl.bind_texture(WebGl2RenderingContext::TEXTURE1, Some(&vram_read));
+
+        gl.tex_storage_2d(
+            WebGl2RenderingContext::TEXTURE_2D,
+            1,
+            WebGl2RenderingContext::R16UI,
+            VRAM_WIDTH as i32,
+            VRAM_HEIGHT as i32,
+        );
+
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MIN_FILTER, WebGl2RenderingContext::NEAREST as i32);
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MAG_FILTER, WebGl2RenderingContext::NEAREST as i32);
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_S, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
+        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_T, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
+
+        let fbo_write = gl.create_framebuffer().unwrap();
+
+        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&fbo_write));
+        gl.framebuffer_texture_2d(
+            WebGl2RenderingContext::FRAMEBUFFER,
+            WebGl2RenderingContext::COLOR_ATTACHMENT0,
+            WebGl2RenderingContext::TEXTURE_2D,
+            Some(&vram_write),
+            0,
+        );
 
         Self {
             canvas,
@@ -131,6 +200,9 @@ impl Renderer {
             vram_write,
             program,
             vertex_buffer,
+            quad_buffer,
+            fbo_write,
+            fb_program,
         }
     }
 
@@ -194,6 +266,11 @@ impl Renderer {
                 self.process_commands(gpu);
             }
         }
+    }
+
+    pub fn clear_color(&self) {
+        self.gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
     }
 
     fn process_commands(&self, gpu: &mut GPU) {
@@ -394,46 +471,67 @@ impl Renderer {
 
         self.gl.viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
 
-        // self.gl.clear_color(0.0, 0.0, 0.0, 0.0);
-        // self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+
+        let location = self.gl.get_uniform_location(&self.program, "vramRead");
+        self.gl.uniform1i(location.as_ref(), 0);
 
         self.gl.use_program(Some(&self.program));
 
+        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
+
         self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
+    }
 
-        // let buffer = unsafe {
-        //     self.device.newBufferWithBytes_length_options(
-        //         NonNull::new(vertices.as_ptr() as *mut c_void).unwrap(),
-        //         byte_len,
-        //         MTLResourceOptions::empty(),
-        //     )
-        // }
-        // .unwrap();
+    pub fn present(&self, gpu: &mut GPU) {
+        let (width, height) = gpu.get_dimensions();
 
-        // if let Some(encoder) = &self.encoder {
-        //     unsafe {
-        //         encoder.setFragmentBytes_length_atIndex(
-        //             NonNull::new(&mut fragment_uniform as *mut _ as *mut c_void).unwrap(),
-        //             size_of::<FragmentUniform>(),
-        //             1,
-        //         );
-        //     };
-        //     unsafe { encoder.setVertexBuffer_offset_atIndex(Some(buffer.deref()), 0, 0) };
+        self.canvas.set_width(width);
+        self.canvas.set_height(height);
+        self.canvas.set_attribute("width", &format!("{width}")).unwrap();
+        self.canvas.set_attribute("height", &format!("{height}")).unwrap();
+        self.gl.viewport(0, 0, width as i32, height as i32);
 
-        //     let primitive_type = if polygon.is_line {
-        //         MTLPrimitiveType::Line
-        //     } else {
-        //         MTLPrimitiveType::Triangle
-        //     };
+        let loc_depth = self.gl.get_uniform_location(&self.fb_program, "displayDepth");
+        let loc_start = self.gl.get_uniform_location(&self.fb_program, "displayStart");
+        let loc_size = self.gl.get_uniform_location(&self.fb_program, "displaySize");
 
-        //     encoder.setRenderPipelineState(&self.pipeline_state);
+        self.gl.use_program(Some(&self.fb_program));
 
-        //     unsafe {
-        //         encoder.setFragmentTexture_atIndex(self.vram_read.as_deref(), 0);
-        //         encoder.setFragmentTexture_atIndex(self.vram_sample.as_deref(), 1);
-        //         encoder.drawPrimitives_vertexStart_vertexCount(primitive_type, 0, vertices.len());
-        //     }
-        // }
+        self.gl.uniform1ui(loc_depth.as_ref(), gpu.display_depth as u32);
+        self.gl.uniform2ui(loc_start.as_ref(), gpu.display_start_x, gpu.display_start_y);
+        self.gl.uniform2ui(loc_size.as_ref(), width, height);
+
+        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, None);
+
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+
+        let location = self.gl.get_uniform_location(&self.fb_program, "vramWrite");
+
+        self.gl.uniform1i(location.as_ref(), 0);
+
+        let vertices_bytes: &[u8] = cast_slice(&QUAD_VERTS);
+        let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
+
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.quad_buffer));
+        self.gl.buffer_data_with_array_buffer_view(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            &float_view,
+            WebGl2RenderingContext::DYNAMIC_DRAW
+        );
+
+        let quad_stride = 16; // 4 floats * 4 bytes each
+
+        self.gl.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 0);
+        self.gl.enable_vertex_attrib_array(0);
+
+        self.gl.vertex_attrib_pointer_with_i32(1, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 8);
+        self.gl.enable_vertex_attrib_array(1);
+
+        self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
+
     }
 
     fn update_texture_for_sampling(&self) {
