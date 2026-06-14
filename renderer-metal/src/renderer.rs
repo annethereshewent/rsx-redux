@@ -1,5 +1,3 @@
-#[cfg(not(feature = "bundle_shaders"))]
-use std::fs;
 use std::{ffi::c_void, ops::Deref, ptr::NonNull};
 
 use objc2::{rc::Retained, runtime::ProtocolObject};

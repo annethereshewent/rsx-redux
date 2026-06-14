@@ -796,18 +796,24 @@ impl CDRom {
 
         self.stat();
 
-        #[cfg(not(target_arch="wasm32"))]
+        #[cfg(not(target_arch = "wasm32"))]
         {
             (self.current_header, self.subheader) = if let Some(game_data) = &self.game_data {
-                (CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]), CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]))
+                (
+                    CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]),
+                    CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]),
+                )
             } else {
                 panic!("game data not specified");
             }
         }
-        #[cfg(target_arch="wasm32")]
+        #[cfg(target_arch = "wasm32")]
         {
             (self.current_header, self.subheader) = if let Some(game_bytes) = &self.game_bytes {
-                (CDHeader::from_buf(&game_bytes[pointer + 0xc..pointer + 0x10]), CDSubheader::from_buf(&game_bytes[pointer + 0x10..pointer + 0x14]))
+                (
+                    CDHeader::from_buf(&game_bytes[pointer + 0xc..pointer + 0x10]),
+                    CDSubheader::from_buf(&game_bytes[pointer + 0x10..pointer + 0x14]),
+                )
             } else {
                 panic!("game data not specified")
             }
@@ -911,7 +917,6 @@ impl CDRom {
         }
 
         self.resample(spu);
-
     }
 
     fn resample(&mut self, spu: &mut SPU) {

@@ -318,19 +318,24 @@ export class Psx {
         this.audioOutput.closeModal()
     }
 
-    async startGame(gameFile: File) {
+    async startGame(file: File) {
         this.isPaused = false
         this.isRunning = true
 
-        const data = await this.readFile(gameFile)
+        const data = await this.readFile(file)
 
-        const gameName = gameFile.name.substring(0, gameFile.name.lastIndexOf('.'))
+        const gameName = file.name.substring(0, file.name.lastIndexOf('.'))
 
-        const gameBytes = new Uint8Array(data)
+        const binaryBytes = new Uint8Array(data)
 
         cancelAnimationFrame(this.frameNumber)
 
-        this.emulator!.load_rom(gameBytes)
+        if (/\.exe$/.test(file.name)) {
+            this.emulator!.set_exe(binaryBytes)
+        } else {
+            this.emulator!.load_rom(binaryBytes)
+            this.emulator!.set_exe(null)
+        }
         this.emulator!.set_memory_card(this.memoryCardData)
 
         this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)

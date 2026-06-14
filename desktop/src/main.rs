@@ -31,7 +31,8 @@ fn main() {
         .unwrap_or_default();
 
     let mut cpu = if file_extension == "exe" {
-        CPU::new(Some(args[1].to_string()), "".to_string())
+        let exe_bytes = fs::read(&args[1]).unwrap();
+        CPU::new(Some(exe_bytes), "".to_string())
     } else {
         let file = File::open(file_path).unwrap();
         let game_data = unsafe { Mmap::map(&file).unwrap() };

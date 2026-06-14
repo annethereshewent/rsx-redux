@@ -1,3 +1,5 @@
+use std::panic;
+
 use rsx_redux::cpu::CPU;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -22,6 +24,8 @@ pub struct PsxWebEmulator {
 impl PsxWebEmulator {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
+
         Self {
             cpu: CPU::new(None, "".to_string()),
             memory_bytes: Vec::new(),
@@ -126,9 +130,8 @@ impl PsxWebEmulator {
         vec
     }
 
-    pub fn start_exe(&mut self, path: &str) {
-        self.cpu.exe_file = Some(path.to_string());
-        self.cpu.load_exe(path);
+    pub fn set_exe(&mut self, exe_bytes: Option<Vec<u8>>) {
+        self.cpu.exe_bytes = exe_bytes;
     }
 
     pub fn get_rumble(&self) -> Vec<u8> {
@@ -160,13 +163,18 @@ impl PsxWebEmulator {
     }
 
     pub fn reset(&mut self) {
-        let game_bytes = self.cpu.bus.cdrom.game_bytes.clone().unwrap();
+
+        let game_bytes = self.cpu.bus.cdrom.game_bytes.clone();
+        let exe_bytes = self.cpu.exe_bytes.clone();
         let bios = self.cpu.bus.get_bios();
 
-        self.cpu = CPU::new(None, "".to_string());
+        self.cpu = CPU::new(exe_bytes, "".to_string());
 
         self.cpu.bus.load_bios(bios);
-        self.cpu.bus.cdrom.load_game_web(game_bytes);
+
+        if let Some(game_bytes) = game_bytes {
+            self.cpu.bus.cdrom.load_game_web(game_bytes);
+        }
     }
 
     pub fn get_memory_bytes(&mut self) -> Option<Vec<u8>> {
