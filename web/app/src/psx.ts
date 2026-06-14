@@ -329,14 +329,6 @@ export class Psx {
 
         cancelAnimationFrame(this.frameNumber)
 
-        if (/\.exe$/.test(file.name)) {
-            this.emulator!.set_exe(binaryBytes)
-        } else {
-            this.emulator!.load_rom(binaryBytes)
-            this.emulator!.set_exe(null)
-        }
-        this.emulator!.set_memory_card(this.memoryCardData)
-
         this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
         this.stateManager.updateStateMenuList()
 
@@ -363,6 +355,15 @@ export class Psx {
             this.videoOutput = new VideoOutput(canvas, this.emulator!, this.wasm!)
         } else {
             this.emulator!.reset()
+        }
+
+        this.emulator!.set_memory_card(this.memoryCardData)
+
+        if (/\.exe$/.test(file.name)) {
+            this.emulator!.set_exe(binaryBytes)
+        } else {
+            this.emulator!.load_rom(binaryBytes)
+            this.emulator!.set_exe(null)
         }
 
         this.emulator!.set_memory_card(this.memoryCardData)

@@ -129,6 +129,6 @@ export class WaveVisualizer {
     }
 
     private normalize(raw: number): number {
-        return raw < 0 ? raw / 32768 : raw / 32767
+        return raw < 0 ? (raw / 32768) * 5 : (raw / 32767) * 5
     }
 }
