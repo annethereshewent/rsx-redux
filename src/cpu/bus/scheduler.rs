@@ -40,7 +40,8 @@ impl Scheduler {
     }
 
     pub fn schedule(&mut self, event_type: EventType, time: usize) {
-        self.queue.push(event_type, Reverse(self.cycles + time as u64));
+        self.queue
+            .push(event_type, Reverse(self.cycles + time as u64));
     }
 
     pub fn remove(&mut self, event_type: EventType) {

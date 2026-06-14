@@ -166,7 +166,8 @@ impl MemoryCard {
                 }
                 #[cfg(target_arch = "wasm32")]
                 if let Some(memory_bytes) = &mut self.memory_bytes {
-                    memory_bytes[(128 * self.current_sector as usize) + self.current_byte] = command;
+                    memory_bytes[(128 * self.current_sector as usize) + self.current_byte] =
+                        command;
                 }
 
                 self.current_byte += 1;

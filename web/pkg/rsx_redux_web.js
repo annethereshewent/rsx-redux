@@ -120,6 +120,14 @@ export class PsxWebEmulator {
         wasm.psxwebemulator_set_digital_mode(this.__wbg_ptr, mode);
     }
     /**
+     * @param {Uint8Array | null} [exe_bytes]
+     */
+    set_exe(exe_bytes) {
+        var ptr0 = isLikeNone(exe_bytes) ? 0 : passArray8ToWasm0(exe_bytes, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        wasm.psxwebemulator_set_exe(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
      * @param {number} normalized_x
      * @param {number} normalized_y
      */
@@ -153,14 +161,6 @@ export class PsxWebEmulator {
     set_right_thumbstick(normalized_x, normalized_y) {
         wasm.psxwebemulator_set_right_thumbstick(this.__wbg_ptr, normalized_x, normalized_y);
     }
-    /**
-     * @param {string} path
-     */
-    start_exe(path) {
-        const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.psxwebemulator_start_exe(this.__wbg_ptr, ptr0, len0);
-    }
     step_frame() {
         wasm.psxwebemulator_step_frame(this.__wbg_ptr);
     }
@@ -187,6 +187,28 @@ function __wbg_get_imports() {
         __proto__: null,
         __wbg___wbindgen_throw_bbadd78c1bac3a77: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
+        },
+        __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
+            let deferred0_0;
+            let deferred0_1;
+            try {
+                deferred0_0 = arg0;
+                deferred0_1 = arg1;
+                console.error(getStringFromWasm0(arg0, arg1));
+            } finally {
+                wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
+            }
+        },
+        __wbg_new_227d7c05414eb861: function() {
+            const ret = new Error();
+            return ret;
+        },
+        __wbg_stack_3b0d974bbf31e44f: function(arg0, arg1) {
+            const ret = arg1.stack;
+            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
@@ -223,6 +245,14 @@ function getArrayU8FromWasm0(ptr, len) {
     return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
 }
 
+let cachedDataViewMemory0 = null;
+function getDataViewMemory0() {
+    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
+        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
+    }
+    return cachedDataViewMemory0;
+}
+
 let cachedInt16ArrayMemory0 = null;
 function getInt16ArrayMemory0() {
     if (cachedInt16ArrayMemory0 === null || cachedInt16ArrayMemory0.byteLength === 0) {
@@ -249,6 +279,10 @@ function getUint8ArrayMemory0() {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
 }
 
 function passArray8ToWasm0(arg, malloc) {
@@ -329,6 +363,7 @@ function __wbg_finalize_init(instance, module) {
     wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
+    cachedDataViewMemory0 = null;
     cachedInt16ArrayMemory0 = null;
     cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;

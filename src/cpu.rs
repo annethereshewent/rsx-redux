@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    fs,
     ops::{Index, IndexMut},
     ptr::{read_unaligned, write_unaligned},
 };
@@ -173,7 +172,7 @@ pub struct CPU {
     output: String,
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
-    pub exe_file: Option<String>,
+    pub exe_bytes: Option<Vec<u8>>,
     should_transfer_load: bool,
     isolated_cache: IsolatedCache,
     pub game_path: String,
@@ -351,7 +350,7 @@ fn build_special_instructions() -> [fn(&mut CPU, Instruction) -> usize; 0x40] {
 }
 
 impl CPU {
-    pub fn new(exe_file: Option<String>, game_path: String) -> Self {
+    pub fn new(exe_bytes: Option<Vec<u8>>, game_path: String) -> Self {
         let instructions = build_instructions();
         let special_instructions = build_special_instructions();
 
@@ -385,7 +384,7 @@ impl CPU {
             branch_taken: false,
             output: "".to_string(),
             gte: Gte::new(),
-            exe_file,
+            exe_bytes: exe_bytes,
             should_transfer_load: false,
             isolated_cache: IsolatedCache::new(),
             game_path,
@@ -489,9 +488,7 @@ impl CPU {
         self.bus.gpu.frame_finished = false;
     }
 
-    pub fn load_exe(&mut self, filename: &str) {
-        let bytes = fs::read(filename).unwrap();
-
+    pub fn load_exe(&mut self, bytes: &[u8]) {
         let mut index = 0x10;
 
         self.pc = unsafe { *(&bytes[index] as *const u8 as *const u32) };
@@ -557,9 +554,8 @@ impl CPU {
         }
 
         if self.pc == 0x80030000 {
-            if let Some(exe_file) = &self.exe_file {
-                let exe_file = exe_file.clone();
-                self.load_exe(exe_file.as_str());
+            if let Some(exe_bytes) = self.exe_bytes.clone() {
+                self.load_exe(&exe_bytes);
             }
         }
 
