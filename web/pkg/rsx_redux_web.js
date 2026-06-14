@@ -111,6 +111,14 @@ export class PsxWebEmulator {
         wasm.psxwebemulator_set_digital_mode(this.__wbg_ptr, mode);
     }
     /**
+     * @param {Uint8Array | null} [exe_bytes]
+     */
+    set_exe(exe_bytes) {
+        var ptr0 = isLikeNone(exe_bytes) ? 0 : passArray8ToWasm0(exe_bytes, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        wasm.psxwebemulator_set_exe(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
      * @param {number} normalized_x
      * @param {number} normalized_y
      */
@@ -143,14 +151,6 @@ export class PsxWebEmulator {
      */
     set_right_thumbstick(normalized_x, normalized_y) {
         wasm.psxwebemulator_set_right_thumbstick(this.__wbg_ptr, normalized_x, normalized_y);
-    }
-    /**
-     * @param {string} path
-     */
-    start_exe(path) {
-        const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.psxwebemulator_start_exe(this.__wbg_ptr, ptr0, len0);
     }
     step_frame() {
         wasm.psxwebemulator_step_frame(this.__wbg_ptr);

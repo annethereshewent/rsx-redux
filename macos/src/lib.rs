@@ -247,8 +247,8 @@ impl PsxMacEmulator {
     }
 
     pub fn start_exe(&mut self, path: &str) {
-        self.cpu.exe_file = Some(path.to_string());
-        self.cpu.load_exe(path);
+        let exe_bytes = fs::read(path).unwrap();
+        self.cpu.exe_bytes = Some(exe_bytes);
     }
 
     pub fn get_rumble(&self) -> (bool, u8) {

@@ -16,12 +16,12 @@ export class PsxWebEmulator {
     reset(): void;
     save_state(): Uint8Array;
     set_digital_mode(mode: boolean): void;
+    set_exe(exe_bytes?: Uint8Array | null): void;
     set_left_thumbstick(normalized_x: number, normalized_y: number): void;
     set_left_x(value: number): void;
     set_left_y(value: number): void;
     set_memory_card(memory_bytes: Uint8Array): void;
     set_right_thumbstick(normalized_x: number, normalized_y: number): void;
-    start_exe(path: string): void;
     step_frame(): void;
     switch_selected_controller(controller_id: number): void;
     toggle_digital_mode(): void;
@@ -48,7 +48,7 @@ export interface InitOutput {
     readonly psxwebemulator_load_state: (a: number, b: number, c: number) => void;
     readonly psxwebemulator_save_state: (a: number) => [number, number];
     readonly psxwebemulator_get_dimensions: (a: number) => [number, number];
-    readonly psxwebemulator_start_exe: (a: number, b: number, c: number) => void;
+    readonly psxwebemulator_set_exe: (a: number, b: number, c: number) => void;
     readonly psxwebemulator_get_rumble: (a: number) => [number, number];
     readonly psxwebemulator_get_digital_mode: (a: number) => number;
     readonly psxwebemulator_set_digital_mode: (a: number, b: number) => void;
