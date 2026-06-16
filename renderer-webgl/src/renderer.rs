@@ -1,7 +1,7 @@
 use std::cmp;
 
 use bytemuck::{cast_slice, Pod, Zeroable};
-use js_sys::{wasm_bindgen::JsCast, Float32Array};
+use js_sys::{wasm_bindgen::JsCast, Float32Array, Uint16Array};
 use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_HEIGHT, VRAM_WIDTH};
 use web_sys::{window, Document, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
 
@@ -45,7 +45,6 @@ struct FragmentUniform {
     texture_offset_y: u32,
     depth: i32,
     transparent_mode: u32,
-    pass: u32,
     page: [u32; 2],
     clut: [u32; 2],
     force_mask_bit: bool,
@@ -167,7 +166,7 @@ impl Renderer {
         gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_T, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
 
         gl.active_texture(WebGl2RenderingContext::TEXTURE1);
-        gl.bind_texture(WebGl2RenderingContext::TEXTURE1, Some(&vram_read));
+        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&vram_read));
 
         gl.tex_storage_2d(
             WebGl2RenderingContext::TEXTURE_2D,
@@ -324,7 +323,62 @@ impl Renderer {
     }
 
     fn execute_cpu_to_vram(&self, params: VRamTransferParams) {
+        let mut rgba8_buffer: Vec<u8> = Vec::new();
 
+        let mut i = 0;
+        for _ in 0..params.height {
+            for _ in 0..params.width {
+                let halfword = params.halfwords[i];
+
+                let mut r = halfword & 0x1f;
+                let mut g = (halfword >> 5) & 0x1f;
+                let mut b = (halfword >> 10) & 0x1f;
+                let a = ((halfword >> 15) & 1) * 0xff;
+
+                r = r << 3 | r >> 2;
+                g = g << 3 | g >> 2;
+                b = b << 3 | b >> 2;
+
+                rgba8_buffer.push(r as u8);
+                rgba8_buffer.push(g as u8);
+                rgba8_buffer.push(b as u8);
+                rgba8_buffer.push(a as u8);
+
+                i += 1;
+            }
+        }
+
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
+        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+            WebGl2RenderingContext::TEXTURE_2D,
+            0,
+            params.start_x as i32,
+            params.start_y as i32,
+            params.width as i32,
+            params.height as i32,
+            WebGl2RenderingContext::RGBA8,
+            WebGl2RenderingContext::UNSIGNED_BYTE,
+            Some(&rgba8_buffer)
+        ).unwrap();
+
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 2);
+
+        let js_array = Uint16Array::from(params.halfwords.as_slice());
+
+        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_array_buffer_view_and_src_offset(
+            WebGl2RenderingContext::TEXTURE_2D,
+            0,
+            params.start_x as i32,
+            params.start_y as i32,
+            params.width as i32,
+            params.height as i32,
+            WebGl2RenderingContext::RED_INTEGER,
+            WebGl2RenderingContext::UNSIGNED_SHORT,
+            &js_array,
+            0,
+        ).unwrap();
     }
 
     fn handle_cpu_transfer(&self, params: CPUTransferParams) -> Vec<u16> {
@@ -354,7 +408,6 @@ impl Renderer {
             modulate: polygon.modulate,
             depth,
             transparent_mode: polygon.transparent_mode,
-            pass: 1,
             page: [0; 2],
             clut: [polygon.clut.0, polygon.clut.1],
             preserve_masked_pixels: polygon.preserve_masked_pixels,
@@ -474,10 +527,50 @@ impl Renderer {
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
         self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
 
-        let location = self.gl.get_uniform_location(&self.program, "vramRead");
-        self.gl.uniform1i(location.as_ref(), 0);
-
         self.gl.use_program(Some(&self.program));
+
+        let location = self.gl.get_uniform_location(&self.program, "vramRead");
+
+        let loc_has_texture = self.gl.get_uniform_location(&self.program, "hasTexture");
+        let loc_semitransparent = self.gl.get_uniform_location(&self.program, "semitransparent");
+        let loc_modulate = self.gl.get_uniform_location(&self.program, "modulate");
+        let loc_texture_mask_x = self.gl.get_uniform_location(&self.program, "textureMaskX");
+        let loc_texture_mask_y = self.gl.get_uniform_location(&self.program, "textureMaskY");
+        let loc_texture_offset_x = self.gl.get_uniform_location(&self.program, "textureOffsetX");
+        let loc_texture_offset_y = self.gl.get_uniform_location(&self.program, "textureOffsetY");
+        let loc_depth = self.gl.get_uniform_location(&self.program, "depth");
+        let loc_transparent_mode = self.gl.get_uniform_location(&self.program, "transparentMode");
+        let loc_page = self.gl.get_uniform_location(&self.program, "page");
+        let loc_clut = self.gl.get_uniform_location(&self.program, "clut");
+        let loc_force_mask_bit = self.gl.get_uniform_location(&self.program, "forceMaskBit");
+        let loc_preserve_masked_pixels = self.gl.get_uniform_location(&self.program, "preserveMaskedPixels");
+
+        self.gl.uniform1i(location.as_ref(), 0);
+        self.gl.uniform1i(loc_has_texture.as_ref(), fragment_uniform.has_texture as i32);
+        self.gl.uniform1i(loc_semitransparent.as_ref(), fragment_uniform.semitransparent as i32);
+        self.gl.uniform1i(loc_modulate.as_ref(), fragment_uniform.modulate as i32);
+        self.gl.uniform1i(loc_force_mask_bit.as_ref(), fragment_uniform.force_mask_bit as i32);
+        self.gl.uniform1i(loc_preserve_masked_pixels.as_ref(), fragment_uniform.preserve_masked_pixels as i32);
+
+        self.gl.uniform1ui(loc_texture_mask_x.as_ref(), fragment_uniform.texture_mask_x);
+        self.gl.uniform1ui(loc_texture_mask_y.as_ref(), fragment_uniform.texture_mask_y);
+        self.gl.uniform1ui(loc_texture_offset_x.as_ref(), fragment_uniform.texture_offset_x);
+        self.gl.uniform1ui(loc_texture_offset_y.as_ref(), fragment_uniform.texture_offset_y);
+        self.gl.uniform1ui(loc_transparent_mode.as_ref(), fragment_uniform.transparent_mode);
+
+        self.gl.uniform2ui(
+            loc_page.as_ref(),
+            fragment_uniform.page[0],
+            fragment_uniform.page[1]
+        );
+
+        self.gl.uniform2ui(
+            loc_clut.as_ref(),
+            fragment_uniform.clut[0],
+            fragment_uniform.clut[1]
+        );
+
+        self.gl.uniform1i(loc_depth.as_ref(), fragment_uniform.depth);
 
         self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
 
