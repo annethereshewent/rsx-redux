@@ -357,7 +357,7 @@ impl Renderer {
             params.start_y as i32,
             params.width as i32,
             params.height as i32,
-            WebGl2RenderingContext::RGBA8,
+            WebGl2RenderingContext::RGBA,
             WebGl2RenderingContext::UNSIGNED_BYTE,
             Some(&rgba8_buffer)
         ).unwrap();
