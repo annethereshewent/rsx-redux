@@ -51,17 +51,61 @@ vec4 getTexColor4bpp(usampler2D vramRead) {
     uint r = texel & 0x1fu;
     uint g = (texel >> 5u) & 0x1fu;
     uint b = (texel >> 10u) & 0x1fu;
-    uint a = (texel >> 15u) & 1u;
+    uint a = (texel >> 15u) & 1u * 0x1fu;
 
     return vec4(r, g, b, a) / 31.0;
 }
 
 vec4 getTexColor8bpp(usampler2D vramRead) {
-    return vec4(0, 1, 0, 1);
+    uint u = uint(vUv.x) & 0xffu;
+    uint v = uint(vUv.y) & 0xffu;
+
+    u = (u & ~textureMaskX) | (textureOffsetX & textureMaskX);
+    v = (v & ~textureMaskY) | (textureOffsetY & textureMaskY);
+
+    uint offsetU = page.x + u / 2u;
+    uint offsetV = page.y + v;
+
+    uint halfword = texelFetch(vramRead, ivec2(offsetU, offsetV), 0).r;
+
+    uint texelIndex = (u & 1u) == 0u ? halfword & 0xffu : (halfword >> 8u) & 0xffu;
+
+    uint texel = texelFetch(vramRead, ivec2(texelIndex + clut.x, clut.y), 0).r;
+
+    if (texel == 0u) {
+        discard;
+    }
+
+    uint r = texel & 0x1fu;
+    uint g = (texel >> 5u) & 0x1fu;
+    uint b = (texel >> 10u) & 0x1fu;
+    uint a = (texel >> 15u) & 1u * 0x1fu;
+
+    return vec4(r, g, b, a) / 31.0;
 }
 
 vec4 getTexColor15bpp(usampler2D vramRead) {
-    return vec4(1, 0, 0, 1);
+    uint u = uint(vUv.x) & 0xffu;
+    uint v = uint(vUv.y) & 0xffu;
+
+    u = (u & ~textureMaskX) | (textureOffsetX & textureMaskX);
+    v = (v & ~textureMaskY) | (textureOffsetY & textureMaskY);
+
+    uint offsetU = page.x + u;
+    uint offsetV = page.y + v;
+
+    uint texel = texelFetch(vramRead, ivec2(offsetU, offsetV), 0).r;
+
+    if (texel == 0u) {
+        discard;
+    }
+
+    uint r = texel & 0x1fu;
+    uint g = (texel >> 5u) & 0x1fu;
+    uint b = (texel >> 10u) & 0x1fu;
+    uint a = (texel >> 15u) & 1u * 0x1fu;
+
+    return vec4(r, g, b, a) / 31.0;
 }
 
 void main() {
