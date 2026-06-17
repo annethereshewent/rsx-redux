@@ -3,7 +3,7 @@ use std::cmp;
 use bytemuck::{cast_slice, Pod, Zeroable};
 use js_sys::{wasm_bindgen::JsCast, Float32Array, Uint16Array};
 use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH};
-use web_sys::{console, window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
+use web_sys::{window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
 
 
 const QUAD_VERTS: [f32; 24] = [

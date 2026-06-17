@@ -40,7 +40,7 @@ void main() {
     if (displayDepth == 0u) {
         outColor = texture(vramWrite, vramUv);
     } else {
-        uint srcY = displayStart.y + uint(vUv.y * float(displaySize.y));
+        uint srcY = displayStart.y + uint((1.0 - vUv.y) * float(displaySize.y));
         uint displayX = min(
             uint(vUv.x * float(displaySize.x)),
             displaySize.x - 1u
