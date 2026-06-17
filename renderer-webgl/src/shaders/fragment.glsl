@@ -110,6 +110,8 @@ vec4 getTexColor15bpp(usampler2D vramRead) {
 
 void main() {
     outColor = vColor;
+    float texAlpha = 0.0;
+
     if (hasTexture) {
         switch (depth) {
             case 0:
@@ -122,5 +124,7 @@ void main() {
                 outColor = getTexColor15bpp(vramRead);
                 break;
         }
+        texAlpha = outColor[3];
+        outColor[3] = 1.0;
     }
 }

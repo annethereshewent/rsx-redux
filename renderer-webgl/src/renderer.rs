@@ -2,11 +2,10 @@ use std::cmp;
 
 use bytemuck::{cast_slice, Pod, Zeroable};
 use js_sys::{wasm_bindgen::JsCast, Float32Array, Uint16Array};
-use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, SCREEN_HEIGHT, SCREEN_WIDTH, VRAM_HEIGHT, VRAM_WIDTH};
-use web_sys::{window, Document, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
+use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH};
+use web_sys::{window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
 
 
-const BYTE_LEN: usize = 4 * std::mem::size_of::<FbVertex>();
 const QUAD_VERTS: [f32; 24] = [
     // pos        uv
     -1.0, -1.0,   0.0, 0.0,
@@ -348,13 +347,15 @@ impl Renderer {
             }
         }
 
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
         self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
         self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
         self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
             WebGl2RenderingContext::TEXTURE_2D,
             0,
             params.start_x as i32,
-            params.start_y as i32,
+            VRAM_HEIGHT as i32 - params.start_y as i32 - params.height as i32,
             params.width as i32,
             params.height as i32,
             WebGl2RenderingContext::RGBA,
@@ -362,8 +363,10 @@ impl Renderer {
             Some(&rgba8_buffer)
         ).unwrap();
 
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
         self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
         self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 2);
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 0 );
 
         let js_array = Uint16Array::from(params.halfwords.as_slice());
 

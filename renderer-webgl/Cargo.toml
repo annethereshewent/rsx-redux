@@ -11,6 +11,7 @@ rsx-redux = { path = "..", default-features = false }
 web-sys = { version = "0.3.100", features = [
     "Window",
     "Document",
+    "console",
     "HtmlCanvasElement",
     "WebGl2RenderingContext",
     "WebGlProgram",
