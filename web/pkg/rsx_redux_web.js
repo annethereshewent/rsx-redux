@@ -242,6 +242,9 @@ function __wbg_get_imports() {
             const ret = arg0.createTexture();
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
+        __wbg_disable_0558cf9a0c1c04d1: function(arg0, arg1) {
+            arg0.disable(arg1 >>> 0);
+        },
         __wbg_document_d55773b5c3ef918f: function(arg0) {
             const ret = arg0.document;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
@@ -251,6 +254,9 @@ function __wbg_get_imports() {
         },
         __wbg_enableVertexAttribArray_c4918036bc4d203c: function(arg0, arg1) {
             arg0.enableVertexAttribArray(arg1 >>> 0);
+        },
+        __wbg_enable_b9c75f135f35c140: function(arg0, arg1) {
+            arg0.enable(arg1 >>> 0);
         },
         __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
             let deferred0_0;
@@ -333,6 +339,9 @@ function __wbg_get_imports() {
         __wbg_linkProgram_2d8e6a45b85f995e: function(arg0, arg1) {
             arg0.linkProgram(arg1);
         },
+        __wbg_log_6614a4effdb4e983: function(arg0) {
+            console.log(arg0);
+        },
         __wbg_new_227d7c05414eb861: function() {
             const ret = new Error();
             return ret;
@@ -347,6 +356,9 @@ function __wbg_get_imports() {
         },
         __wbg_pixelStorei_0f8b203cc0e11658: function(arg0, arg1, arg2) {
             arg0.pixelStorei(arg1 >>> 0, arg2);
+        },
+        __wbg_scissor_cbf75d28fdc87e8c: function(arg0, arg1, arg2, arg3, arg4) {
+            arg0.scissor(arg1, arg2, arg3, arg4);
         },
         __wbg_setAttribute_68c00da2a51113e3: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
             arg0.setAttribute(getStringFromWasm0(arg1, arg2), getStringFromWasm0(arg3, arg4));
@@ -406,6 +418,11 @@ function __wbg_get_imports() {
         },
         __wbg_viewport_357a29f80f8d01f0: function(arg0, arg1, arg2, arg3, arg4) {
             arg0.viewport(arg1, arg2, arg3, arg4);
+        },
+        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
+            return ret;
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;

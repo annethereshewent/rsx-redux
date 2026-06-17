@@ -3,7 +3,7 @@ use std::cmp;
 use bytemuck::{cast_slice, Pod, Zeroable};
 use js_sys::{wasm_bindgen::JsCast, Float32Array, Uint16Array};
 use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH};
-use web_sys::{window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
+use web_sys::{console, window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
 
 
 const QUAD_VERTS: [f32; 24] = [
@@ -94,6 +94,8 @@ pub struct Renderer {
     vertex_buffer: WebGlBuffer,
     quad_buffer: WebGlBuffer,
     fbo_write: WebGlFramebuffer,
+    fbo_read: WebGlFramebuffer,
+    writeback_program: WebGlProgram,
     fb_program: WebGlProgram,
 }
 
@@ -121,6 +123,11 @@ impl Renderer {
         let fb_frag_shader_str = include_str!("shaders/fragment_fb.glsl");
         let fb_vert_shader_str = include_str!("shaders/vertex_fb.glsl");
 
+        // reuse the vertex shader for framebuffer for the writeback program
+        let writeback_vert_shader_str = include_str!("shaders/vertex_fb.glsl");
+        // create a new fragment shader just for writeback
+        let writeback_frag_shader_str = include_str!("shaders/fragment_writeback.glsl");
+
         let fragment_shader = Self::compile_shader(
             &gl,
             WebGl2RenderingContext::FRAGMENT_SHADER,
@@ -142,8 +149,20 @@ impl Renderer {
             fb_vert_shader_str
         ).unwrap();
 
+        let writeback_frag_shader = Self::compile_shader(
+            &gl,
+            WebGl2RenderingContext::FRAGMENT_SHADER,
+            writeback_frag_shader_str
+        ).unwrap();
+        let writeback_vert_shader = Self::compile_shader(
+            &gl,
+            WebGl2RenderingContext::VERTEX_SHADER,
+            writeback_vert_shader_str
+        ).unwrap();
+
         let program = Self::link_program(&gl, &vertex_shader, &fragment_shader).unwrap();
         let fb_program = Self::link_program(&gl, &fb_vert_shader, &fb_frag_shader).unwrap();
+        let writeback_program = Self::link_program(&gl, &writeback_vert_shader, &writeback_frag_shader).unwrap();
 
         let vertex_buffer = gl.create_buffer().unwrap();
         let quad_buffer = gl.create_buffer().unwrap();
@@ -191,6 +210,16 @@ impl Renderer {
             0,
         );
 
+        let fbo_read = gl.create_framebuffer().unwrap();
+        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&fbo_read));
+        gl.framebuffer_texture_2d(
+            WebGl2RenderingContext::FRAMEBUFFER,
+            WebGl2RenderingContext::COLOR_ATTACHMENT0,
+            WebGl2RenderingContext::TEXTURE_2D,
+            Some(&vram_read),
+            0,
+        );
+
         Self {
             canvas,
             gl,
@@ -201,6 +230,8 @@ impl Renderer {
             quad_buffer,
             fbo_write,
             fb_program,
+            writeback_program,
+            fbo_read,
         }
     }
 
@@ -272,11 +303,12 @@ impl Renderer {
     }
 
     fn process_commands(&self, gpu: &mut GPU) {
-        let mut sample_dirty = true;
+        // let mut sample_dirty = true;
+        let mut blend_dirty = true;
 
-        if gpu.display_depth == DisplayDepth::Bit24 {
-            self.vram_writeback(gpu);
-        }
+        // if gpu.display_depth == DisplayDepth::Bit24 {
+        //     self.vram_writeback(gpu);
+        // }
 
         for command in gpu.gpu_commands.drain(..) {
             match command {
@@ -297,28 +329,85 @@ impl Renderer {
                     self.execute_fill_vram(params);
                 }
                 GPUCommand::RenderPolygon(polygon) => {
-                    let is_16bpp = polygon.textured
-                        && polygon.texpage.map(|texpage| texpage.texture_page_colors)
-                            == Some(TexturePageColors::Bit15);
+                    // let is_16bpp = polygon.textured
+                    //     && polygon.texpage.map(|texpage| texpage.texture_page_colors)
+                    //         == Some(TexturePageColors::Bit15);
 
-                    if is_16bpp && sample_dirty {
-                        sample_dirty = false;
+                    // if is_16bpp && sample_dirty {
+                    //     sample_dirty = false;
 
-                        self.update_texture_for_sampling();
+                    //     self.update_texture_for_sampling();
+                    // }
+                    if polygon.semitransparent && blend_dirty {
+                        console::log_1(&format!("writing back because there are semitransparent polys").into());
+                        self.vram_writeback(&polygon);
+                        blend_dirty = false;
                     }
 
                     self.render_polygon(&polygon);
 
-                    if !is_16bpp {
-                        sample_dirty = true;
+                    // if !is_16bpp {
+                    //     sample_dirty = true;
+                    // }
+                    if !polygon.semitransparent {
+                        blend_dirty = true;
                     }
                 }
             }
         }
     }
 
-    fn vram_writeback(&self, gpu: &GPU) {
+    fn vram_writeback(&self, polygon: &Polygon) {
+        let start_x = polygon.x1;
+        let start_y = polygon.y1;
 
+        let width = polygon.x2 - polygon.x1 + 1;
+        let height = polygon.y2 - polygon.y1 + 1;
+
+        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
+
+        self.gl.use_program(Some(&self.writeback_program));
+        self.gl.viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
+
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+
+        let loc = self.gl.get_uniform_location(&self.writeback_program, "vramWrite");
+
+        self.gl.uniform1i(loc.as_ref(), 0);
+
+        self.bind_quad_verts();
+
+        self.gl.enable(WebGl2RenderingContext::SCISSOR_TEST);
+        self.gl.scissor(
+            start_x as i32,
+            start_y as i32,
+            width as i32,
+            height as i32
+        );
+
+        self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
+        self.gl.disable(WebGl2RenderingContext::SCISSOR_TEST);
+    }
+
+    fn bind_quad_verts(&self) {
+        let vertices_bytes: &[u8] = cast_slice(&QUAD_VERTS);
+        let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
+
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.quad_buffer));
+        self.gl.buffer_data_with_array_buffer_view(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            &float_view,
+            WebGl2RenderingContext::DYNAMIC_DRAW
+        );
+
+        let quad_stride = 16; // 4 floats * 4 bytes each
+
+        self.gl.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 0);
+        self.gl.enable_vertex_attrib_array(0);
+
+        self.gl.vertex_attrib_pointer_with_i32(1, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 8);
+        self.gl.enable_vertex_attrib_array(1);
     }
 
     fn execute_cpu_to_vram(&self, params: VRamTransferParams) {
@@ -608,23 +697,7 @@ impl Renderer {
 
         self.gl.uniform1i(location.as_ref(), 0);
 
-        let vertices_bytes: &[u8] = cast_slice(&QUAD_VERTS);
-        let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
-
-        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.quad_buffer));
-        self.gl.buffer_data_with_array_buffer_view(
-            WebGl2RenderingContext::ARRAY_BUFFER,
-            &float_view,
-            WebGl2RenderingContext::DYNAMIC_DRAW
-        );
-
-        let quad_stride = 16; // 4 floats * 4 bytes each
-
-        self.gl.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 0);
-        self.gl.enable_vertex_attrib_array(0);
-
-        self.gl.vertex_attrib_pointer_with_i32(1, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 8);
-        self.gl.enable_vertex_attrib_array(1);
+        self.bind_quad_verts();
 
         self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
 
