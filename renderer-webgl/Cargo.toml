@@ -13,6 +13,7 @@ web-sys = { version = "0.3.100", features = [
     "Document",
     "console",
     "HtmlCanvasElement",
+    "WebGlContextAttributes",
     "WebGl2RenderingContext",
     "WebGlProgram",
     "WebGlShader",

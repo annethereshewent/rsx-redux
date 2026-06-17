@@ -7,9 +7,11 @@ layout(location = 3) in vec2 orig;
 
 out vec4 vColor;
 out vec2 vUv;
+out vec2 vOrig;
 
 void main() {
     vColor = color;
     vUv = uv;
+    vOrig = orig;
     gl_Position = vec4(position, 0.0, 1.0);
 }

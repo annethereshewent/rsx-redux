@@ -6,6 +6,7 @@ in vec4 vColor;
 out vec4 outColor;
 
 in vec2 vUv;
+in vec2 vOrig;
 
 uniform usampler2D vramRead;
 uniform bool hasTexture;
@@ -126,5 +127,31 @@ void main() {
         }
         texAlpha = outColor[3];
         outColor[3] = 1.0;
+    }
+
+    if (semitransparent && (!hasTexture || texAlpha == 1.0)) {
+        uint oldTexel = texelFetch(vramRead, ivec2(vOrig), 0).r;
+
+        uint r = oldTexel & 0x1fu;
+        uint g = (oldTexel >> 5u) & 0x1fu;
+        uint b = (oldTexel >> 10u) & 0x1fu;
+        uint a = (oldTexel >> 15) & 1u * 0x1fu;
+
+        vec4 old = vec4(r, g, b, a) / 31.0;
+
+        switch (transparentMode) {
+            case 0u:
+                outColor = min((old + outColor) / 2.0, 1.0);
+                break;
+            case 1u:
+                outColor = min(old + outColor, 1.0);
+                break;
+            case 2u:
+                outColor = max(old - outColor, 0.0);
+                break;
+            case 3u:
+                outColor = min(old + (outColor / 4.0), 1.0);
+                break;
+        }
     }
 }

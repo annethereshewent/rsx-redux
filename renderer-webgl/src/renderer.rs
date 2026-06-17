@@ -3,7 +3,7 @@ use std::cmp;
 use bytemuck::{cast_slice, Pod, Zeroable};
 use js_sys::{wasm_bindgen::JsCast, Float32Array, Uint16Array};
 use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH};
-use web_sys::{console, window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
+use web_sys::{console, window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
 
 
 const QUAD_VERTS: [f32; 24] = [
@@ -108,8 +108,11 @@ impl Renderer {
             .dyn_into::<HtmlCanvasElement>()
             .unwrap();
 
+        let context_options = WebGlContextAttributes::new();
+        context_options.set_alpha(false);
+
         let gl = canvas
-            .get_context("webgl2")
+            .get_context_with_context_options("webgl2", &context_options)
             .unwrap()
             .unwrap()
             .dyn_into::<WebGl2RenderingContext>()
@@ -436,41 +439,14 @@ impl Renderer {
             }
         }
 
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
-        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
-            WebGl2RenderingContext::TEXTURE_2D,
-            0,
-            params.start_x as i32,
-            VRAM_HEIGHT as i32 - params.start_y as i32 - params.height as i32,
-            params.width as i32,
-            params.height as i32,
-            WebGl2RenderingContext::RGBA,
-            WebGl2RenderingContext::UNSIGNED_BYTE,
-            Some(&rgba8_buffer)
-        ).unwrap();
-
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 2);
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 0 );
-
-        let js_array = Uint16Array::from(params.halfwords.as_slice());
-
-        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_array_buffer_view_and_src_offset(
-            WebGl2RenderingContext::TEXTURE_2D,
-            0,
+        self.transfer_bytes_to_textures(
             params.start_x as i32,
             params.start_y as i32,
             params.width as i32,
             params.height as i32,
-            WebGl2RenderingContext::RED_INTEGER,
-            WebGl2RenderingContext::UNSIGNED_SHORT,
-            &js_array,
-            0,
-        ).unwrap();
+            &rgba8_buffer,
+            &params.halfwords
+        );
     }
 
     fn handle_cpu_transfer(&self, params: CPUTransferParams) -> Vec<u16> {
@@ -708,7 +684,84 @@ impl Renderer {
     }
 
     fn execute_fill_vram(&self, params: FillVramParams) {
+        let mut rgba8_bytes: Vec<u8> = Vec::new();
+        let mut halfwords: Vec<u16> = Vec::new();
 
+        let mut r = (params.pixel & 0x1f) as u8;
+        let mut g = ((params.pixel >> 5) & 0x1f) as u8;
+        let mut b = ((params.pixel >> 10) & 0x1f) as u8;
+
+        r = r << 3 | r >> 2;
+        g = g << 3 | g >> 2;
+        b = b << 3 | b >> 2;
+
+        let a = 0;
+
+        for _ in 0..params.height {
+            for _ in 0..params.width {
+                rgba8_bytes.push(r);
+                rgba8_bytes.push(g);
+                rgba8_bytes.push(b);
+                rgba8_bytes.push(a);
+
+                halfwords.push(params.pixel);
+            }
+        }
+
+        self.transfer_bytes_to_textures(
+            params.start_x as i32,
+            params.start_y as i32,
+            params.width as i32,
+            params.height as i32,
+            &rgba8_bytes,
+            &halfwords,
+        );
+    }
+
+    fn transfer_bytes_to_textures(
+        &self,
+        start_x: i32,
+        start_y: i32,
+        width: i32,
+        height: i32,
+        rgba8_bytes: &[u8],
+        halfwords: &[u16])
+    {
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
+        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+            WebGl2RenderingContext::TEXTURE_2D,
+            0,
+            start_x,
+            VRAM_HEIGHT as i32 - start_y - height,
+            width,
+            height,
+            WebGl2RenderingContext::RGBA,
+            WebGl2RenderingContext::UNSIGNED_BYTE,
+            Some(rgba8_bytes)
+        ).unwrap();
+
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 2);
+        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 0 );
+
+        let js_array = Uint16Array::from(halfwords);
+
+        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_array_buffer_view_and_src_offset(
+            WebGl2RenderingContext::TEXTURE_2D,
+            0,
+            start_x,
+            start_y,
+            width,
+            height,
+            WebGl2RenderingContext::RED_INTEGER,
+            WebGl2RenderingContext::UNSIGNED_SHORT,
+            &js_array,
+            0,
+        ).unwrap();
     }
 
     fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {
