@@ -134,38 +134,45 @@ impl Renderer {
         let fragment_shader = Self::compile_shader(
             &gl,
             WebGl2RenderingContext::FRAGMENT_SHADER,
-            fragment_shader_str
-        ).unwrap();
+            fragment_shader_str,
+        )
+        .unwrap();
         let vertex_shader = Self::compile_shader(
             &gl,
             WebGl2RenderingContext::VERTEX_SHADER,
-            vertex_shader_str
-        ).unwrap();
+            vertex_shader_str,
+        )
+        .unwrap();
         let fb_frag_shader = Self::compile_shader(
             &gl,
             WebGl2RenderingContext::FRAGMENT_SHADER,
-            fb_frag_shader_str
-        ).unwrap();
+            fb_frag_shader_str,
+        )
+        .unwrap();
         let fb_vert_shader = Self::compile_shader(
             &gl,
             WebGl2RenderingContext::VERTEX_SHADER,
-            fb_vert_shader_str
-        ).unwrap();
+            fb_vert_shader_str,
+        )
+        .unwrap();
 
         let writeback_frag_shader = Self::compile_shader(
             &gl,
             WebGl2RenderingContext::FRAGMENT_SHADER,
-            writeback_frag_shader_str
-        ).unwrap();
+            writeback_frag_shader_str,
+        )
+        .unwrap();
         let writeback_vert_shader = Self::compile_shader(
             &gl,
             WebGl2RenderingContext::VERTEX_SHADER,
-            writeback_vert_shader_str
-        ).unwrap();
+            writeback_vert_shader_str,
+        )
+        .unwrap();
 
         let program = Self::link_program(&gl, &vertex_shader, &fragment_shader).unwrap();
         let fb_program = Self::link_program(&gl, &fb_vert_shader, &fb_frag_shader).unwrap();
-        let writeback_program = Self::link_program(&gl, &writeback_vert_shader, &writeback_frag_shader).unwrap();
+        let writeback_program =
+            Self::link_program(&gl, &writeback_vert_shader, &writeback_frag_shader).unwrap();
 
         let vertex_buffer = gl.create_buffer().unwrap();
         let quad_buffer = gl.create_buffer().unwrap();
@@ -181,10 +188,26 @@ impl Renderer {
             VRAM_HEIGHT as i32,
         );
 
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MIN_FILTER, WebGl2RenderingContext::NEAREST as i32);
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MAG_FILTER, WebGl2RenderingContext::NEAREST as i32);
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_S, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_T, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
+            WebGl2RenderingContext::NEAREST as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
+            WebGl2RenderingContext::NEAREST as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_WRAP_S,
+            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_WRAP_T,
+            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+        );
 
         gl.active_texture(WebGl2RenderingContext::TEXTURE1);
         gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&vram_read));
@@ -197,10 +220,26 @@ impl Renderer {
             VRAM_HEIGHT as i32,
         );
 
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MIN_FILTER, WebGl2RenderingContext::NEAREST as i32);
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_MAG_FILTER, WebGl2RenderingContext::NEAREST as i32);
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_S, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
-        gl.tex_parameteri(WebGl2RenderingContext::TEXTURE_2D, WebGl2RenderingContext::TEXTURE_WRAP_T, WebGl2RenderingContext::CLAMP_TO_EDGE as i32);
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
+            WebGl2RenderingContext::NEAREST as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
+            WebGl2RenderingContext::NEAREST as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_WRAP_S,
+            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_WRAP_T,
+            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+        );
 
         let fbo_write = gl.create_framebuffer().unwrap();
 
@@ -241,7 +280,7 @@ impl Renderer {
     fn compile_shader(
         gl: &WebGl2RenderingContext,
         shader_type: u32,
-        source: &str
+        source: &str,
     ) -> Result<WebGlShader, String> {
         let shader = gl
             .create_shader(shader_type)
@@ -259,8 +298,7 @@ impl Renderer {
         } else {
             Err(gl
                 .get_shader_info_log(&shader)
-                .unwrap_or("unknown error creating shader".to_string())
-            )
+                .unwrap_or("unknown error creating shader".to_string()))
         }
     }
 
@@ -269,9 +307,7 @@ impl Renderer {
         vertex_shader: &WebGlShader,
         fragment_shader: &WebGlShader,
     ) -> Result<WebGlProgram, String> {
-        let program = gl
-            .create_program()
-            .ok_or("Unable to create gl program")?;
+        let program = gl.create_program().ok_or("Unable to create gl program")?;
 
         gl.attach_shader(&program, vertex_shader);
         gl.attach_shader(&program, fragment_shader);
@@ -286,8 +322,7 @@ impl Renderer {
         } else {
             Err(gl
                 .get_program_info_log(&program)
-                .unwrap_or("Unable to create gl program for unknown reason".to_string())
-            )
+                .unwrap_or("Unable to create gl program for unknown reason".to_string()))
         }
     }
 
@@ -361,36 +396,47 @@ impl Renderer {
 
     fn vram_writeback(&self, polygon: Option<&Polygon>, gpu: Option<&GPU>) {
         let (start_x, start_y, width, height) = if let Some(polygon) = polygon {
-            (polygon.x1, polygon.y1, polygon.x2 - polygon.x1 + 1, polygon.y2 - polygon.y1 + 1)
+            (
+                polygon.x1,
+                polygon.y1,
+                polygon.x2 - polygon.x1 + 1,
+                polygon.y2 - polygon.y1 + 1,
+            )
         } else if let Some(gpu) = gpu {
             let (width, height) = gpu.get_dimensions();
             let writeback_width = (width * 3 + 1) / 2;
-            (gpu.display_start_x, gpu.display_start_y, writeback_width, height)
+            (
+                gpu.display_start_x,
+                gpu.display_start_y,
+                writeback_width,
+                height,
+            )
         } else {
             panic!("no gpu or polygon passed to vram_writeback");
         };
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
+        self.gl
+            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
 
         self.gl.use_program(Some(&self.writeback_program));
-        self.gl.viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
+        self.gl
+            .viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
 
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+        self.gl
+            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
 
-        let loc = self.gl.get_uniform_location(&self.writeback_program, "vramWrite");
+        let loc = self
+            .gl
+            .get_uniform_location(&self.writeback_program, "vramWrite");
 
         self.gl.uniform1i(loc.as_ref(), 0);
 
         self.bind_quad_verts();
 
         self.gl.enable(WebGl2RenderingContext::SCISSOR_TEST);
-        self.gl.scissor(
-            start_x as i32,
-            start_y as i32,
-            width as i32,
-            height as i32
-        );
+        self.gl
+            .scissor(start_x as i32, start_y as i32, width as i32, height as i32);
 
         self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
         self.gl.disable(WebGl2RenderingContext::SCISSOR_TEST);
@@ -400,19 +446,36 @@ impl Renderer {
         let vertices_bytes: &[u8] = cast_slice(&QUAD_VERTS);
         let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
 
-        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.quad_buffer));
+        self.gl.bind_buffer(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            Some(&self.quad_buffer),
+        );
         self.gl.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
             &float_view,
-            WebGl2RenderingContext::DYNAMIC_DRAW
+            WebGl2RenderingContext::DYNAMIC_DRAW,
         );
 
         let quad_stride = 16; // 4 floats * 4 bytes each
 
-        self.gl.vertex_attrib_pointer_with_i32(0, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 0);
+        self.gl.vertex_attrib_pointer_with_i32(
+            0,
+            2,
+            WebGl2RenderingContext::FLOAT,
+            false,
+            quad_stride,
+            0,
+        );
         self.gl.enable_vertex_attrib_array(0);
 
-        self.gl.vertex_attrib_pointer_with_i32(1, 2, WebGl2RenderingContext::FLOAT, false, quad_stride, 8);
+        self.gl.vertex_attrib_pointer_with_i32(
+            1,
+            2,
+            WebGl2RenderingContext::FLOAT,
+            false,
+            quad_stride,
+            8,
+        );
         self.gl.enable_vertex_attrib_array(1);
     }
 
@@ -448,7 +511,7 @@ impl Renderer {
             params.width as i32,
             params.height as i32,
             &rgba8_buffer,
-            &params.halfwords
+            &params.halfwords,
         );
     }
 
@@ -544,11 +607,14 @@ impl Renderer {
         let vertices_bytes: &[u8] = cast_slice(&vertices);
         let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
 
-        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.vertex_buffer));
+        self.gl.bind_buffer(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            Some(&self.vertex_buffer),
+        );
         self.gl.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
             &float_view,
-            WebGl2RenderingContext::DYNAMIC_DRAW
+            WebGl2RenderingContext::DYNAMIC_DRAW,
         );
 
         let stride = std::mem::size_of::<GlVertex>() as i32;
@@ -558,7 +624,7 @@ impl Renderer {
             WebGl2RenderingContext::FLOAT,
             false,
             stride,
-            0
+            0,
         );
         self.gl.enable_vertex_attrib_array(0);
 
@@ -568,7 +634,7 @@ impl Renderer {
             WebGl2RenderingContext::FLOAT,
             false,
             stride,
-            8
+            8,
         );
         self.gl.enable_vertex_attrib_array(1);
 
@@ -578,7 +644,7 @@ impl Renderer {
             WebGl2RenderingContext::FLOAT,
             false,
             stride,
-            16
+            16,
         );
         self.gl.enable_vertex_attrib_array(2);
 
@@ -588,64 +654,103 @@ impl Renderer {
             WebGl2RenderingContext::FLOAT,
             false,
             stride,
-            32
+            32,
         );
 
         self.gl.enable_vertex_attrib_array(3);
 
-        self.gl.viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
+        self.gl
+            .viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
 
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+        self.gl
+            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
 
         self.gl.use_program(Some(&self.program));
 
         let location = self.gl.get_uniform_location(&self.program, "vramRead");
 
         let loc_has_texture = self.gl.get_uniform_location(&self.program, "hasTexture");
-        let loc_semitransparent = self.gl.get_uniform_location(&self.program, "semitransparent");
+        let loc_semitransparent = self
+            .gl
+            .get_uniform_location(&self.program, "semitransparent");
         let loc_modulate = self.gl.get_uniform_location(&self.program, "modulate");
         let loc_texture_mask_x = self.gl.get_uniform_location(&self.program, "textureMaskX");
         let loc_texture_mask_y = self.gl.get_uniform_location(&self.program, "textureMaskY");
-        let loc_texture_offset_x = self.gl.get_uniform_location(&self.program, "textureOffsetX");
-        let loc_texture_offset_y = self.gl.get_uniform_location(&self.program, "textureOffsetY");
+        let loc_texture_offset_x = self
+            .gl
+            .get_uniform_location(&self.program, "textureOffsetX");
+        let loc_texture_offset_y = self
+            .gl
+            .get_uniform_location(&self.program, "textureOffsetY");
         let loc_depth = self.gl.get_uniform_location(&self.program, "depth");
-        let loc_transparent_mode = self.gl.get_uniform_location(&self.program, "transparentMode");
+        let loc_transparent_mode = self
+            .gl
+            .get_uniform_location(&self.program, "transparentMode");
         let loc_page = self.gl.get_uniform_location(&self.program, "page");
         let loc_clut = self.gl.get_uniform_location(&self.program, "clut");
         let loc_force_mask_bit = self.gl.get_uniform_location(&self.program, "forceMaskBit");
-        let loc_preserve_masked_pixels = self.gl.get_uniform_location(&self.program, "preserveMaskedPixels");
+        let loc_preserve_masked_pixels = self
+            .gl
+            .get_uniform_location(&self.program, "preserveMaskedPixels");
 
         self.gl.uniform1i(location.as_ref(), 0);
-        self.gl.uniform1i(loc_has_texture.as_ref(), fragment_uniform.has_texture as i32);
-        self.gl.uniform1i(loc_semitransparent.as_ref(), fragment_uniform.semitransparent as i32);
-        self.gl.uniform1i(loc_modulate.as_ref(), fragment_uniform.modulate as i32);
-        self.gl.uniform1i(loc_force_mask_bit.as_ref(), fragment_uniform.force_mask_bit as i32);
-        self.gl.uniform1i(loc_preserve_masked_pixels.as_ref(), fragment_uniform.preserve_masked_pixels as i32);
+        self.gl.uniform1i(
+            loc_has_texture.as_ref(),
+            fragment_uniform.has_texture as i32,
+        );
+        self.gl.uniform1i(
+            loc_semitransparent.as_ref(),
+            fragment_uniform.semitransparent as i32,
+        );
+        self.gl
+            .uniform1i(loc_modulate.as_ref(), fragment_uniform.modulate as i32);
+        self.gl.uniform1i(
+            loc_force_mask_bit.as_ref(),
+            fragment_uniform.force_mask_bit as i32,
+        );
+        self.gl.uniform1i(
+            loc_preserve_masked_pixels.as_ref(),
+            fragment_uniform.preserve_masked_pixels as i32,
+        );
 
-        self.gl.uniform1ui(loc_texture_mask_x.as_ref(), fragment_uniform.texture_mask_x);
-        self.gl.uniform1ui(loc_texture_mask_y.as_ref(), fragment_uniform.texture_mask_y);
-        self.gl.uniform1ui(loc_texture_offset_x.as_ref(), fragment_uniform.texture_offset_x);
-        self.gl.uniform1ui(loc_texture_offset_y.as_ref(), fragment_uniform.texture_offset_y);
-        self.gl.uniform1ui(loc_transparent_mode.as_ref(), fragment_uniform.transparent_mode);
+        self.gl
+            .uniform1ui(loc_texture_mask_x.as_ref(), fragment_uniform.texture_mask_x);
+        self.gl
+            .uniform1ui(loc_texture_mask_y.as_ref(), fragment_uniform.texture_mask_y);
+        self.gl.uniform1ui(
+            loc_texture_offset_x.as_ref(),
+            fragment_uniform.texture_offset_x,
+        );
+        self.gl.uniform1ui(
+            loc_texture_offset_y.as_ref(),
+            fragment_uniform.texture_offset_y,
+        );
+        self.gl.uniform1ui(
+            loc_transparent_mode.as_ref(),
+            fragment_uniform.transparent_mode,
+        );
 
         self.gl.uniform2ui(
             loc_page.as_ref(),
             fragment_uniform.page[0],
-            fragment_uniform.page[1]
+            fragment_uniform.page[1],
         );
 
         self.gl.uniform2ui(
             loc_clut.as_ref(),
             fragment_uniform.clut[0],
-            fragment_uniform.clut[1]
+            fragment_uniform.clut[1],
         );
 
-        self.gl.uniform1i(loc_depth.as_ref(), fragment_uniform.depth);
+        self.gl
+            .uniform1i(loc_depth.as_ref(), fragment_uniform.depth);
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
+        self.gl
+            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
 
-        self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
+        self.gl
+            .draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
     }
 
     pub fn present(&self, gpu: &mut GPU) {
@@ -653,27 +758,42 @@ impl Renderer {
 
         // self.canvas.set_width(width);
         // self.canvas.set_height(height);
-        self.canvas.set_attribute("width", &format!("{width}")).unwrap();
-        self.canvas.set_attribute("height", &format!("{height}")).unwrap();
+        self.canvas
+            .set_attribute("width", &format!("{width}"))
+            .unwrap();
+        self.canvas
+            .set_attribute("height", &format!("{height}"))
+            .unwrap();
         self.gl.viewport(0, 0, width as i32, height as i32);
 
-        let loc_depth = self.gl.get_uniform_location(&self.fb_program, "displayDepth");
-        let loc_start = self.gl.get_uniform_location(&self.fb_program, "displayStart");
-        let loc_size = self.gl.get_uniform_location(&self.fb_program, "displaySize");
+        let loc_depth = self
+            .gl
+            .get_uniform_location(&self.fb_program, "displayDepth");
+        let loc_start = self
+            .gl
+            .get_uniform_location(&self.fb_program, "displayStart");
+        let loc_size = self
+            .gl
+            .get_uniform_location(&self.fb_program, "displaySize");
 
         self.gl.use_program(Some(&self.fb_program));
 
-        self.gl.uniform1ui(loc_depth.as_ref(), gpu.display_depth as u32);
-        self.gl.uniform2ui(loc_start.as_ref(), gpu.display_start_x, gpu.display_start_y);
+        self.gl
+            .uniform1ui(loc_depth.as_ref(), gpu.display_depth as u32);
+        self.gl
+            .uniform2ui(loc_start.as_ref(), gpu.display_start_x, gpu.display_start_y);
         self.gl.uniform2ui(loc_size.as_ref(), width, height);
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, None);
+        self.gl
+            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, None);
 
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+        self.gl
+            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
 
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+        self.gl
+            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
 
         let loc_write = self.gl.get_uniform_location(&self.fb_program, "vramWrite");
         let loc_read = self.gl.get_uniform_location(&self.fb_program, "vramRead");
@@ -686,9 +806,7 @@ impl Renderer {
         self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
     }
 
-    fn update_texture_for_sampling(&self) {
-
-    }
+    fn update_texture_for_sampling(&self) {}
 
     fn execute_fill_vram(&self, params: FillVramParams) {
         let mut rgba8_bytes: Vec<u8> = Vec::new();
@@ -732,28 +850,36 @@ impl Renderer {
         width: i32,
         height: i32,
         rgba8_bytes: &[u8],
-        halfwords: &[u16])
-    {
+        halfwords: &[u16],
+    ) {
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
-        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
-            WebGl2RenderingContext::TEXTURE_2D,
-            0,
-            start_x,
-            VRAM_HEIGHT as i32 - start_y - height,
-            width,
-            height,
-            WebGl2RenderingContext::RGBA,
-            WebGl2RenderingContext::UNSIGNED_BYTE,
-            Some(rgba8_bytes)
-        ).unwrap();
+        self.gl
+            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+        self.gl
+            .pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
+        self.gl
+            .pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
+        self.gl
+            .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
+                WebGl2RenderingContext::TEXTURE_2D,
+                0,
+                start_x,
+                VRAM_HEIGHT as i32 - start_y - height,
+                width,
+                height,
+                WebGl2RenderingContext::RGBA,
+                WebGl2RenderingContext::UNSIGNED_BYTE,
+                Some(rgba8_bytes),
+            )
+            .unwrap();
 
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
-        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 2);
-        self.gl.pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 0 );
+        self.gl
+            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+        self.gl
+            .pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 2);
+        self.gl
+            .pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 0);
 
         let js_array = Uint16Array::from(halfwords);
 
@@ -771,7 +897,5 @@ impl Renderer {
         ).unwrap();
     }
 
-    fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {
-
-    }
+    fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {}
 }
