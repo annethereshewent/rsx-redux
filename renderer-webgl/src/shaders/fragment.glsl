@@ -111,6 +111,7 @@ vec4 getTexColor15bpp(usampler2D vramRead) {
 
 void main() {
     outColor = vColor;
+    outColor[3] = 0.0;
     float texAlpha = 0.0;
 
     if (hasTexture) {
@@ -138,7 +139,7 @@ void main() {
 
         texAlpha = texColor[3];
         outColor = texColor;
-        outColor[3] = 1.0;
+        // outColor[3] = 1.0;
     }
 
     if (semitransparent && (!hasTexture || texAlpha == 1.0)) {

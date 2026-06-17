@@ -329,9 +329,6 @@ export class Psx {
 
         cancelAnimationFrame(this.frameNumber)
 
-        this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
-        this.stateManager.updateStateMenuList()
-
         const placeholder = document.getElementById('placeholder')
 
         if (placeholder != null) {
@@ -356,6 +353,9 @@ export class Psx {
         } else {
             this.emulator!.reset()
         }
+
+        this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
+        this.stateManager.updateStateMenuList()
 
         this.emulator!.set_memory_card(this.memoryCardData)
 

@@ -309,9 +309,9 @@ impl Renderer {
         // let mut sample_dirty = true;
         let mut blend_dirty = true;
 
-        // if gpu.display_depth == DisplayDepth::Bit24 {
-        //     self.vram_writeback(gpu);
-        // }
+        if gpu.display_depth == DisplayDepth::Bit24 {
+            self.vram_writeback(None, Some(&gpu));
+        }
 
         for command in gpu.gpu_commands.drain(..) {
             match command {
@@ -342,7 +342,7 @@ impl Renderer {
                     //     self.update_texture_for_sampling();
                     // }
                     if polygon.semitransparent && blend_dirty {
-                        self.vram_writeback(&polygon);
+                        self.vram_writeback(Some(&polygon), None);
                         blend_dirty = false;
                     }
 
@@ -359,12 +359,16 @@ impl Renderer {
         }
     }
 
-    fn vram_writeback(&self, polygon: &Polygon) {
-        let start_x = polygon.x1;
-        let start_y = polygon.y1;
-
-        let width = polygon.x2 - polygon.x1 + 1;
-        let height = polygon.y2 - polygon.y1 + 1;
+    fn vram_writeback(&self, polygon: Option<&Polygon>, gpu: Option<&GPU>) {
+        let (start_x, start_y, width, height) = if let Some(polygon) = polygon {
+            (polygon.x1, polygon.y1, polygon.x2 - polygon.x1 + 1, polygon.y2 - polygon.y1 + 1)
+        } else if let Some(gpu) = gpu {
+            let (width, height) = gpu.get_dimensions();
+            let writeback_width = (width * 3 + 1) / 2;
+            (gpu.display_start_x, gpu.display_start_y, writeback_width, height)
+        } else {
+            panic!("no gpu or polygon passed to vram_writeback");
+        };
 
         self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
 
@@ -668,14 +672,18 @@ impl Renderer {
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
         self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
 
-        let location = self.gl.get_uniform_location(&self.fb_program, "vramWrite");
+        self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
 
-        self.gl.uniform1i(location.as_ref(), 0);
+        let loc_write = self.gl.get_uniform_location(&self.fb_program, "vramWrite");
+        let loc_read = self.gl.get_uniform_location(&self.fb_program, "vramRead");
+
+        self.gl.uniform1i(loc_write.as_ref(), 0);
+        self.gl.uniform1i(loc_read.as_ref(), 1);
 
         self.bind_quad_verts();
 
         self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
-
     }
 
     fn update_texture_for_sampling(&self) {
