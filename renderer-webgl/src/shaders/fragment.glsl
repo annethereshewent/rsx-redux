@@ -114,18 +114,30 @@ void main() {
     float texAlpha = 0.0;
 
     if (hasTexture) {
+        vec4 texColor;
         switch (depth) {
             case 0:
-                outColor = getTexColor4bpp(vramRead);
+                texColor = getTexColor4bpp(vramRead);
                 break;
             case 1:
-                outColor = getTexColor8bpp(vramRead);
+                texColor = getTexColor8bpp(vramRead);
                 break;
             case 2:
-                outColor = getTexColor15bpp(vramRead);
+                texColor = getTexColor15bpp(vramRead);
                 break;
         }
-        texAlpha = outColor[3];
+
+        if (modulate) {
+            uvec4 texColorUint = uvec4(texColor * 255.0);
+            uvec4 vertColorUint = uvec4(vColor * 255.0);
+
+            texColorUint = min((texColorUint * vertColorUint) >> 7u, 0xffu);
+
+            texColor = vec4(texColorUint) / 255.0;
+        }
+
+        texAlpha = texColor[3];
+        outColor = texColor;
         outColor[3] = 1.0;
     }
 

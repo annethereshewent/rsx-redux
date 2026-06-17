@@ -339,9 +339,6 @@ function __wbg_get_imports() {
         __wbg_linkProgram_2d8e6a45b85f995e: function(arg0, arg1) {
             arg0.linkProgram(arg1);
         },
-        __wbg_log_6614a4effdb4e983: function(arg0) {
-            console.log(arg0);
-        },
         __wbg_new_20b778a4c5c691c3: function() {
             const ret = new Object();
             return ret;
@@ -425,11 +422,6 @@ function __wbg_get_imports() {
         },
         __wbg_viewport_357a29f80f8d01f0: function(arg0, arg1, arg2, arg3, arg4) {
             arg0.viewport(arg1, arg2, arg3, arg4);
-        },
-        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(String) -> Externref`.
-            const ret = getStringFromWasm0(arg0, arg1);
-            return ret;
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;

@@ -342,7 +342,6 @@ impl Renderer {
                     //     self.update_texture_for_sampling();
                     // }
                     if polygon.semitransparent && blend_dirty {
-                        console::log_1(&format!("writing back because there are semitransparent polys").into());
                         self.vram_writeback(&polygon);
                         blend_dirty = false;
                     }
