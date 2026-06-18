@@ -341,9 +341,6 @@ impl Renderer {
     }
 
     fn process_commands(&self, gpu: &mut GPU) {
-        // let mut sample_dirty = true;
-        let mut blend_dirty = true;
-
         if gpu.display_depth == DisplayDepth::Bit24 {
             self.vram_writeback(None, Some(&gpu));
         }
@@ -367,28 +364,11 @@ impl Renderer {
                     self.execute_fill_vram(params);
                 }
                 GPUCommand::RenderPolygon(polygon) => {
-                    // let is_16bpp = polygon.textured
-                    //     && polygon.texpage.map(|texpage| texpage.texture_page_colors)
-                    //         == Some(TexturePageColors::Bit15);
-
-                    // if is_16bpp && sample_dirty {
-                    //     sample_dirty = false;
-
-                    //     self.update_texture_for_sampling();
-                    // }
-                    if polygon.semitransparent && blend_dirty {
+                    if polygon.semitransparent {
                         self.vram_writeback(Some(&polygon), None);
-                        blend_dirty = false;
                     }
 
                     self.render_polygon(&polygon);
-
-                    // if !is_16bpp {
-                    //     sample_dirty = true;
-                    // }
-                    if !polygon.semitransparent {
-                        blend_dirty = true;
-                    }
                 }
             }
         }
