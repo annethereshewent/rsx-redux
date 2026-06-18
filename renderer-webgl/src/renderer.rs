@@ -3,7 +3,7 @@ use std::cmp;
 use bytemuck::{cast_slice, Pod, Zeroable};
 use js_sys::{wasm_bindgen::JsCast, Float32Array, Uint16Array};
 use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH};
-use web_sys::{window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture};
+use web_sys::{window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture, WebGlUniformLocation};
 
 
 const QUAD_VERTS: [f32; 24] = [
@@ -97,6 +97,20 @@ pub struct Renderer {
     fbo_read: WebGlFramebuffer,
     writeback_program: WebGlProgram,
     fb_program: WebGlProgram,
+    location: Option<WebGlUniformLocation>,
+    loc_has_texture: Option<WebGlUniformLocation>,
+    loc_semitransparent: Option<WebGlUniformLocation>,
+    loc_modulate: Option<WebGlUniformLocation>,
+    loc_texture_mask_x: Option<WebGlUniformLocation>,
+    loc_texture_mask_y: Option<WebGlUniformLocation>,
+    loc_texture_offset_x: Option<WebGlUniformLocation>,
+    loc_texture_offset_y: Option<WebGlUniformLocation>,
+    loc_depth: Option<WebGlUniformLocation>,
+    loc_transparent_mode: Option<WebGlUniformLocation>,
+    loc_page: Option<WebGlUniformLocation>,
+    loc_clut: Option<WebGlUniformLocation>,
+    loc_force_mask_bit: Option<WebGlUniformLocation>,
+    loc_preserve_masked_pixels: Option<WebGlUniformLocation>,
 }
 
 impl Renderer {
@@ -173,6 +187,27 @@ impl Renderer {
         let fb_program = Self::link_program(&gl, &fb_vert_shader, &fb_frag_shader).unwrap();
         let writeback_program =
             Self::link_program(&gl, &writeback_vert_shader, &writeback_frag_shader).unwrap();
+
+        let location = gl.get_uniform_location(&program, "vramRead");
+
+        let loc_has_texture = gl.get_uniform_location(&program, "hasTexture");
+        let loc_semitransparent = gl
+            .get_uniform_location(&program, "semitransparent");
+        let loc_modulate = gl.get_uniform_location(&program, "modulate");
+        let loc_texture_mask_x = gl.get_uniform_location(&program, "textureMaskX");
+        let loc_texture_mask_y = gl.get_uniform_location(&program, "textureMaskY");
+        let loc_texture_offset_x = gl
+            .get_uniform_location(&program, "textureOffsetX");
+        let loc_texture_offset_y = gl
+            .get_uniform_location(&program, "textureOffsetY");
+        let loc_depth = gl.get_uniform_location(&program, "depth");
+        let loc_transparent_mode = gl
+            .get_uniform_location(&program, "transparentMode");
+        let loc_page = gl.get_uniform_location(&program, "page");
+        let loc_clut = gl.get_uniform_location(&program, "clut");
+        let loc_force_mask_bit = gl.get_uniform_location(&program, "forceMaskBit");
+        let loc_preserve_masked_pixels = gl
+            .get_uniform_location(&program, "preserveMaskedPixels");
 
         let vertex_buffer = gl.create_buffer().unwrap();
         let quad_buffer = gl.create_buffer().unwrap();
@@ -274,6 +309,20 @@ impl Renderer {
             fb_program,
             writeback_program,
             fbo_read,
+            location,
+            loc_has_texture,
+            loc_semitransparent,
+            loc_modulate,
+            loc_texture_mask_x,
+            loc_texture_mask_y,
+            loc_texture_offset_x,
+            loc_texture_offset_y,
+            loc_depth,
+            loc_transparent_mode,
+            loc_page,
+            loc_clut,
+            loc_force_mask_bit,
+            loc_preserve_masked_pixels,
         }
     }
 
@@ -653,83 +702,57 @@ impl Renderer {
 
         self.gl.use_program(Some(&self.program));
 
-        let location = self.gl.get_uniform_location(&self.program, "vramRead");
-
-        let loc_has_texture = self.gl.get_uniform_location(&self.program, "hasTexture");
-        let loc_semitransparent = self
-            .gl
-            .get_uniform_location(&self.program, "semitransparent");
-        let loc_modulate = self.gl.get_uniform_location(&self.program, "modulate");
-        let loc_texture_mask_x = self.gl.get_uniform_location(&self.program, "textureMaskX");
-        let loc_texture_mask_y = self.gl.get_uniform_location(&self.program, "textureMaskY");
-        let loc_texture_offset_x = self
-            .gl
-            .get_uniform_location(&self.program, "textureOffsetX");
-        let loc_texture_offset_y = self
-            .gl
-            .get_uniform_location(&self.program, "textureOffsetY");
-        let loc_depth = self.gl.get_uniform_location(&self.program, "depth");
-        let loc_transparent_mode = self
-            .gl
-            .get_uniform_location(&self.program, "transparentMode");
-        let loc_page = self.gl.get_uniform_location(&self.program, "page");
-        let loc_clut = self.gl.get_uniform_location(&self.program, "clut");
-        let loc_force_mask_bit = self.gl.get_uniform_location(&self.program, "forceMaskBit");
-        let loc_preserve_masked_pixels = self
-            .gl
-            .get_uniform_location(&self.program, "preserveMaskedPixels");
-
-        self.gl.uniform1i(location.as_ref(), 0);
+        self.gl.uniform1i(self.location.as_ref(), 0);
         self.gl.uniform1i(
-            loc_has_texture.as_ref(),
+            self.loc_has_texture.as_ref(),
             fragment_uniform.has_texture as i32,
         );
         self.gl.uniform1i(
-            loc_semitransparent.as_ref(),
+            self.loc_semitransparent.as_ref(),
             fragment_uniform.semitransparent as i32,
         );
         self.gl
-            .uniform1i(loc_modulate.as_ref(), fragment_uniform.modulate as i32);
+            .uniform1i(self.loc_modulate.as_ref(), fragment_uniform.modulate as i32);
         self.gl.uniform1i(
-            loc_force_mask_bit.as_ref(),
+            self.loc_force_mask_bit.as_ref(),
             fragment_uniform.force_mask_bit as i32,
         );
         self.gl.uniform1i(
-            loc_preserve_masked_pixels.as_ref(),
+            self.loc_preserve_masked_pixels.as_ref(),
             fragment_uniform.preserve_masked_pixels as i32,
         );
 
         self.gl
-            .uniform1ui(loc_texture_mask_x.as_ref(), fragment_uniform.texture_mask_x);
+            .uniform1ui(self.loc_texture_mask_x.as_ref(), fragment_uniform.texture_mask_x);
         self.gl
-            .uniform1ui(loc_texture_mask_y.as_ref(), fragment_uniform.texture_mask_y);
+            .uniform1ui(self.loc_texture_mask_y.as_ref(), fragment_uniform.texture_mask_y);
         self.gl.uniform1ui(
-            loc_texture_offset_x.as_ref(),
+            self.loc_texture_offset_x.as_ref(),
             fragment_uniform.texture_offset_x,
         );
         self.gl.uniform1ui(
-            loc_texture_offset_y.as_ref(),
+            self.loc_texture_offset_y.as_ref(),
             fragment_uniform.texture_offset_y,
         );
         self.gl.uniform1ui(
-            loc_transparent_mode.as_ref(),
+            self.loc_transparent_mode.as_ref(),
             fragment_uniform.transparent_mode,
         );
 
         self.gl.uniform2ui(
-            loc_page.as_ref(),
+            self.loc_page.as_ref(),
             fragment_uniform.page[0],
             fragment_uniform.page[1],
         );
 
         self.gl.uniform2ui(
-            loc_clut.as_ref(),
+            self.loc_clut.as_ref(),
             fragment_uniform.clut[0],
             fragment_uniform.clut[1],
         );
 
         self.gl
-            .uniform1i(loc_depth.as_ref(), fragment_uniform.depth);
+            .uniform1i(self.loc_depth.as_ref(), fragment_uniform.depth);
 
         self.gl
             .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));

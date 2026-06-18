@@ -21,7 +21,6 @@ pub struct PsxWebEmulator {
     renderer: Renderer,
 }
 
-
 #[wasm_bindgen]
 impl PsxWebEmulator {
     #[wasm_bindgen(constructor)]
@@ -119,7 +118,6 @@ impl PsxWebEmulator {
             .peripherals
             .memory_card
             .set_memory_bytes(self.memory_bytes.clone());
-
     }
 
     pub fn save_state(&mut self) -> Vec<u8> {
@@ -173,7 +171,6 @@ impl PsxWebEmulator {
     }
 
     pub fn reset(&mut self) {
-
         let game_bytes = self.cpu.bus.cdrom.game_bytes.clone();
         let exe_bytes = self.cpu.exe_bytes.clone();
         let bios = self.cpu.bus.get_bios();
