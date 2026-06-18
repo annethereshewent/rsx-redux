@@ -52,7 +52,7 @@ vec4 getTexColor4bpp(usampler2D vramRead) {
     uint r = texel & 0x1fu;
     uint g = (texel >> 5u) & 0x1fu;
     uint b = (texel >> 10u) & 0x1fu;
-    uint a = (texel >> 15u) & 1u * 0x1fu;
+    uint a = ((texel >> 15u) & 1u) * 0x1fu;
 
     return vec4(r, g, b, a) / 31.0;
 }
@@ -80,7 +80,7 @@ vec4 getTexColor8bpp(usampler2D vramRead) {
     uint r = texel & 0x1fu;
     uint g = (texel >> 5u) & 0x1fu;
     uint b = (texel >> 10u) & 0x1fu;
-    uint a = (texel >> 15u) & 1u * 0x1fu;
+    uint a = ((texel >> 15u) & 1u) * 0x1fu;
 
     return vec4(r, g, b, a) / 31.0;
 }
@@ -104,7 +104,7 @@ vec4 getTexColor15bpp(usampler2D vramRead) {
     uint r = texel & 0x1fu;
     uint g = (texel >> 5u) & 0x1fu;
     uint b = (texel >> 10u) & 0x1fu;
-    uint a = (texel >> 15u) & 1u * 0x1fu;
+    uint a = ((texel >> 15u) & 1u) * 0x1fu;
 
     return vec4(r, g, b, a) / 31.0;
 }
@@ -128,6 +128,8 @@ void main() {
                 break;
         }
 
+        texAlpha = texColor[3];
+
         if (modulate) {
             uvec4 texColorUint = uvec4(texColor * 255.0);
             uvec4 vertColorUint = uvec4(vColor * 255.0);
@@ -137,7 +139,6 @@ void main() {
             texColor = vec4(texColorUint) / 255.0;
         }
 
-        texAlpha = texColor[3];
         outColor = texColor;
         // outColor[3] = 1.0;
     }
@@ -148,7 +149,7 @@ void main() {
         uint r = oldTexel & 0x1fu;
         uint g = (oldTexel >> 5u) & 0x1fu;
         uint b = (oldTexel >> 10u) & 0x1fu;
-        uint a = (oldTexel >> 15) & 1u * 0x1fu;
+        uint a = ((oldTexel >> 15u) & 1u) * 0x1fu;
 
         vec4 old = vec4(r, g, b, a) / 31.0;
 
