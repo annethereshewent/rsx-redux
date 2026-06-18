@@ -376,7 +376,7 @@ impl Renderer {
 
                     //     self.update_texture_for_sampling();
                     // }
-                    if polygon.semitransparent {
+                    if polygon.semitransparent && blend_dirty {
                         self.vram_writeback(Some(&polygon), None);
                         blend_dirty = false;
                     }
