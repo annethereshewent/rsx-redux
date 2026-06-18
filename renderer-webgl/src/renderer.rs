@@ -297,6 +297,16 @@ impl Renderer {
             0,
         );
 
+        let vertices_bytes: &[u8] = cast_slice(&QUAD_VERTS);
+        let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
+
+        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&quad_buffer));
+        gl.buffer_data_with_array_buffer_view(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            &float_view,
+            WebGl2RenderingContext::DYNAMIC_DRAW,
+        );
+
         Self {
             canvas,
             gl,
@@ -477,17 +487,9 @@ impl Renderer {
     }
 
     fn bind_quad_verts(&self) {
-        let vertices_bytes: &[u8] = cast_slice(&QUAD_VERTS);
-        let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
-
         self.gl.bind_buffer(
             WebGl2RenderingContext::ARRAY_BUFFER,
             Some(&self.quad_buffer),
-        );
-        self.gl.buffer_data_with_array_buffer_view(
-            WebGl2RenderingContext::ARRAY_BUFFER,
-            &float_view,
-            WebGl2RenderingContext::DYNAMIC_DRAW,
         );
 
         let quad_stride = 16; // 4 floats * 4 bytes each
