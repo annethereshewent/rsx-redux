@@ -376,7 +376,7 @@ impl Renderer {
 
                     //     self.update_texture_for_sampling();
                     // }
-                    if polygon.semitransparent && blend_dirty {
+                    if polygon.semitransparent {
                         self.vram_writeback(Some(&polygon), None);
                         blend_dirty = false;
                     }
@@ -394,14 +394,19 @@ impl Renderer {
         }
     }
 
+    fn get_drawing_area(polygon: &Polygon, invert: bool) -> (u32, u32, u32, u32) {
+        let y = if invert { VRAM_HEIGHT as u32 - polygon.y2 - 1 } else { polygon.y1 as u32 };
+        (
+            polygon.x1,
+            y,
+            polygon.x2 - polygon.x1 + 1,
+            polygon.y2 - polygon.y1 + 1,
+        )
+    }
+
     fn vram_writeback(&self, polygon: Option<&Polygon>, gpu: Option<&GPU>) {
         let (start_x, start_y, width, height) = if let Some(polygon) = polygon {
-            (
-                polygon.x1,
-                polygon.y1,
-                polygon.x2 - polygon.x1 + 1,
-                polygon.y2 - polygon.y1 + 1,
-            )
+            Self::get_drawing_area(polygon, false)
         } else if let Some(gpu) = gpu {
             let (width, height) = gpu.get_dimensions();
             let writeback_width = (width * 3 + 1) / 2;
@@ -749,8 +754,17 @@ impl Renderer {
         self.gl
             .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
 
+
+        let (start_x, start_y, width, height) = Self::get_drawing_area(polygon, true);
+
+        self.gl.enable(WebGl2RenderingContext::SCISSOR_TEST);
+        self.gl
+            .scissor(start_x as i32, start_y as i32, width as i32, height as i32);
+
         self.gl
             .draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
+
+        self.gl.disable(WebGl2RenderingContext::SCISSOR_TEST);
     }
 
     pub fn present(&self, gpu: &mut GPU) {
