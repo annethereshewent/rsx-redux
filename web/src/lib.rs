@@ -113,6 +113,13 @@ impl PsxWebEmulator {
 
         self.cpu.bus.scheduler.deserialize_scheduler();
 
+        #[cfg(feature = "hardware_gpu_web")]
+        {
+            let rgba8_bytes = self.cpu.bus.gpu.vram_write_tex.to_vec();
+            let rgba16_bytes = self.cpu.bus.gpu.vram_read_tex.to_vec();
+            self.renderer.set_vram_textures(rgba8_bytes, rgba16_bytes);
+        }
+
         self.cpu
             .bus
             .peripherals
@@ -122,6 +129,14 @@ impl PsxWebEmulator {
 
     pub fn save_state(&mut self) -> Vec<u8> {
         self.cpu.bus.scheduler.serialize_scheduler();
+
+        #[cfg(feature = "hardware_gpu_web")]
+        {
+            let (vram_write_tex, vram_read_tex) = self.renderer.get_vram_textures();
+
+            self.cpu.bus.gpu.vram_write_tex = vram_write_tex.into_boxed_slice();
+            self.cpu.bus.gpu.vram_read_tex = vram_read_tex.into_boxed_slice();
+        }
 
         let (data, _) = self.cpu.create_save_state();
 

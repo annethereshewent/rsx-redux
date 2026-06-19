@@ -297,8 +297,7 @@ impl Renderer {
             0,
         );
 
-        let vertices_bytes: &[u8] = cast_slice(&QUAD_VERTS);
-        let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
+        let float_view = Float32Array::from(QUAD_VERTS.as_slice());
 
         gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&quad_buffer));
         gl.buffer_data_with_array_buffer_view(
@@ -548,6 +547,7 @@ impl Renderer {
             params.height as i32,
             &rgba8_buffer,
             &params.halfwords,
+            true,
         );
     }
 
@@ -859,6 +859,7 @@ impl Renderer {
             params.height as i32,
             &rgba8_bytes,
             &halfwords,
+            true
         );
     }
 
@@ -870,20 +871,31 @@ impl Renderer {
         height: i32,
         rgba8_bytes: &[u8],
         halfwords: &[u16],
+        invert: bool,
     ) {
         self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
         self.gl
             .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
-        self.gl
-            .pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
+
+        if invert {
+            self.gl
+                .pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
+        }
         self.gl
             .pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
+
+        let y_offset = if invert {
+            VRAM_HEIGHT as i32 - start_y - height
+        } else {
+            start_y
+        };
+
         self.gl
             .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
                 WebGl2RenderingContext::TEXTURE_2D,
                 0,
                 start_x,
-                VRAM_HEIGHT as i32 - start_y - height,
+                y_offset,
                 width,
                 height,
                 WebGl2RenderingContext::RGBA,
@@ -917,4 +929,47 @@ impl Renderer {
     }
 
     fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {}
+
+    pub fn get_vram_textures(&self) -> (Vec<u8>, Vec<u8>) {
+        let mut rgba8_buf = vec![0u8; VRAM_WIDTH * VRAM_HEIGHT * 4];
+        let mut rgba16_buf = vec![0u8; VRAM_WIDTH * VRAM_HEIGHT * 2];
+
+        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
+        self.gl.read_pixels_with_opt_u8_array(
+            0,
+            0,
+            VRAM_WIDTH as i32,
+            VRAM_HEIGHT as i32,
+            WebGl2RenderingContext::RGBA,
+            WebGl2RenderingContext::UNSIGNED_BYTE,
+            Some(&mut rgba8_buf)
+        ).unwrap();
+
+        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
+        self.gl.read_pixels_with_opt_u8_array(
+            0,
+            0,
+            VRAM_WIDTH as i32,
+            VRAM_HEIGHT as i32,
+            WebGl2RenderingContext::RED_INTEGER,
+            WebGl2RenderingContext::UNSIGNED_SHORT,
+            Some(&mut rgba16_buf)
+        ).unwrap();
+
+        (rgba8_buf, rgba16_buf)
+    }
+
+    pub fn set_vram_textures(&self, rgba8_buf: Vec<u8>, rgba16_buf: Vec<u8>) {
+        let rgba16_buf: &[u16] = cast_slice(&rgba16_buf);
+
+        self.transfer_bytes_to_textures(
+            0,
+            0,
+            VRAM_WIDTH as i32,
+            VRAM_HEIGHT as i32,
+            &rgba8_buf,
+            rgba16_buf,
+            false
+        );
+    }
 }
