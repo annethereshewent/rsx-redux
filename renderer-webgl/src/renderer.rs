@@ -386,13 +386,17 @@ impl Renderer {
                     }
                 }
                 GPUCommand::VramToVram(params) => {
+                    // TODO: maybe do a vram writeback if needed
                     self.execute_vram_to_vram(params);
                 }
                 GPUCommand::FillVRAM(params) => {
                     self.execute_fill_vram(params);
                 }
                 GPUCommand::RenderPolygon(polygon) => {
-                    if polygon.semitransparent {
+                    let is_16bpp = polygon.textured
+                        && polygon.texpage.map(|texpage| texpage.texture_page_colors)
+                            == Some(TexturePageColors::Bit15);
+                    if polygon.semitransparent || is_16bpp {
                         self.vram_writeback(Some(&polygon), None);
                     }
 
@@ -526,7 +530,40 @@ impl Renderer {
     }
 
     fn handle_cpu_transfer(&self, params: CPUTransferParams) -> Vec<u16> {
-        Vec::new()
+        let mut rgba8_buf = vec![0u8; params.width as usize * params.height as usize * 4];
+
+        self.gl
+            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
+        self.gl
+            .read_pixels_with_opt_u8_array(
+                params.start_x as i32,
+                VRAM_HEIGHT as i32 - params.height as i32 - params.start_y as i32,
+                params.width as i32,
+                params.height as i32,
+                WebGl2RenderingContext::RGBA,
+                WebGl2RenderingContext::UNSIGNED_BYTE,
+                Some(&mut rgba8_buf),
+            )
+            .unwrap();
+
+        let mut halfwords = Vec::new();
+
+        for y in (0..params.height as usize).rev() {
+            for x in (0..params.width as usize).step_by(4) {
+                let index = (x + y * params.width as usize) * 4;
+                let r = (rgba8_buf[index] >> 3) as u16;
+                let g = (rgba8_buf[index + 1] >> 3) as u16;
+                let b = (rgba8_buf[index + 2] >> 3) as u16;
+                let a = (rgba8_buf[index + 3] != 0) as u16;
+
+                let halfword = r | g << 5 | b << 10 | a << 15;
+
+                halfwords.push(halfword);
+
+            }
+        }
+
+        halfwords
     }
 
     fn render_polygon(&self, polygon: &Polygon) {
@@ -903,7 +940,42 @@ impl Renderer {
         ).unwrap();
     }
 
-    fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {}
+    fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {
+        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&self.fbo_write));
+        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_write));
+
+        let source_y_flipped = (VRAM_HEIGHT as u32 - params.source_start_y - params.height) as i32;
+        let destination_y_flipped = (VRAM_HEIGHT as u32 - params.destination_start_y - params.height) as i32;
+
+        self.gl.blit_framebuffer(
+            params.source_start_x as i32,
+            source_y_flipped,
+            params.source_start_x as i32 + params.width as i32,
+            source_y_flipped + params.height as i32,
+            params.destination_start_x as i32,
+            destination_y_flipped,
+            params.destination_start_x as i32 + params.width as i32,
+            destination_y_flipped + params.height as i32,
+            WebGl2RenderingContext::COLOR_BUFFER_BIT,
+            WebGl2RenderingContext::NEAREST
+        );
+
+        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&self.fbo_read));
+        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_read));
+
+        self.gl.blit_framebuffer(
+            params.source_start_x as i32,
+            params.source_start_y as i32,
+            params.source_start_x as i32 + params.width as i32,
+            params.source_start_y as i32 + params.height as i32,
+            params.destination_start_x as i32,
+            params.destination_start_y as i32,
+            params.destination_start_x as i32 + params.width as i32,
+            params.destination_start_y as i32 + params.height as i32,
+            WebGl2RenderingContext::COLOR_BUFFER_BIT,
+            WebGl2RenderingContext::NEAREST
+        );
+    }
 
     pub fn get_vram_textures(&self) -> (Vec<u8>, Vec<u8>) {
         let mut rgba8_buf = vec![0u8; VRAM_WIDTH * VRAM_HEIGHT * 4];

@@ -210,6 +210,9 @@ function __wbg_get_imports() {
         __wbg_bindTexture_c04307052b3a8aa1: function(arg0, arg1, arg2) {
             arg0.bindTexture(arg1 >>> 0, arg2);
         },
+        __wbg_blitFramebuffer_a3819cea8c07978e: function(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
+            arg0.blitFramebuffer(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9 >>> 0, arg10 >>> 0);
+        },
         __wbg_bufferData_2d6bae8abc15a466: function(arg0, arg1, arg2, arg3) {
             arg0.bufferData(arg1 >>> 0, arg2, arg3 >>> 0);
         },
