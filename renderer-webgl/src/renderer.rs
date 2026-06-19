@@ -1,10 +1,15 @@
 use std::cmp;
 
-use bytemuck::{cast_slice, Pod, Zeroable};
-use js_sys::{wasm_bindgen::JsCast, Float32Array, Uint16Array};
-use rsx_redux::cpu::bus::gpu::{CPUTransferParams, DisplayDepth, FillVramParams, GPUCommand, Polygon, TexturePageColors, VRamTransferParams, VramToVramTransferParams, GPU, VRAM_HEIGHT, VRAM_WIDTH};
-use web_sys::{window, HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes, WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture, WebGlUniformLocation};
-
+use bytemuck::{Pod, Zeroable, cast_slice};
+use js_sys::{Float32Array, Uint16Array, wasm_bindgen::JsCast};
+use rsx_redux::cpu::bus::gpu::{
+    CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors,
+    VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
+};
+use web_sys::{
+    HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes,
+    WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture, WebGlUniformLocation, window,
+};
 
 const QUAD_VERTS: [f32; 24] = [
     // pos        uv
@@ -191,23 +196,18 @@ impl Renderer {
         let location = gl.get_uniform_location(&program, "vramRead");
 
         let loc_has_texture = gl.get_uniform_location(&program, "hasTexture");
-        let loc_semitransparent = gl
-            .get_uniform_location(&program, "semitransparent");
+        let loc_semitransparent = gl.get_uniform_location(&program, "semitransparent");
         let loc_modulate = gl.get_uniform_location(&program, "modulate");
         let loc_texture_mask_x = gl.get_uniform_location(&program, "textureMaskX");
         let loc_texture_mask_y = gl.get_uniform_location(&program, "textureMaskY");
-        let loc_texture_offset_x = gl
-            .get_uniform_location(&program, "textureOffsetX");
-        let loc_texture_offset_y = gl
-            .get_uniform_location(&program, "textureOffsetY");
+        let loc_texture_offset_x = gl.get_uniform_location(&program, "textureOffsetX");
+        let loc_texture_offset_y = gl.get_uniform_location(&program, "textureOffsetY");
         let loc_depth = gl.get_uniform_location(&program, "depth");
-        let loc_transparent_mode = gl
-            .get_uniform_location(&program, "transparentMode");
+        let loc_transparent_mode = gl.get_uniform_location(&program, "transparentMode");
         let loc_page = gl.get_uniform_location(&program, "page");
         let loc_clut = gl.get_uniform_location(&program, "clut");
         let loc_force_mask_bit = gl.get_uniform_location(&program, "forceMaskBit");
-        let loc_preserve_masked_pixels = gl
-            .get_uniform_location(&program, "preserveMaskedPixels");
+        let loc_preserve_masked_pixels = gl.get_uniform_location(&program, "preserveMaskedPixels");
 
         let vertex_buffer = gl.create_buffer().unwrap();
         let quad_buffer = gl.create_buffer().unwrap();
@@ -433,7 +433,11 @@ impl Renderer {
     }
 
     fn get_drawing_area(polygon: &Polygon, invert: bool) -> (u32, u32, u32, u32) {
-        let y = if invert { VRAM_HEIGHT as u32 - polygon.y2 - 1 } else { polygon.y1 as u32 };
+        let y = if invert {
+            VRAM_HEIGHT as u32 - polygon.y2 - 1
+        } else {
+            polygon.y1 as u32
+        };
         (
             polygon.x1,
             y,
@@ -724,10 +728,14 @@ impl Renderer {
             fragment_uniform.preserve_masked_pixels as i32,
         );
 
-        self.gl
-            .uniform1ui(self.loc_texture_mask_x.as_ref(), fragment_uniform.texture_mask_x);
-        self.gl
-            .uniform1ui(self.loc_texture_mask_y.as_ref(), fragment_uniform.texture_mask_y);
+        self.gl.uniform1ui(
+            self.loc_texture_mask_x.as_ref(),
+            fragment_uniform.texture_mask_x,
+        );
+        self.gl.uniform1ui(
+            self.loc_texture_mask_y.as_ref(),
+            fragment_uniform.texture_mask_y,
+        );
         self.gl.uniform1ui(
             self.loc_texture_offset_x.as_ref(),
             fragment_uniform.texture_offset_x,
@@ -758,7 +766,6 @@ impl Renderer {
 
         self.gl
             .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
-
 
         let (start_x, start_y, width, height) = Self::get_drawing_area(polygon, true);
 
@@ -859,7 +866,7 @@ impl Renderer {
             params.height as i32,
             &rgba8_bytes,
             &halfwords,
-            true
+            true,
         );
     }
 
@@ -932,31 +939,44 @@ impl Renderer {
 
     pub fn get_vram_textures(&self) -> (Vec<u8>, Vec<u8>) {
         let mut rgba8_buf = vec![0u8; VRAM_WIDTH * VRAM_HEIGHT * 4];
-        let mut rgba16_buf = vec![0u8; VRAM_WIDTH * VRAM_HEIGHT * 2];
+        let mut rgba16_buf = vec![0u16; VRAM_WIDTH * VRAM_HEIGHT];
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
-        self.gl.read_pixels_with_opt_u8_array(
-            0,
-            0,
-            VRAM_WIDTH as i32,
-            VRAM_HEIGHT as i32,
-            WebGl2RenderingContext::RGBA,
-            WebGl2RenderingContext::UNSIGNED_BYTE,
-            Some(&mut rgba8_buf)
-        ).unwrap();
+        self.gl
+            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
+        self.gl
+            .read_pixels_with_opt_u8_array(
+                0,
+                0,
+                VRAM_WIDTH as i32,
+                VRAM_HEIGHT as i32,
+                WebGl2RenderingContext::RGBA,
+                WebGl2RenderingContext::UNSIGNED_BYTE,
+                Some(&mut rgba8_buf),
+            )
+            .unwrap();
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
-        self.gl.read_pixels_with_opt_u8_array(
-            0,
-            0,
-            VRAM_WIDTH as i32,
-            VRAM_HEIGHT as i32,
-            WebGl2RenderingContext::RED_INTEGER,
-            WebGl2RenderingContext::UNSIGNED_SHORT,
-            Some(&mut rgba16_buf)
-        ).unwrap();
+        self.gl
+            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
+        {
+            let js_array =
+                unsafe { Uint16Array::view_mut_raw(rgba16_buf.as_mut_ptr(), rgba16_buf.len()) };
 
-        (rgba8_buf, rgba16_buf)
+            self.gl
+                .read_pixels_with_opt_array_buffer_view(
+                    0,
+                    0,
+                    VRAM_WIDTH as i32,
+                    VRAM_HEIGHT as i32,
+                    WebGl2RenderingContext::RED_INTEGER,
+                    WebGl2RenderingContext::UNSIGNED_SHORT,
+                    Some(&js_array),
+                )
+                .unwrap();
+        }
+
+        let rgba16_bytes: &[u8] = cast_slice(&rgba16_buf);
+
+        (rgba8_buf, rgba16_bytes.to_vec())
     }
 
     pub fn set_vram_textures(&self, rgba8_buf: Vec<u8>, rgba16_buf: Vec<u8>) {
@@ -969,7 +989,7 @@ impl Renderer {
             VRAM_HEIGHT as i32,
             &rgba8_buf,
             rgba16_buf,
-            false
+            false,
         );
     }
 }

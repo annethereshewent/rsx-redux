@@ -339,6 +339,9 @@ function __wbg_get_imports() {
         __wbg_linkProgram_2d8e6a45b85f995e: function(arg0, arg1) {
             arg0.linkProgram(arg1);
         },
+        __wbg_log_6614a4effdb4e983: function(arg0) {
+            console.log(arg0);
+        },
         __wbg_new_20b778a4c5c691c3: function() {
             const ret = new Object();
             return ret;
@@ -360,6 +363,9 @@ function __wbg_get_imports() {
         },
         __wbg_readPixels_570591a9744a4347: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
             arg0.readPixels(arg1, arg2, arg3, arg4, arg5 >>> 0, arg6 >>> 0, arg7 === 0 ? undefined : getArrayU8FromWasm0(arg7, arg8));
+        }, arguments); },
+        __wbg_readPixels_d961289eace37b34: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
+            arg0.readPixels(arg1, arg2, arg3, arg4, arg5 >>> 0, arg6 >>> 0, arg7);
         }, arguments); },
         __wbg_scissor_cbf75d28fdc87e8c: function(arg0, arg1, arg2, arg3, arg4) {
             arg0.scissor(arg1, arg2, arg3, arg4);
@@ -425,6 +431,16 @@ function __wbg_get_imports() {
         },
         __wbg_viewport_357a29f80f8d01f0: function(arg0, arg1, arg2, arg3, arg4) {
             arg0.viewport(arg1, arg2, arg3, arg4);
+        },
+        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(Slice(U16)) -> NamedExternref("Uint16Array")`.
+            const ret = getArrayU16FromWasm0(arg0, arg1);
+            return ret;
+        },
+        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
+            return ret;
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
