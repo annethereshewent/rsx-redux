@@ -181,5 +181,9 @@ void main() {
 
     if (forceMaskBit) {
         outColor.a = 1.0;
+    } else if (hasTexture) {
+        outColor.a = texAlpha;
+    } else {
+        outColor.a = 0.0;
     }
 }
