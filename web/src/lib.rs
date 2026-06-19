@@ -19,6 +19,7 @@ pub struct PsxWebEmulator {
     cpu: CPU,
     memory_bytes: Vec<u8>,
     renderer: Renderer,
+    canvas_id: String,
 }
 
 #[wasm_bindgen]
@@ -31,6 +32,7 @@ impl PsxWebEmulator {
             cpu: CPU::new(None, "".to_string()),
             memory_bytes: Vec::new(),
             renderer: Renderer::new(canvas_id),
+            canvas_id: canvas_id.to_string(),
         }
     }
 
@@ -189,6 +191,11 @@ impl PsxWebEmulator {
         let game_bytes = self.cpu.bus.cdrom.game_bytes.clone();
         let exe_bytes = self.cpu.exe_bytes.clone();
         let bios = self.cpu.bus.get_bios();
+
+        #[cfg(feature = "hardware_gpu_web")]
+        {
+            self.renderer = Renderer::new(&self.canvas_id);
+        }
 
         self.cpu = CPU::new(exe_bytes, "".to_string());
 
