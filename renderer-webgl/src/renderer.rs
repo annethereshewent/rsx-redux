@@ -770,8 +770,14 @@ impl Renderer {
         self.gl
             .scissor(start_x as i32, start_y as i32, width as i32, height as i32);
 
+        let primitive_type = if polygon.is_line {
+            WebGl2RenderingContext::LINES
+        } else {
+            WebGl2RenderingContext::TRIANGLES
+        };
+
         self.gl
-            .draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vertices.len() as i32);
+            .draw_arrays(primitive_type, 0, vertices.len() as i32);
 
         self.gl.disable(WebGl2RenderingContext::SCISSOR_TEST);
     }
