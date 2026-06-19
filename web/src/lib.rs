@@ -1,5 +1,6 @@
 use std::panic;
 
+use renderer_webgl::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -9,6 +10,7 @@ extern "C" {
     fn log(s: &str);
 }
 
+#[allow(unused_macros)]
 macro_rules! console_log {
   ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
 }
@@ -16,19 +18,22 @@ macro_rules! console_log {
 #[wasm_bindgen]
 pub struct PsxWebEmulator {
     cpu: CPU,
-    memory_bytes: Vec<u8>
+    memory_bytes: Vec<u8>,
+    renderer: Renderer,
+    canvas_id: String,
 }
-
 
 #[wasm_bindgen]
 impl PsxWebEmulator {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    pub fn new(canvas_id: &str) -> Self {
         panic::set_hook(Box::new(console_error_panic_hook::hook));
 
         Self {
             cpu: CPU::new(None, "".to_string()),
             memory_bytes: Vec::new(),
+            renderer: Renderer::new(canvas_id),
+            canvas_id: canvas_id.to_string(),
         }
     }
 
@@ -41,12 +46,17 @@ impl PsxWebEmulator {
     }
 
     pub fn step_frame(&mut self) {
+        self.renderer.clear_color();
         while !self.cpu.bus.gpu.frame_finished {
             self.cpu.step();
+            self.renderer.process(&mut self.cpu.bus.gpu);
         }
 
         self.cpu.bus.gpu.frame_finished = false;
 
+        self.renderer.present(&mut self.cpu.bus.gpu);
+
+        #[cfg(feature = "software_gpu")]
         self.cpu.bus.gpu.update_framebuffer();
     }
 
@@ -106,16 +116,30 @@ impl PsxWebEmulator {
 
         self.cpu.bus.scheduler.deserialize_scheduler();
 
+        #[cfg(feature = "hardware_gpu_web")]
+        {
+            let rgba8_bytes = self.cpu.bus.gpu.vram_write_tex.to_vec();
+            let rgba16_bytes = self.cpu.bus.gpu.vram_read_tex.to_vec();
+            self.renderer.set_vram_textures(rgba8_bytes, rgba16_bytes);
+        }
+
         self.cpu
             .bus
             .peripherals
             .memory_card
             .set_memory_bytes(self.memory_bytes.clone());
-
     }
 
     pub fn save_state(&mut self) -> Vec<u8> {
         self.cpu.bus.scheduler.serialize_scheduler();
+
+        #[cfg(feature = "hardware_gpu_web")]
+        {
+            let (vram_write_tex, vram_read_tex) = self.renderer.get_vram_textures();
+
+            self.cpu.bus.gpu.vram_write_tex = vram_write_tex.into_boxed_slice();
+            self.cpu.bus.gpu.vram_read_tex = vram_read_tex.into_boxed_slice();
+        }
 
         let (data, _) = self.cpu.create_save_state();
 
@@ -154,19 +178,25 @@ impl PsxWebEmulator {
         self.cpu.bus.peripherals.selected_controller = controller_id;
     }
 
+    #[cfg(feature = "software_gpu")]
     pub fn get_framebuffer(&self) -> *const u8 {
         self.cpu.bus.gpu.picture.as_ptr()
     }
 
+    #[cfg(feature = "software_gpu")]
     pub fn get_framebuffer_size(&self) -> usize {
         self.cpu.bus.gpu.picture.len()
     }
 
     pub fn reset(&mut self) {
-
         let game_bytes = self.cpu.bus.cdrom.game_bytes.clone();
         let exe_bytes = self.cpu.exe_bytes.clone();
         let bios = self.cpu.bus.get_bios();
+
+        #[cfg(feature = "hardware_gpu_web")]
+        {
+            self.renderer = Renderer::new(&self.canvas_id);
+        }
 
         self.cpu = CPU::new(exe_bytes, "".to_string());
 

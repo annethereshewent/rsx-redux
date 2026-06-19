@@ -30,6 +30,7 @@ export class Psx {
     private isRunning = false
     private memoryCard = "memory_card1"
     private memoryCardData = new Uint8Array(MEMORY_CARD_SIZE)
+    private biosBytes = new Uint8Array([])
     private rsxDb = new RsxDb()
     private stateManager: StateManager|null = null
 
@@ -177,33 +178,7 @@ export class Psx {
     }
 
     getImageUrl() {
-        const memory = new Uint8Array(this.wasm!.memory.buffer, this.emulator!.get_framebuffer(), this.emulator!.get_framebuffer_size())
-        const [width, height] = this.emulator!.get_dimensions()
-
-        const canvas = document.getElementById('save-state-canvas')! as HTMLCanvasElement
-
-        canvas.setAttribute('width', `${width}`)
-        canvas.setAttribute('height', `${height}`)
-
-        const context = canvas.getContext('2d')
-
-        const imageData = context!.getImageData(0, 0, width, height)
-
-        for (let y = 0; y < width; y++) {
-            for (let x = 0; x < height; x++) {
-                const index = x * 3 + y * height * 3
-                const canvasIndex = x * 4 + y * height * 4
-
-                imageData.data[canvasIndex] = memory[index]
-                imageData.data[canvasIndex + 1] = memory[index + 1]
-                imageData.data[canvasIndex + 2] = memory[index + 2]
-                imageData.data[canvasIndex + 3] = 255
-            }
-        }
-
-        context!.putImageData(imageData, 0, 0)
-
-        return canvas.toDataURL()
+        return this.videoOutput?.getImageUrl() ?? ""
     }
 
     togglePause() {
@@ -235,7 +210,7 @@ export class Psx {
         if (biosDataArr != null) {
             const biosBytes = new Uint8Array(biosDataArr)
 
-            this.emulator!.load_bios(biosBytes)
+            this.biosBytes = biosBytes
 
             this.enableGameButton()
         }
@@ -249,7 +224,6 @@ export class Psx {
 
     async initWasm() {
         this.wasm = await init(wasmData)
-        this.emulator = new PsxWebEmulator()
     }
 
     loadBios() {
@@ -330,31 +304,44 @@ export class Psx {
 
         cancelAnimationFrame(this.frameNumber)
 
-        if (/\.exe$/.test(file.name)) {
-            this.emulator!.set_exe(binaryBytes)
-        } else {
-            this.emulator!.load_rom(binaryBytes)
-            this.emulator!.set_exe(null)
-        }
-        this.emulator!.set_memory_card(this.memoryCardData)
-
-        this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
-        this.stateManager.updateStateMenuList()
-
         const placeholder = document.getElementById('placeholder')
 
         if (placeholder != null) {
             placeholder.remove()
             const canvas = document.createElement('canvas')
 
+            canvas.id = 'psx-canvas'
+
             canvas.setAttribute('width', '640');
             canvas.setAttribute('height', '480')
 
             document.getElementById('display')!.append(canvas)
+
+            this.emulator = new PsxWebEmulator('psx-canvas')
+            this.emulator.load_bios(this.biosBytes)
+
+            // clear the bios bytes so they don't take up additional space in memory. we just need the property
+            // to load the bios after a game has been chosen
+            this.biosBytes = new Uint8Array([])
+
             this.videoOutput = new VideoOutput(canvas, this.emulator!, this.wasm!)
         } else {
             this.emulator!.reset()
         }
+
+        this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
+        this.stateManager.updateStateMenuList()
+
+        this.emulator!.set_memory_card(this.memoryCardData)
+
+        if (/\.exe$/.test(file.name)) {
+            this.emulator!.set_exe(binaryBytes)
+        } else {
+            this.emulator!.load_rom(binaryBytes)
+            this.emulator!.set_exe(null)
+        }
+
+        this.emulator!.set_memory_card(this.memoryCardData)
 
         this.audioOutput.setEmulator(this.emulator!)
         this.audioOutput.initAudio()
@@ -419,7 +406,7 @@ export class Psx {
             this.realPreviousTime = time
             if (diff >= FPS_INTERVAL || this.previousTime == 0) {
                 this.emulator!.step_frame()
-                this.videoOutput?.updateCanvas()
+
                 const samples = this.audioOutput.pushSamples()
 
                 this.waveVisualizer.plot(samples!)
@@ -455,7 +442,7 @@ export class Psx {
 
         const biosBytes = new Uint8Array(dataArrayBuffer)
 
-        this.emulator?.load_bios(biosBytes)
+        this.biosBytes = biosBytes
 
         this.enableGameButton()
 
