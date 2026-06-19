@@ -227,6 +227,10 @@ export class Psx {
     }
 
     loadBios() {
+        if (this.gameReady) {
+            return
+        }
+
         this.openFile('file-bios', (file) => this.handleBiosFile(file))
     }
 
@@ -250,6 +254,8 @@ export class Psx {
 
                     callback(file)
                 }
+
+                (e.target as HTMLInputElement).value = ''
             }
             gameInput.click()
         }
@@ -340,7 +346,7 @@ export class Psx {
 
         this.joypad.updateButtonMap()
         this.joypad.addKeyboardControllerListeners()
-        this.enableSwapDisc()
+        this.enableSwapDiscDisableBios()
 
         this.joypad.setEmulator(this.emulator)
 
@@ -366,10 +372,10 @@ export class Psx {
         this.joypad.resetToDefaults()
     }
 
-    enableSwapDisc() {
+    enableSwapDiscDisableBios() {
         this.gameReady = true
-        const swapDisc = document.getElementById('btn-swap-disc')
-        swapDisc?.removeAttribute('disabled')
+        document.getElementById('btn-swap-disc')?.removeAttribute('disabled')
+        document.getElementById('btn-load-bios')?.setAttribute('disabled', 'true')
     }
 
     toggleWaveform() {

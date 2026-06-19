@@ -544,8 +544,8 @@ impl CDRom {
 
         self.stat();
         self.controller_response_fifo.push_back(0x08); // error byte
-        self.irq_latch = 0x5;
-        self.irqs = 0;
+        self.irq_latch = 0;
+        self.irqs = 0x5;
         self.process_irqs(interrupt_register);
     }
 
@@ -790,6 +790,9 @@ impl CDRom {
 
     fn motor_on(&mut self) {
         self.stat();
+
+        self.motor_on = true;
+
         self.controller_response_fifo.push_back(0x20);
 
         self.irq_latch = 0x5;
