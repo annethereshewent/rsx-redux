@@ -245,6 +245,12 @@ function __wbg_get_imports() {
             const ret = arg0.createTexture();
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         },
+        __wbg_deleteFramebuffer_98bf0f1d31b4e143: function(arg0, arg1) {
+            arg0.deleteFramebuffer(arg1);
+        },
+        __wbg_deleteTexture_a901f8f2ae7dc7b7: function(arg0, arg1) {
+            arg0.deleteTexture(arg1);
+        },
         __wbg_disable_0558cf9a0c1c04d1: function(arg0, arg1) {
             arg0.disable(arg1 >>> 0);
         },

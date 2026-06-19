@@ -182,89 +182,27 @@ impl Renderer {
         let vertex_buffer = gl.create_buffer().unwrap();
         let quad_buffer = gl.create_buffer().unwrap();
 
-        gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&vram_write));
+        let fbo_write = gl.create_framebuffer().unwrap();
+        let fbo_read = gl.create_framebuffer().unwrap();
 
-        gl.tex_storage_2d(
-            WebGl2RenderingContext::TEXTURE_2D,
-            1,
+        Self::bind_texture_to_framebuffer(
+            &gl,
+            WebGl2RenderingContext::TEXTURE0,
             WebGl2RenderingContext::RGBA8,
             VRAM_WIDTH as i32,
             VRAM_HEIGHT as i32,
+            &vram_write,
+            &fbo_write
         );
 
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
-            WebGl2RenderingContext::NEAREST as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
-            WebGl2RenderingContext::NEAREST as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_WRAP_S,
-            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_WRAP_T,
-            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
-        );
-
-        gl.active_texture(WebGl2RenderingContext::TEXTURE1);
-        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&vram_read));
-
-        gl.tex_storage_2d(
-            WebGl2RenderingContext::TEXTURE_2D,
-            1,
+        Self::bind_texture_to_framebuffer(
+            &gl,
+            WebGl2RenderingContext::TEXTURE1,
             WebGl2RenderingContext::R16UI,
             VRAM_WIDTH as i32,
             VRAM_HEIGHT as i32,
-        );
-
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
-            WebGl2RenderingContext::NEAREST as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
-            WebGl2RenderingContext::NEAREST as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_WRAP_S,
-            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_WRAP_T,
-            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
-        );
-
-        let fbo_write = gl.create_framebuffer().unwrap();
-
-        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&fbo_write));
-        gl.framebuffer_texture_2d(
-            WebGl2RenderingContext::FRAMEBUFFER,
-            WebGl2RenderingContext::COLOR_ATTACHMENT0,
-            WebGl2RenderingContext::TEXTURE_2D,
-            Some(&vram_write),
-            0,
-        );
-
-        let fbo_read = gl.create_framebuffer().unwrap();
-        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&fbo_read));
-        gl.framebuffer_texture_2d(
-            WebGl2RenderingContext::FRAMEBUFFER,
-            WebGl2RenderingContext::COLOR_ATTACHMENT0,
-            WebGl2RenderingContext::TEXTURE_2D,
-            Some(&vram_read),
-            0,
+            &vram_read,
+            &fbo_read
         );
 
         let float_view = Float32Array::from(QUAD_VERTS.as_slice());
@@ -304,6 +242,58 @@ impl Renderer {
             loc_preserve_masked_pixels,
         }
     }
+
+    fn bind_texture_to_framebuffer(
+        gl: &WebGl2RenderingContext,
+        active_texture: u32,
+        internal_format: u32,
+        width: i32,
+        height: i32,
+        texture: &WebGlTexture,
+        framebuffer: &WebGlFramebuffer,
+    ) {
+        gl.active_texture(active_texture);
+        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(texture));
+
+        gl.tex_storage_2d(
+            WebGl2RenderingContext::TEXTURE_2D,
+            1,
+            internal_format,
+            width,
+            height,
+        );
+
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
+            WebGl2RenderingContext::NEAREST as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
+            WebGl2RenderingContext::NEAREST as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_WRAP_S,
+            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+        );
+        gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_WRAP_T,
+            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
+        );
+
+        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(framebuffer));
+        gl.framebuffer_texture_2d(
+            WebGl2RenderingContext::FRAMEBUFFER,
+            WebGl2RenderingContext::COLOR_ATTACHMENT0,
+            WebGl2RenderingContext::TEXTURE_2D,
+            Some(texture),
+            0,
+        );
+    }
+
 
     fn compile_shader(
         gl: &WebGl2RenderingContext,
@@ -941,8 +931,22 @@ impl Renderer {
     }
 
     fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {
+
+        let temp_rgba_texture = self.gl.create_texture().unwrap();
+        let temp_rgba_fbo = self.gl.create_framebuffer().unwrap();
+
+        Self::bind_texture_to_framebuffer(
+            &self.gl,
+            WebGl2RenderingContext::TEXTURE2,
+            WebGl2RenderingContext::RGBA8,
+            params.width as i32,
+            params.height as i32,
+            &temp_rgba_texture,
+            &temp_rgba_fbo
+        );
+
         self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&self.fbo_write));
-        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_write));
+        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&temp_rgba_fbo));
 
         let source_y_flipped = (VRAM_HEIGHT as u32 - params.source_start_y - params.height) as i32;
         let destination_y_flipped = (VRAM_HEIGHT as u32 - params.destination_start_y - params.height) as i32;
@@ -952,6 +956,22 @@ impl Renderer {
             source_y_flipped,
             params.source_start_x as i32 + params.width as i32,
             source_y_flipped + params.height as i32,
+            0,
+            0,
+            params.width as i32,
+            params.height as i32,
+            WebGl2RenderingContext::COLOR_BUFFER_BIT,
+            WebGl2RenderingContext::NEAREST
+        );
+
+        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&temp_rgba_fbo));
+        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_write));
+
+        self.gl.blit_framebuffer(
+            0,
+            0,
+            params.width as i32,
+            params.height as i32,
             params.destination_start_x as i32,
             destination_y_flipped,
             params.destination_start_x as i32 + params.width as i32,
@@ -960,14 +980,43 @@ impl Renderer {
             WebGl2RenderingContext::NEAREST
         );
 
+        let temp_r16_texture = self.gl.create_texture().unwrap();
+        let temp_r16_fbo = self.gl.create_framebuffer().unwrap();
+
+        Self::bind_texture_to_framebuffer(
+            &self.gl,
+            WebGl2RenderingContext::TEXTURE3,
+            WebGl2RenderingContext::R16UI,
+            params.width as i32,
+            params.height as i32,
+            &temp_r16_texture,
+            &temp_r16_fbo,
+        );
+
         self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&self.fbo_read));
-        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_read));
+        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&temp_r16_fbo));
 
         self.gl.blit_framebuffer(
             params.source_start_x as i32,
             params.source_start_y as i32,
             params.source_start_x as i32 + params.width as i32,
             params.source_start_y as i32 + params.height as i32,
+            0,
+            0,
+            params.width as i32,
+            params.height as i32,
+            WebGl2RenderingContext::COLOR_BUFFER_BIT,
+            WebGl2RenderingContext::NEAREST
+        );
+
+        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&temp_r16_fbo));
+        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_read));
+
+        self.gl.blit_framebuffer(
+            0,
+            0,
+            params.width as i32,
+            params.height as i32,
             params.destination_start_x as i32,
             params.destination_start_y as i32,
             params.destination_start_x as i32 + params.width as i32,
@@ -975,6 +1024,12 @@ impl Renderer {
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
             WebGl2RenderingContext::NEAREST
         );
+
+        self.gl.delete_texture(Some(&temp_rgba_texture));
+        self.gl.delete_framebuffer(Some(&temp_rgba_fbo));
+
+        self.gl.delete_texture(Some(&temp_r16_texture));
+        self.gl.delete_framebuffer(Some(&temp_r16_fbo));
     }
 
     pub fn get_vram_textures(&self) -> (Vec<u8>, Vec<u8>) {
