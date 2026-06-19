@@ -109,9 +109,28 @@ vec4 getTexColor15bpp(usampler2D vramRead) {
     return vec4(r, g, b, a) / 31.0;
 }
 
+vec4 getOldColor() {
+    uint oldTexel = texelFetch(vramRead, ivec2(vOrig), 0).r;
+
+    uint r = oldTexel & 0x1fu;
+    uint g = (oldTexel >> 5u) & 0x1fu;
+    uint b = (oldTexel >> 10u) & 0x1fu;
+    uint a = ((oldTexel >> 15u) & 1u) * 0x1fu;
+
+    return vec4(r, g, b, a) / 31.0;
+}
+
 void main() {
     outColor = vColor;
     float texAlpha = 0.0;
+
+    if (preserveMaskedPixels) {
+        vec4 old = getOldColor();
+
+        if (old.a != 0.0) {
+            discard;
+        }
+    }
 
     if (hasTexture) {
         vec4 texColor;
@@ -142,14 +161,7 @@ void main() {
     }
 
     if (semitransparent && (!hasTexture || texAlpha == 1.0)) {
-        uint oldTexel = texelFetch(vramRead, ivec2(vOrig), 0).r;
-
-        uint r = oldTexel & 0x1fu;
-        uint g = (oldTexel >> 5u) & 0x1fu;
-        uint b = (oldTexel >> 10u) & 0x1fu;
-        uint a = ((oldTexel >> 15u) & 1u) * 0x1fu;
-
-        vec4 old = vec4(r, g, b, a) / 31.0;
+        vec4 old = getOldColor();
 
         switch (transparentMode) {
             case 0u:
@@ -165,5 +177,9 @@ void main() {
                 outColor = min(old + (outColor / 4.0), 1.0);
                 break;
         }
+    }
+
+    if (forceMaskBit) {
+        outColor.a = 1.0;
     }
 }

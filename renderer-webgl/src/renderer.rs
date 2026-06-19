@@ -385,7 +385,7 @@ impl Renderer {
                     let is_15bpp = polygon.textured
                         && polygon.texpage.map(|texpage| texpage.texture_page_colors)
                             == Some(TexturePageColors::Bit15);
-                    if polygon.semitransparent || is_15bpp {
+                    if polygon.semitransparent || is_15bpp || polygon.preserve_masked_pixels {
                         self.vram_writeback(Some(&polygon), None);
                     }
 
@@ -935,6 +935,13 @@ impl Renderer {
     }
 
     fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {
+        if params.destination_start_x == params.source_start_x
+            && params.destination_start_y == params.source_start_y
+        {
+            // for some reason the PS1 will transfer from the same source to same destination as some sort of NOP,
+            // and webGL will break things if it attempts to do this blit, so it's best to explicitly return if that's the case
+            return;
+        }
         let temp_rgba_texture = self.gl.create_texture().unwrap();
         let temp_rgba_fbo = self.gl.create_framebuffer().unwrap();
 
@@ -967,9 +974,9 @@ impl Renderer {
             params.source_start_x as i32 + params.width as i32,
             source_y_flipped + params.height as i32,
             0,
-            params.height as i32,
-            params.width as i32,
             0,
+            params.width as i32,
+            params.height as i32,
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
             WebGl2RenderingContext::NEAREST,
         );
@@ -985,9 +992,9 @@ impl Renderer {
 
         self.gl.blit_framebuffer(
             0,
-            params.height as i32,
-            params.width as i32,
             0,
+            params.width as i32,
+            params.height as i32,
             params.destination_start_x as i32,
             destination_y_flipped,
             params.destination_start_x as i32 + params.width as i32,
