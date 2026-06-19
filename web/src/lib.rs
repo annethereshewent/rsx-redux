@@ -178,6 +178,15 @@ impl PsxWebEmulator {
         self.cpu.bus.peripherals.selected_controller = controller_id;
     }
 
+    pub fn close_shell(&mut self, bytes: &[u8]) {
+        self.load_rom(bytes);
+        self.cpu.bus.cdrom.close_shell();
+    }
+
+    pub fn open_shell(&mut self) {
+        self.cpu.bus.cdrom.open_shell(&mut self.cpu.bus.interrupt_stat);
+    }
+
     #[cfg(feature = "software_gpu")]
     pub fn get_framebuffer(&self) -> *const u8 {
         self.cpu.bus.gpu.picture.as_ptr()

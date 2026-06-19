@@ -227,20 +227,7 @@ export class Psx {
     }
 
     loadBios() {
-        const biosInput = document.getElementById('file-bios') as HTMLInputElement
-
-        if (biosInput != null) {
-            biosInput.onchange = (e) => {
-                const files = (e.target as HTMLInputElement)?.files
-
-                if (files != null) {
-                    const file = files[0]
-
-                    this.handleBiosFile(file)
-                }
-            }
-            biosInput.click()
-        }
+        this.openFile('file-bios', (file) => this.handleBiosFile(file))
     }
 
     loadGame() {
@@ -248,11 +235,11 @@ export class Psx {
             return
         }
 
-        this.openFile((file) => this.startGame(file))
+        this.openFile('file-game', (file) => this.startGame(file))
     }
 
-    openFile(callback: (file: File) => void) {
-        const gameInput = document.getElementById('file-game')
+    openFile(input: string, callback: (file: File) => void) {
+        const gameInput = document.getElementById(input)
 
         if (gameInput != null) {
             gameInput.onchange = (e) => {
@@ -471,7 +458,9 @@ export class Psx {
             return
         }
 
-        this.openFile((file) => this.swapDiscInner(file))
+        this.emulator!.open_shell()
+
+        this.openFile('file-disc', (file) => this.swapDiscInner(file))
     }
 
     async swapDiscInner(gameFile: File) {
@@ -479,6 +468,6 @@ export class Psx {
 
         const bytes = new Uint8Array(data)
 
-        this.emulator?.load_rom(bytes)
+        this.emulator?.close_shell(bytes)
     }
 }
