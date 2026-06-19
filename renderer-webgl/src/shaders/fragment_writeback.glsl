@@ -14,7 +14,7 @@ void main() {
     uint r = uint(rgba.r * 255.0 + 0.5) >> 3u;
     uint g = uint(rgba.g * 255.0 + 0.5) >> 3u;
     uint b = uint(rgba.b * 255.0 + 0.5) >> 3u;
-    uint a = rgba.a > 0.5 ? 1u : 0u; // bit 15
+    uint a = rgba.a != 0.0 ? 1u : 0u; // bit 15
 
     outHalfword = (a << 15u) | (b << 10u) | (g << 5u) | r;
 }

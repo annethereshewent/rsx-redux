@@ -192,7 +192,7 @@ impl Renderer {
             VRAM_WIDTH as i32,
             VRAM_HEIGHT as i32,
             &vram_write,
-            &fbo_write
+            &fbo_write,
         );
 
         Self::bind_texture_to_framebuffer(
@@ -202,7 +202,7 @@ impl Renderer {
             VRAM_WIDTH as i32,
             VRAM_HEIGHT as i32,
             &vram_read,
-            &fbo_read
+            &fbo_read,
         );
 
         let float_view = Float32Array::from(QUAD_VERTS.as_slice());
@@ -294,7 +294,6 @@ impl Renderer {
         );
     }
 
-
     fn compile_shader(
         gl: &WebGl2RenderingContext,
         shader_type: u32,
@@ -383,10 +382,10 @@ impl Renderer {
                     self.execute_fill_vram(params);
                 }
                 GPUCommand::RenderPolygon(polygon) => {
-                    let is_16bpp = polygon.textured
+                    let is_15bpp = polygon.textured
                         && polygon.texpage.map(|texpage| texpage.texture_page_colors)
                             == Some(TexturePageColors::Bit15);
-                    if polygon.semitransparent || is_16bpp {
+                    if polygon.semitransparent || is_15bpp {
                         self.vram_writeback(Some(&polygon), None);
                     }
 
@@ -549,7 +548,6 @@ impl Renderer {
                 let halfword = r | g << 5 | b << 10 | a << 15;
 
                 halfwords.push(halfword);
-
             }
         }
 
@@ -937,7 +935,6 @@ impl Renderer {
     }
 
     fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {
-
         let temp_rgba_texture = self.gl.create_texture().unwrap();
         let temp_rgba_fbo = self.gl.create_framebuffer().unwrap();
 
@@ -948,14 +945,21 @@ impl Renderer {
             params.width as i32,
             params.height as i32,
             &temp_rgba_texture,
-            &temp_rgba_fbo
+            &temp_rgba_fbo,
         );
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&self.fbo_write));
-        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&temp_rgba_fbo));
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::READ_FRAMEBUFFER,
+            Some(&self.fbo_write),
+        );
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
+            Some(&temp_rgba_fbo),
+        );
 
         let source_y_flipped = (VRAM_HEIGHT as u32 - params.source_start_y - params.height) as i32;
-        let destination_y_flipped = (VRAM_HEIGHT as u32 - params.destination_start_y - params.height) as i32;
+        let destination_y_flipped =
+            (VRAM_HEIGHT as u32 - params.destination_start_y - params.height) as i32;
 
         self.gl.blit_framebuffer(
             params.source_start_x as i32,
@@ -967,11 +971,17 @@ impl Renderer {
             params.width as i32,
             0,
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST
+            WebGl2RenderingContext::NEAREST,
         );
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&temp_rgba_fbo));
-        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_write));
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::READ_FRAMEBUFFER,
+            Some(&temp_rgba_fbo),
+        );
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
+            Some(&self.fbo_write),
+        );
 
         self.gl.blit_framebuffer(
             0,
@@ -983,7 +993,7 @@ impl Renderer {
             params.destination_start_x as i32 + params.width as i32,
             destination_y_flipped + params.height as i32,
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST
+            WebGl2RenderingContext::NEAREST,
         );
 
         self.gl.delete_texture(Some(&temp_rgba_texture));
@@ -1002,8 +1012,14 @@ impl Renderer {
             &temp_r16_fbo,
         );
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&self.fbo_read));
-        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&temp_r16_fbo));
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::READ_FRAMEBUFFER,
+            Some(&self.fbo_read),
+        );
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
+            Some(&temp_r16_fbo),
+        );
 
         self.gl.blit_framebuffer(
             params.source_start_x as i32,
@@ -1015,11 +1031,17 @@ impl Renderer {
             params.width as i32,
             params.height as i32,
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST
+            WebGl2RenderingContext::NEAREST,
         );
 
-        self.gl.bind_framebuffer(WebGl2RenderingContext::READ_FRAMEBUFFER, Some(&temp_r16_fbo));
-        self.gl.bind_framebuffer(WebGl2RenderingContext::DRAW_FRAMEBUFFER, Some(&self.fbo_read));
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::READ_FRAMEBUFFER,
+            Some(&temp_r16_fbo),
+        );
+        self.gl.bind_framebuffer(
+            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
+            Some(&self.fbo_read),
+        );
 
         self.gl.blit_framebuffer(
             0,
@@ -1031,7 +1053,7 @@ impl Renderer {
             params.destination_start_x as i32 + params.width as i32,
             params.destination_start_y as i32 + params.height as i32,
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST
+            WebGl2RenderingContext::NEAREST,
         );
 
         self.gl.delete_texture(Some(&temp_r16_texture));
