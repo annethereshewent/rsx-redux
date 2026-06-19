@@ -77,6 +77,12 @@ mod ffi {
 
         #[swift_bridge(swift_name = "switchSelectedController")]
         fn switch_selected_controller(&mut self, controller_id: u8);
+
+        #[swift_bridge(swift_name = "closeShell")]
+        fn close_shell(&mut self, path: &str);
+
+        #[swift_bridge(swift_name = "openShell")]
+        fn open_shell(&mut self);
     }
 }
 
@@ -265,5 +271,14 @@ impl PsxMacEmulator {
 
     pub fn switch_selected_controller(&mut self, controller_id: u8) {
         self.cpu.bus.peripherals.selected_controller = controller_id;
+    }
+
+    pub fn close_shell(&mut self, path: &str) {
+        self.load_rom(path);
+        self.cpu.bus.cdrom.close_shell();
+    }
+
+    pub fn open_shell(&mut self) {
+        self.cpu.bus.cdrom.open_shell(&mut self.cpu.bus.interrupt_stat);
     }
 }
