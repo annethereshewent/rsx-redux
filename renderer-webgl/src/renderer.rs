@@ -129,6 +129,7 @@ impl Renderer {
 
         let context_options = WebGlContextAttributes::new();
         context_options.set_alpha(false);
+        context_options.set_preserve_drawing_buffer(true);
 
         let gl = canvas
             .get_context_with_context_options("webgl2", &context_options)

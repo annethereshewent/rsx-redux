@@ -41,6 +41,10 @@ export class VideoOutput {
     //     this.context.putImageData(imageData, 0, 0)
     // }
 
+    getImageUrl() {
+        return this.canvas?.toDataURL() ?? ""
+    }
+
     updateCanvas() {
         const [width, height] = this.emulator.get_dimensions();
 

@@ -339,9 +339,6 @@ function __wbg_get_imports() {
         __wbg_linkProgram_2d8e6a45b85f995e: function(arg0, arg1) {
             arg0.linkProgram(arg1);
         },
-        __wbg_log_6614a4effdb4e983: function(arg0) {
-            console.log(arg0);
-        },
         __wbg_new_20b778a4c5c691c3: function() {
             const ret = new Object();
             return ret;
@@ -375,6 +372,9 @@ function __wbg_get_imports() {
         }, arguments); },
         __wbg_set_alpha_fadf880e49aef7ec: function(arg0, arg1) {
             arg0.alpha = arg1 !== 0;
+        },
+        __wbg_set_preserve_drawing_buffer_f0b6bd50c9a00297: function(arg0, arg1) {
+            arg0.preserveDrawingBuffer = arg1 !== 0;
         },
         __wbg_shaderSource_d01f3003544bc127: function(arg0, arg1, arg2, arg3) {
             arg0.shaderSource(arg1, getStringFromWasm0(arg2, arg3));
@@ -435,11 +435,6 @@ function __wbg_get_imports() {
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
             // Cast intrinsic for `Ref(Slice(U16)) -> NamedExternref("Uint16Array")`.
             const ret = getArrayU16FromWasm0(arg0, arg1);
-            return ret;
-        },
-        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
-            // Cast intrinsic for `Ref(String) -> Externref`.
-            const ret = getStringFromWasm0(arg0, arg1);
             return ret;
         },
         __wbindgen_init_externref_table: function() {

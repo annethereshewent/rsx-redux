@@ -178,32 +178,7 @@ export class Psx {
     }
 
     getImageUrl() {
-        const [width, height] = this.emulator!.get_dimensions()
-
-        const canvas = document.getElementById('save-state-canvas')! as HTMLCanvasElement
-
-        canvas.setAttribute('width', `${width}`)
-        canvas.setAttribute('height', `${height}`)
-
-        const context = canvas.getContext('2d')
-
-        const imageData = context!.getImageData(0, 0, width, height)
-
-        for (let y = 0; y < width; y++) {
-            for (let x = 0; x < height; x++) {
-                const index = x * 3 + y * height * 3
-                const canvasIndex = x * 4 + y * height * 4
-
-                imageData.data[canvasIndex] = 0
-                imageData.data[canvasIndex + 1] = 0
-                imageData.data[canvasIndex + 2] = 0
-                imageData.data[canvasIndex + 3] = 255
-            }
-        }
-
-        context!.putImageData(imageData, 0, 0)
-
-        return canvas.toDataURL()
+        return this.videoOutput?.getImageUrl() ?? ""
     }
 
     togglePause() {
