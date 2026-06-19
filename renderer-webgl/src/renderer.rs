@@ -539,7 +539,7 @@ impl Renderer {
         let mut halfwords = Vec::new();
 
         for y in (0..params.height as usize).rev() {
-            for x in (0..params.width as usize).step_by(4) {
+            for x in 0..params.width as usize {
                 let index = (x + y * params.width as usize) * 4;
                 let r = (rgba8_buf[index] >> 3) as u16;
                 let g = (rgba8_buf[index + 1] >> 3) as u16;
@@ -957,9 +957,9 @@ impl Renderer {
             params.source_start_x as i32 + params.width as i32,
             source_y_flipped + params.height as i32,
             0,
-            0,
-            params.width as i32,
             params.height as i32,
+            params.width as i32,
+            0,
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
             WebGl2RenderingContext::NEAREST
         );
@@ -969,9 +969,9 @@ impl Renderer {
 
         self.gl.blit_framebuffer(
             0,
-            0,
-            params.width as i32,
             params.height as i32,
+            params.width as i32,
+            0,
             params.destination_start_x as i32,
             destination_y_flipped,
             params.destination_start_x as i32 + params.width as i32,
@@ -979,6 +979,9 @@ impl Renderer {
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
             WebGl2RenderingContext::NEAREST
         );
+
+        self.gl.delete_texture(Some(&temp_rgba_texture));
+        self.gl.delete_framebuffer(Some(&temp_rgba_fbo));
 
         let temp_r16_texture = self.gl.create_texture().unwrap();
         let temp_r16_fbo = self.gl.create_framebuffer().unwrap();
@@ -1024,9 +1027,6 @@ impl Renderer {
             WebGl2RenderingContext::COLOR_BUFFER_BIT,
             WebGl2RenderingContext::NEAREST
         );
-
-        self.gl.delete_texture(Some(&temp_rgba_texture));
-        self.gl.delete_framebuffer(Some(&temp_rgba_fbo));
 
         self.gl.delete_texture(Some(&temp_r16_texture));
         self.gl.delete_framebuffer(Some(&temp_r16_fbo));
