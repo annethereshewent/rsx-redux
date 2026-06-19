@@ -21,22 +21,6 @@ const QUAD_VERTS: [f32; 24] = [
      1.0,  1.0,   1.0, 1.0,
 ];
 
-#[derive(PartialEq)]
-enum TextureType {
-    Read,
-    Write,
-    Blend,
-}
-
-#[repr(C)]
-struct FbParams {
-    display_start_x: u32,
-    display_start_y: u32,
-    display_width: u32,
-    display_height: u32,
-    display_depth: u32,
-}
-
 #[repr(C)]
 #[derive(Debug)]
 struct FragmentUniform {
@@ -73,21 +57,6 @@ impl GlVertex {
             orig: [0.0; 2],
         }
     }
-}
-
-#[derive(Debug)]
-struct Region {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct FbVertex {
-    pub position: [f32; 2],
-    pub uv: [f32; 2],
 }
 
 pub struct Renderer {
@@ -832,8 +801,6 @@ impl Renderer {
 
         self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
     }
-
-    fn update_texture_for_sampling(&self) {}
 
     fn execute_fill_vram(&self, params: FillVramParams) {
         let mut rgba8_bytes: Vec<u8> = Vec::new();
