@@ -3,13 +3,21 @@ const CLIENT_ID = "353451169812-j73f39lk2j30jkvtdshub7l7r08nj0iv.apps.googleuser
 
 export interface FileEntry {
     cardName: string,
-    data?: Uint8Array
+    data?: Uint8Array,
+    lastModified?: number
   }
 
 export class CloudService {
-    loggedIn = false
+    private loggedIn = false
     private accessToken = ""
-    rsxFolderId = ""
+    private rsxFolderId = ""
+    private modalClickListener = (event: Event) => {
+        const modal = document.getElementById('cloud-saves-modal')
+        const modalBox = modal?.children[0]
+        if (!modalBox?.contains((event.target as HTMLElement)!) && modal?.classList.contains('is-active')) {
+            this.closeModal()
+        }
+    }
 
     constructor() {
         const queryParams = new URL(document.location.toString()).searchParams
@@ -48,6 +56,25 @@ export class CloudService {
 
             this.silentSignIn()
         }
+    }
+
+    closeModal() {
+        const modal = document.getElementById('cloud-saves-modal')
+        modal?.classList.remove('is-active')
+        document.removeEventListener('click', this.modalClickListener)
+    }
+
+    openCloudSavesModal() {
+        if (!this.loggedIn) {
+            return
+        }
+        const modal = document.getElementById('cloud-saves-modal')
+
+        document.removeEventListener('click', this.modalClickListener)
+
+        modal?.classList.add('is-active')
+
+        document.addEventListener('click', this.modalClickListener)
     }
 
     signOut() {
@@ -102,7 +129,7 @@ export class CloudService {
         }))
     }
 
-    async getFile(cardName: string): Promise<FileEntry> {
+    async getCard(cardName: string): Promise<FileEntry> {
         const json = await this.getCardInfo(cardName)
 
         if (json != null && json.files != null) {
@@ -121,7 +148,7 @@ export class CloudService {
 
                 const returnVal = {
                     cardName,
-                    data: new Uint8Array((body as ArrayBuffer))
+                    data: new Uint8Array((body as ArrayBuffer)),
                 }
 
                 return returnVal
@@ -180,15 +207,15 @@ export class CloudService {
         return saveEntries
     }
 
-    async uploadFile(cardName: string, bytes: Uint8Array|null, jsonStr: string|null = null) {
+    async uploadFile(cardName: string, bytes: Uint8Array) {
         const json = await this.getCardInfo(cardName)
 
         // this is a hack to get it to change the underlying array buffer
         // (so it doesn't save a bunch of junk from memory unrelated to save)
 
-        const payload: Uint8Array|string = bytes == null ? jsonStr! : new Uint8Array(Array.from(bytes))
+        const payload = new Uint8Array(Array.from(bytes))
 
-        const buffer = bytes == null ? payload : (payload as Uint8Array).buffer
+        const buffer = payload.buffer
 
         let resultFile: any
         if (json != null && json.files != null) {

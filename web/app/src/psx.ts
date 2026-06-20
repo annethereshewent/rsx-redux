@@ -133,7 +133,11 @@ export class Psx {
     }
 
     openCloudSaves() {
+        this.cloudService.openCloudSavesModal()
+    }
 
+    closeCloudSavesModal() {
+        this.cloudService.closeModal()
     }
 
     async loadMemoryCard() {
