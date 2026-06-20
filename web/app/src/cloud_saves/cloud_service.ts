@@ -192,12 +192,16 @@ export class CloudService {
         if (json != null && json.files != null) {
             const url = `https://www.googleapis.com/drive/v3/files/${json.files[0].id}`
 
+            console.log('deleting card.....')
+
             await this.cloudRequest(() => fetch(url, {
                 headers: {
                     Authorization: `Bearer ${this.accessToken}`
                 },
                 method: "DELETE"
             }))
+
+            console.log('successfully deleted card!')
 
             return true
         }
@@ -522,6 +526,9 @@ export class CloudService {
             } else if (response.status == 404) {
                 const data = await response.json()
                 resolve(data)
+            } else {
+                // 204 or other response
+                resolve(null)
             }
         })
     }
