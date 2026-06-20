@@ -1,3 +1,5 @@
+import moment from "moment"
+
 const BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 const CLIENT_ID = "353451169812-j73f39lk2j30jkvtdshub7l7r08nj0iv.apps.googleusercontent.com"
 
@@ -8,9 +10,9 @@ export interface FileEntry {
   }
 
 export class CloudService {
-    private loggedIn = false
+    loggedIn = false
     private accessToken = ""
-    private rsxFolderId = ""
+    private rsxFolderId: string|null = null
     private modalClickListener = (event: Event) => {
         const modal = document.getElementById('cloud-saves-modal')
         const modalBox = modal?.children[0]
@@ -47,7 +49,6 @@ export class CloudService {
         } else if (expiresIn != null && (Date.now() < expiresIn)) {
             this.accessToken = accessToken
 
-            this.loggedIn = true
             this.signInUser()
         } else {
             localStorage.removeItem("rsx_access_token")
@@ -64,7 +65,7 @@ export class CloudService {
         document.removeEventListener('click', this.modalClickListener)
     }
 
-    openCloudSavesModal() {
+    async openCloudSavesModal() {
         if (!this.loggedIn) {
             return
         }
@@ -75,6 +76,24 @@ export class CloudService {
         modal?.classList.add('is-active')
 
         document.addEventListener('click', this.modalClickListener)
+
+        const loading = document.getElementById('cloud-saves-loading')
+
+        if (loading != null) {
+            loading.style.display = 'block'
+
+            const files = await this.getCards()
+
+            loading.style.display = 'none'
+
+            for (const file of files) {
+                const slot = parseInt(file.cardName.replace('memory_card', '').replace('.mcd', ''))
+                console.log(slot)
+                this.updateModalSlot(slot, file.lastModified ?? Date.now())
+            }
+        }
+
+
     }
 
     signOut() {
@@ -100,13 +119,6 @@ export class CloudService {
 
     signIn() {
         window.open(`${location.href}?oauth=true`, "popup", "popup=true,width=650,height=650,resizable=true")
-
-        window.addEventListener("message", (e) => {
-            if (e.data == "authFinished") {
-                console.log("signing in user")
-                this.signInUser()
-            }
-        })
     }
 
 
@@ -117,7 +129,7 @@ export class CloudService {
 
         const params = new URLSearchParams({
             q: query,
-            fields: "files/id,files/parents,files/name"
+            fields: "files/id,files/parents,files/name,files/modifiedTime"
         })
 
         const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`
@@ -144,10 +156,11 @@ export class CloudService {
                     headers: {
                         Authorization: `Bearer ${this.accessToken}`
                     }
-                }))
+                }), true)
 
                 const returnVal = {
                     cardName,
+                    lastModified: moment(file.modifiedTime).unix(),
                     data: new Uint8Array((body as ArrayBuffer)),
                 }
 
@@ -181,11 +194,12 @@ export class CloudService {
         return false
     }
 
-    async getSaves(): Promise<FileEntry[]> {
+    async getCards(): Promise<FileEntry[]> {
         await this.createRsxSavesFolder()
 
         const params = new URLSearchParams({
-            q: `parents in "${this.rsxFolderId}"`
+            q: `parents in "${this.rsxFolderId}"`,
+            fields: "files/modifiedTime, files/name"
         })
         const url = `https://www.googleapis.com/drive/v3/files?${params.toString()}`
 
@@ -197,9 +211,11 @@ export class CloudService {
 
         const saveEntries: FileEntry[] = []
         if (json != null && json.files != null) {
+            console.log(json.files)
             for (const file of json.files) {
                 saveEntries.push({
-                    cardName: file.name
+                    cardName: file.name,
+                    lastModified: moment(file.modifiedTime).unix()
                 })
             }
         }
@@ -207,7 +223,37 @@ export class CloudService {
         return saveEntries
     }
 
-    async uploadFile(cardName: string, bytes: Uint8Array) {
+    updateModalSlot(slot: number, timestamp: number) {
+        const cloudSlotElement = document.querySelector(`.cloud-save-slot[data-cloud-slot="${slot}"]`)
+
+        if (cloudSlotElement != null) {
+            cloudSlotElement.classList.remove('is-empty')
+            cloudSlotElement.innerHTML = `
+                <div class="cloud-save-icon">
+                    <i class="fa-solid fa-sd-card"></i>
+                </div>
+                <div class="cloud-save-info">
+                    <div class="cloud-save-header">
+                        <span class="cloud-save-label">Card ${slot}</span>
+                    </div>
+                    <p class="cloud-save-date">Last updated ${moment.unix(timestamp).format('lll')}</p>
+                </div>
+                <div class="cloud-save-actions">
+                    <button class="button is-psx is-small" data-action="downloadCloudCard" data-cloud-slot="${slot}" title="Download to local" aria-label="Download Card ${slot} to local">
+                        <i class="fa-solid fa-download"></i>
+                    </button>
+                    <button class="button is-psx is-small" data-action="replaceCloudCard" data-cloud-slot="${slot}" title="Upload a file to replace this slot" aria-label="Replace Card ${slot} from file">
+                        <i class="fa-solid fa-file-arrow-up"></i>
+                    </button>
+                    <button class="button is-psx is-small is-delete" data-action="deleteCloudCard" data-cloud-slot="${slot}" title="Delete from cloud" aria-label="Delete Card ${slot} from cloud">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            `
+        }
+    }
+
+    async uploadCard(cardName: string, bytes: Uint8Array) {
         const json = await this.getCardInfo(cardName)
 
         // this is a hack to get it to change the underlying array buffer
@@ -288,7 +334,7 @@ export class CloudService {
 
             if (json != null && json.files != null && json.files[0] != null) {
                 this.rsxFolderId = json.files[0].id
-                localStorage.setItem("gbc_folder_id", this.rsxFolderId!!)
+                localStorage.setItem("rsx_folder_id", this.rsxFolderId!!)
             } else {
                 // create the folder
                 const url = `https://www.googleapis.com/drive/v3/files?uploadType=media`
@@ -336,6 +382,7 @@ export class CloudService {
     }
 
     signInUser() {
+        this.loggedIn = true
         const signIn = document.getElementById("cloud-sign-in")
 
         if (signIn != null) {
@@ -370,8 +417,6 @@ export class CloudService {
                 localStorage.setItem("rsx_access_token", accessToken)
 
                 this.accessToken = accessToken
-                this.loggedIn = true
-
                 this.signInUser()
 
                 // finally get logged in user email
@@ -406,19 +451,18 @@ export class CloudService {
         if (accessToken != null) {
             this.accessToken = accessToken
 
-            this.loggedIn = true
             this.signInUser()
         }
     }
 
-    async cloudRequest(request: () => Promise<Response>): Promise<any> {
+    async cloudRequest(request: () => Promise<Response>, returnBuffer: boolean = false): Promise<any> {
         return new Promise(async (resolve, reject) => {
             await this.refreshTokensIfNeeded()
 
             const response = await request()
 
             if (response.status == 200) {
-                const data = await response.arrayBuffer()
+                const data = returnBuffer ? await response.arrayBuffer() : response.json()
 
                 resolve(data)
             } else if (response.status == 401) {
@@ -441,6 +485,9 @@ export class CloudService {
                 }, 100)
 
                 resolve(null)
+            } else if (response.status == 404) {
+                const data = await response.json()
+                resolve(data)
             }
         })
     }

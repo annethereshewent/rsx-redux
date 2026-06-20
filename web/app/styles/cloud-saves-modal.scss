@@ -128,3 +128,6 @@
 .cloud-save-actions .button.is-psx.is-delete:hover {
     border-color: var(--psx-red);
 }
+#cloud-saves-loading {
+    display: none;
+}

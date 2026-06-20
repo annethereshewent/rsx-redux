@@ -569,10 +569,24 @@
                 </div>
 
                 <div class="cloud-saves-list" id="cloud-saves-list">
-
-                    <!-- Occupied slot -->
-                    <div class="cloud-save-slot" data-cloud-slot="1">
+                    <div class="cloud-save-slot is-empty" data-cloud-slot="1">
                         <div class="cloud-save-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <div class="cloud-save-info">
+                            <div class="cloud-save-header">
+                                <span class="cloud-save-label">Card 1</span>
+                            </div>
+                            <p class="cloud-save-status is-empty-text">Empty slot</p>
+                            <p class="cloud-save-date"></p>
+                        </div>
+                        <div class="cloud-save-actions">
+                            <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="1" title="Upload a file to this slot" aria-label="Upload to Card 1">
+                                <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                                <span>Upload</span>
+                            </button>
+                        </div>
+                        <!-- <div class="cloud-save-icon">
                             <i class="fa-solid fa-sd-card"></i>
                         </div>
                         <div class="cloud-save-info">
@@ -591,12 +605,26 @@
                             <button class="button is-psx is-small is-delete" data-action="deleteCloudCard" data-cloud-slot="1" title="Delete from cloud" aria-label="Delete Card 1 from cloud">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
-                        </div>
+                        </div> -->
                     </div>
-
-                    <!-- Occupied slot -->
-                    <div class="cloud-save-slot" data-cloud-slot="2">
+                    <div class="cloud-save-slot is-empty" data-cloud-slot="2">
                         <div class="cloud-save-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <div class="cloud-save-info">
+                            <div class="cloud-save-header">
+                                <span class="cloud-save-label">Card 2</span>
+                            </div>
+                            <p class="cloud-save-status is-empty-text">Empty slot</p>
+                            <p class="cloud-save-date"></p>
+                        </div>
+                        <div class="cloud-save-actions">
+                            <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="2" title="Upload a file to this slot" aria-label="Upload to Card 2">
+                                <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                                <span>Upload</span>
+                            </button>
+                        </div>
+                        <!-- <div class="cloud-save-icon">
                             <i class="fa-solid fa-sd-card"></i>
                         </div>
                         <div class="cloud-save-info">
@@ -615,10 +643,8 @@
                             <button class="button is-psx is-small is-delete" data-action="deleteCloudCard" data-cloud-slot="2" title="Delete from cloud" aria-label="Delete Card 2 from cloud">
                                 <i class="fa-solid fa-trash-can"></i>
                             </button>
-                        </div>
+                        </div> -->
                     </div>
-
-                    <!-- Empty slot -->
                     <div class="cloud-save-slot is-empty" data-cloud-slot="3">
                         <div class="cloud-save-icon">
                             <i class="fa-solid fa-sd-card"></i>
@@ -637,8 +663,6 @@
                             </button>
                         </div>
                     </div>
-
-                    <!-- Empty slot -->
                     <div class="cloud-save-slot is-empty" data-cloud-slot="4">
                         <div class="cloud-save-icon">
                             <i class="fa-solid fa-sd-card"></i>
@@ -657,8 +681,6 @@
                             </button>
                         </div>
                     </div>
-
-                    <!-- Empty slot -->
                     <div class="cloud-save-slot is-empty" data-cloud-slot="5">
                         <div class="cloud-save-icon">
                             <i class="fa-solid fa-sd-card"></i>
@@ -689,9 +711,13 @@
                 </button>
                 <button class="button is-psx" id="cloud-saves-done" data-action="closeCloudSavesModal">Close</button>
             </div>
-
+            <div style="text-align:center">
+                <i id="cloud-saves-loading" class="fa-solid fa-spinner fa-spin"></i>
+            </div>
+            <input type="file" id="cloud-saves-upload", accept=".mcd" hidden>
         </div>
     </div>
+    <iframe id="silent-sign-in" style="width: 1px; height: 1px"></iframe>
     <canvas id="save-state-canvas" style="display:none"></canvas>
 
     <input type="file" id="file-bios" accept=".bin,.BIN" hidden>

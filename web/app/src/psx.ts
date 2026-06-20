@@ -126,6 +126,12 @@ export class Psx {
 
     cloudSignIn() {
         this.cloudService.signIn()
+        window.addEventListener("message", (e) => {
+            if (e.data == "authFinished") {
+                this.cloudService.signInUser()
+                this.loadMemoryCard()
+            }
+        })
     }
 
     cloudSignOut() {
@@ -136,12 +142,28 @@ export class Psx {
         this.cloudService.openCloudSavesModal()
     }
 
+    async replaceCloudCard(el: HTMLElement) {
+        const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+        const memoryCardName = `memory_card${slot}`
+
+        this.openFile('cloud-saves-upload', async (file) => {
+            const bytes = new Uint8Array(await this.readFile(file))
+
+            await this.cloudService.uploadCard(memoryCardName, bytes)
+
+            const timestamp = Date.now()
+
+            this.cloudService.updateModalSlot(slot, timestamp)
+        })
+    }
+
     closeCloudSavesModal() {
         this.cloudService.closeModal()
     }
 
     async loadMemoryCard() {
-        const data = await this.rsxDb.getMemoryCard(this.memoryCard)
+        const data = this.cloudService.loggedIn ? (await this.cloudService.getCard(this.memoryCard)).data : await this.rsxDb.getMemoryCard(this.memoryCard)
 
         if (data != null) {
             this.memoryCardData = data as Uint8Array<ArrayBuffer>
@@ -443,7 +465,11 @@ export class Psx {
 
         if (memoryCardData != null) {
             this.memoryCardData = memoryCardData
-            await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+            if (this.cloudService.loggedIn) {
+                await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
+            } else {
+                await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+            }
             document.getElementById('mem-card-status')!.textContent = "Saves found"
         }
     }
