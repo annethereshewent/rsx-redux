@@ -140,4 +140,14 @@ export class RsxDb {
         await this.db.put('rsx-memory-cards', { name: memoryCard, data, lastModified: Date.now() })
 
     }
+
+    async getMemoryCards() {
+        if (this.db == null) {
+            this.db = await openDB("rsx-db", currentVersion)
+        }
+
+        const cards = await this.db.getAll('rsx-memory-cards')
+
+        return cards
+    }
 }

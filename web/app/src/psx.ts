@@ -173,6 +173,29 @@ export class Psx {
         }
     }
 
+    async uploadAllLocalCards() {
+        const cards = await this.rsxDb.getMemoryCards()
+
+        const loading = document.getElementById('cloud-saves-loading')
+        loading!.style.display = 'block'
+        const promises = []
+        for (const card of cards) {
+            promises.push(this.cloudService.uploadCard(card.name, card.data))
+        }
+
+        await Promise.all(promises)
+
+        loading!.style.display = 'none'
+
+        const timestamp = Math.floor(Date.now() / 1000)
+
+        for (const card of cards) {
+            const slot = parseInt(card.name.replace('memory_card', ''))
+
+            this.cloudService.updateModalSlot(slot, timestamp)
+        }
+    }
+
     getCardName(el: HTMLElement) {
         const slot = parseInt(el.dataset.cloudSlot ?? "null")
 
