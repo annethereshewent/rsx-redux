@@ -308,6 +308,8 @@ pub struct CDRom {
     is_playing: bool,
     is_seeking: bool,
     is_reading: bool,
+    motor_on: bool,
+    shell_open: bool,
     current_msf: Msf,
     msf: Msf,
     next_mode: Option<DriveMode>,
@@ -364,6 +366,8 @@ impl CDRom {
             is_playing: false,
             is_reading: false,
             is_seeking: false,
+            motor_on: true,
+            shell_open: false,
             current_msf: Msf::new(),
             msf: Msf::new(),
             next_mode: None,
@@ -515,9 +519,48 @@ impl CDRom {
         self.controller_cycles += 1;
     }
 
-    fn stat(&mut self) {
-        let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
+    pub fn open_shell(&mut self, interrupt_register: &mut InterruptRegister) {
+        self.shell_open = true;
 
+        self.is_playing = false;
+        self.is_reading = false;
+        self.is_seeking = false;
+
+        self.drive_mode = DriveMode::Idle;
+        self.controller_mode = ControllerMode::Idle;
+        self.subresponse_mode = SubresponseMode::Disabled;
+
+        self.parameter_fifo.clear();
+        self.controller_param_fifo.clear();
+        self.controller_response_fifo.clear();
+        self.result_fifo.clear();
+
+        #[cfg(not(target_arch = "wasm32"))] {
+            self.game_data = None;
+        }
+        #[cfg(target_arch = "wasm32")] {
+            self.game_bytes = None;
+        }
+
+        self.stat();
+        self.controller_response_fifo.push_back(0x08); // error byte
+        self.irq_latch = 0;
+        self.irqs = 0x5;
+        self.process_irqs(interrupt_register);
+    }
+
+    pub fn close_shell(&mut self) {
+        self.shell_open = false;
+    }
+
+    fn stat(&mut self) {
+        let mut val = (self.motor_on as u8) << 1;
+
+        if self.shell_open {
+            val |= 1;
+        }
+
+        val |= (self.shell_open as u8) << 4;
         val |= (self.is_reading as u8) << 5;
         val |= (self.is_seeking as u8) << 6;
         val |= (self.is_playing as u8) << 7;
@@ -664,6 +707,21 @@ impl CDRom {
         // bits 0 and 1 are audio related so no need to worry about them
     }
 
+    fn stop(&mut self) {
+        self.stat();
+
+        self.is_playing = false;
+        self.is_seeking = false;
+        self.is_reading = false;
+        self.drive_mode = DriveMode::Idle;
+
+        self.motor_on = false;
+        self.current_msf = Msf::new();
+
+        self.subresponse_mode = SubresponseMode::GetStat;
+        self.subresponse_cycles += 44100;
+    }
+
     fn pause(&mut self) {
         self.stat();
 
@@ -686,6 +744,8 @@ impl CDRom {
         self.double_speed = false;
         self.sector_size = 0x800;
 
+        self.motor_on = true;
+
         self.is_playing = false;
         self.is_seeking = false;
         self.is_reading = false;
@@ -706,6 +766,7 @@ impl CDRom {
             0x2 => self.set_loc(),
             0x6 | 0x1b => self.cd_read_command(),
             0x7 => self.motor_on(),
+            0x8 => self.stop(),
             0x9 => self.pause(),
             0xa => self.init(),
             0xb | 0xc => self.stat(),
@@ -729,6 +790,9 @@ impl CDRom {
 
     fn motor_on(&mut self) {
         self.stat();
+
+        self.motor_on = true;
+
         self.controller_response_fifo.push_back(0x20);
 
         self.irq_latch = 0x5;

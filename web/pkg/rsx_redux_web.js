@@ -12,6 +12,14 @@ export class PsxWebEmulator {
         wasm.__wbg_psxwebemulator_free(ptr, 0);
     }
     /**
+     * @param {Uint8Array} bytes
+     */
+    close_shell(bytes) {
+        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.psxwebemulator_close_shell(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
      * @returns {Int16Array}
      */
     drain_samples() {
@@ -91,6 +99,9 @@ export class PsxWebEmulator {
         this.__wbg_ptr = ret;
         PsxWebEmulatorFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    open_shell() {
+        wasm.psxwebemulator_open_shell(this.__wbg_ptr);
     }
     reset() {
         wasm.psxwebemulator_reset(this.__wbg_ptr);
