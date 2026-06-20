@@ -98,7 +98,10 @@ export class Psx {
         })
 
         document.addEventListener('keydown', async (ev) => {
-            if (ev.key.toLowerCase() == 'f5') {
+            if (ev.key.toLowerCase() == 'f4') {
+                ev.preventDefault()
+                this.waveVisualizer.toggle()
+            } else if (ev.key.toLowerCase() == 'f5') {
                 ev.preventDefault()
                 const imageUrl = this.getImageUrl()
                 const state = await this.stateManager?.createSaveState(0, imageUrl)
@@ -118,6 +121,128 @@ export class Psx {
         })
 
         this.initializeEmulator()
+    }
+
+    async syncCloudCard(el: HTMLElement) {
+        const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+        if (slot != null) {
+            const cardName = `memory_card${slot}`
+
+            const loading = document.getElementById('cloud-saves-loading')
+
+            loading!.style.display = 'block'
+
+            const data = (await this.cloudService.getCard(cardName)).data
+
+            loading!.style.display = 'none'
+
+            if (data != null) {
+                await this.rsxDb.saveMemoryCard(cardName, data)
+
+                const syncCloudCard = document.querySelector(`.cloud-save-slot[data-cloud-slot="${slot}"]`)?.querySelector('.sync-cloud-card')
+
+                if (syncCloudCard != null) {
+                    (syncCloudCard as HTMLElement).innerHTML = '<i class="fa-solid fa-check"></i>'
+
+                    setTimeout(() => {
+                        (syncCloudCard as HTMLElement).innerHTML = '<i class="fa-solid fa-arrows-rotate"></i>'
+                    }, 750)
+                }
+            }
+        }
+    }
+
+    async deleteCloudCard(el: HTMLElement) {
+        if (confirm("Are you sure you want to delete this memory card?")) {
+            const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+            if (slot != null) {
+                const cardName = `memory_card${slot}`
+
+                const loading = document.getElementById('cloud-saves-loading')
+
+                loading!.style.display = 'block'
+
+                if (await this.cloudService.deleteCard(cardName)) {
+                    this.cloudService.removeModalSlot(slot)
+                }
+
+                loading!.style.display = 'none'
+            }
+        }
+    }
+
+    getCardName(el: HTMLElement) {
+        const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+        if (slot != null) {
+            return `memory_card${slot}`
+        }
+
+        return null
+    }
+
+    async downloadCloudCard(el: HTMLElement) {
+        const cardName = this.getCardName(el)
+
+        if (cardName != null) {
+            const loading = document.getElementById('cloud-saves-loading')
+
+            loading!.style.display = 'block'
+
+            const data = (await this.cloudService.getCard(cardName)).data
+
+            loading!.style.display = 'none'
+
+            if (data != null) {
+                this.generateFile(data, cardName)
+            }
+        }
+    }
+
+    generateFile(data: Uint8Array, cardName: string) {
+        const blob = new Blob([data.buffer as ArrayBuffer], {
+            type: "application/octet-stream"
+        })
+
+        const objectUrl = URL.createObjectURL(blob)
+
+        const a = document.createElement('a')
+
+        a.href = objectUrl
+        a.download = `${cardName}.mcd`
+        document.body.append(a)
+        a.style.display = "none"
+
+        a.click()
+        a.remove()
+
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    }
+
+    async replaceCloudCard(el: HTMLElement) {
+        const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+        if (slot != null) {
+            const memoryCardName = `memory_card${slot}`
+
+            this.openFile('cloud-saves-upload', async (file) => {
+                const bytes = new Uint8Array(await this.readFile(file))
+
+                const loading = document.getElementById('cloud-saves-loading')
+
+                loading!.style.display = 'block'
+
+                await this.cloudService.uploadCard(memoryCardName, bytes)
+
+                loading!.style.display = 'none'
+
+                const timestamp = Math.floor(Date.now() / 1000)
+
+                this.cloudService.updateModalSlot(slot, timestamp)
+            })
+        }
     }
 
     checkOauth() {
@@ -140,22 +265,6 @@ export class Psx {
 
     openCloudSaves() {
         this.cloudService.openCloudSavesModal()
-    }
-
-    async replaceCloudCard(el: HTMLElement) {
-        const slot = parseInt(el.dataset.cloudSlot ?? "null")
-
-        const memoryCardName = `memory_card${slot}`
-
-        this.openFile('cloud-saves-upload', async (file) => {
-            const bytes = new Uint8Array(await this.readFile(file))
-
-            await this.cloudService.uploadCard(memoryCardName, bytes)
-
-            const timestamp = Date.now()
-
-            this.cloudService.updateModalSlot(slot, timestamp)
-        })
     }
 
     closeCloudSavesModal() {

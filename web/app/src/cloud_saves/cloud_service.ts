@@ -186,7 +186,7 @@ export class CloudService {
         }
     }
 
-    async deleteSave(cardName: string): Promise<boolean> {
+    async deleteCard(cardName: string): Promise<boolean> {
         const json = await this.getCardInfo(cardName)
 
         if (json != null && json.files != null) {
@@ -233,6 +233,32 @@ export class CloudService {
         return saveEntries
     }
 
+    removeModalSlot(slot: number) {
+        const cloudSlotElement = document.querySelector(`.cloud-save-slot[data-cloud-slot="${slot}"]`)
+
+        if (cloudSlotElement != null) {
+            cloudSlotElement.classList.add('is-empty')
+            cloudSlotElement.innerHTML = `
+                <div class="cloud-save-icon">
+                    <i class="fa-solid fa-sd-card"></i>
+                </div>
+                <div class="cloud-save-info">
+                    <div class="cloud-save-header">
+                        <span class="cloud-save-label">Card ${slot}</span>
+                    </div>
+                    <p class="cloud-save-status is-empty-text">Empty slot</p>
+                    <p class="cloud-save-date"></p>
+                </div>
+                <div class="cloud-save-actions">
+                    <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="${slot}" title="Upload a file to this slot" aria-label="Upload to Card ${slot}">
+                        <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                        <span>Upload</span>
+                    </button>
+                </div>
+            `
+        }
+    }
+
     updateModalSlot(slot: number, timestamp: number) {
         const cloudSlotElement = document.querySelector(`.cloud-save-slot[data-cloud-slot="${slot}"]`)
 
@@ -249,7 +275,7 @@ export class CloudService {
                     <p class="cloud-save-date">Last updated ${moment.unix(timestamp).format('lll')}</p>
                 </div>
                 <div class="cloud-save-actions">
-                    <button class="button is-psx is-small" data-action="syncCloudCard" data-cloud-slot="${slot}" title="Sync to local" aria-label="Sync Card ${slot} to local">
+                    <button class="button is-psx is-small sync-cloud-card" data-action="syncCloudCard" data-cloud-slot="${slot}" title="Sync to local" aria-label="Sync Card ${slot} to local">
                         <i class="fa-solid fa-arrows-rotate"></i>
                     </button>
                     <button class="button is-psx is-small" data-action="downloadCloudCard" data-cloud-slot="${slot}" title="Download as file" aria-label="Download Card ${slot} as a file">
