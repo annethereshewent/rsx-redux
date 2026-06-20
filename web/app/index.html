@@ -201,8 +201,9 @@
                     <p class="panel-title">Cloud</p>
                     <aside class="menu">
                         <ul class="menu-list">
-                            <li><a><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
-                            <li><a><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
+                            <li><a data-action="openCloudSaves"><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
+                            <li id="cloud-sign-in" class="is-active"><a data-action="cloudSignIn"><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
+                            <li id="cloud-sign-out"><a data-action="cloudSignOut"><span class="icon"><i class="fa-solid fa-right-from-bracket"></i></span>Sign Out</a></li>
                         </ul>
                     </aside>
                 </div>

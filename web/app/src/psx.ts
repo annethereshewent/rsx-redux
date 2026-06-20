@@ -1,5 +1,6 @@
 import init, { PsxWebEmulator, InitOutput } from "../../pkg/rsx_redux_web"
 import wasmData from '../../pkg/rsx_redux_web_bg.wasm'
+import { CloudService } from "./cloud_saves/cloud_service"
 import { Joypad } from "./input/joypad"
 import { AudioOutput } from "./output/audio_output"
 import { VideoOutput } from "./output/video_output"
@@ -33,6 +34,7 @@ export class Psx {
     private biosBytes = new Uint8Array([])
     private rsxDb = new RsxDb()
     private stateManager: StateManager|null = null
+    private cloudService = new CloudService()
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -116,6 +118,22 @@ export class Psx {
         })
 
         this.initializeEmulator()
+    }
+
+    checkOauth() {
+        this.cloudService.checkAuthentication()
+    }
+
+    cloudSignIn() {
+        this.cloudService.signIn()
+    }
+
+    cloudSignOut() {
+        this.cloudService.signOut()
+    }
+
+    openCloudSaves() {
+
     }
 
     async loadMemoryCard() {

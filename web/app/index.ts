@@ -5,3 +5,5 @@ import './styles/save-states-modal.scss'
 import './styles/audio-modal.scss'
 
 const psx = new Psx()
+
+psx.checkOauth()

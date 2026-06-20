@@ -3,3 +3,4 @@
 *.log
 *.ppm
 **/target/
+client_secret_*.json

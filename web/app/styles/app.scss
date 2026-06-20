@@ -303,6 +303,13 @@ html, body {
     }
 }
 
+#cloud-sign-out, #cloud-sign-in {
+    display: none;
+}
+#cloud-sign-in.is-active, #cloud-sign-out.is-active {
+    display: block;
+}
+
 @media all and (display-mode: fullscreen) {
     .action-bar, .status-bar, .panel-card, .column.is-2 {
         display: none !important;
