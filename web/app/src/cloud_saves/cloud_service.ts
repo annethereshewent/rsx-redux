@@ -57,6 +57,12 @@ export class CloudService {
 
             this.silentSignIn()
         }
+
+        window.addEventListener("message", (e) => {
+            if (e.data == "authFinished") {
+                this.signInUser()
+            }
+        })
     }
 
     closeModal() {
@@ -243,8 +249,11 @@ export class CloudService {
                     <p class="cloud-save-date">Last updated ${moment.unix(timestamp).format('lll')}</p>
                 </div>
                 <div class="cloud-save-actions">
-                    <button class="button is-psx is-small" data-action="downloadCloudCard" data-cloud-slot="${slot}" title="Download to local" aria-label="Download Card ${slot} to local">
-                        <i class="fa-solid fa-download"></i>
+                    <button class="button is-psx is-small" data-action="syncCloudCard" data-cloud-slot="${slot}" title="Sync to local" aria-label="Sync Card ${slot} to local">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                    </button>
+                    <button class="button is-psx is-small" data-action="downloadCloudCard" data-cloud-slot="${slot}" title="Download as file" aria-label="Download Card ${slot} as a file">
+                        <i class="fa-solid fa-file-export"></i>
                     </button>
                     <button class="button is-psx is-small" data-action="replaceCloudCard" data-cloud-slot="${slot}" title="Upload a file to replace this slot" aria-label="Replace Card ${slot} from file">
                         <i class="fa-solid fa-file-arrow-up"></i>
@@ -386,18 +395,23 @@ export class CloudService {
     }
 
     signInUser() {
-        this.loggedIn = true
-        const signIn = document.getElementById("cloud-sign-in")
+        const accessToken = localStorage.getItem('rsx_access_token')
+        if (accessToken != null) {
+            const signIn = document.getElementById("cloud-sign-in")
+            this.loggedIn = true
+            this.accessToken = accessToken
+            if (signIn != null) {
+                signIn.classList.remove('is-active')
+                signIn.style.display = 'none'
+                const signOut = document.getElementById("cloud-sign-out")
 
-        if (signIn != null) {
-            signIn.classList.remove('is-active')
-            signIn.style.display = 'none'
-            const signOut = document.getElementById("cloud-sign-out")
-
-            if (signOut != null) {
-                signOut.classList.add('is-active')
+                if (signOut != null) {
+                    signOut.classList.add('is-active')
+                }
             }
         }
+
+
     }
 
     async checkAuthentication() {
@@ -446,16 +460,6 @@ export class CloudService {
 
         if (json != null && json.email != null) {
             localStorage.setItem("rsx_user_email", json.email)
-        }
-    }
-
-    getTokenFromStorage() {
-        const accessToken = localStorage.getItem("rsx_access_token")
-
-        if (accessToken != null) {
-            this.accessToken = accessToken
-
-            this.signInUser()
         }
     }
 
@@ -519,7 +523,7 @@ export class CloudService {
                 // refresh tokens as they're expired
                 window.addEventListener("message", async (e) => {
                     if (e.data == "authFinished") {
-                        this.getTokenFromStorage()
+                        this.signInUser()
 
                         resolve(null)
                     }
