@@ -2,7 +2,7 @@
 
 ## About
 
-This is a Playstation emulator written in Rust. It's a rewrite of the <a href="https://github.com/annethereshewent/RSX">RSX emulator</a>, with hardware rendering being the primary feature. Currently only supports Metal, but OpenGL coming soon! Web version is now available at https://rsx-redux.onrender.com/, and there is also a MacOS app available for use at https://github.com/annethereshewent/rsx-redux-macos. iOS port will eventually be available. 
+This is a Playstation emulator written in Rust. It's a rewrite of the <a href="https://github.com/annethereshewent/RSX">RSX emulator</a>, with hardware rendering being the primary feature. Currently supports Metal on desktop and webGL on web, OpenGL coming soon! Web version is now available at https://rsx-redux.onrender.com/, and there is also a MacOS app available for use at https://github.com/annethereshewent/rsx-redux-macos. iOS port will eventually be available. 
 
 ## How to run
 
