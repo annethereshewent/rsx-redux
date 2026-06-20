@@ -84,11 +84,16 @@ export class CloudService {
 
             const files = await this.getCards()
 
+            const quota = document.getElementById('cloud-saves-quota')
+
+            if (quota != null) {
+                quota.textContent = `${files.length} / 5 memory cards used`
+            }
+
             loading.style.display = 'none'
 
             for (const file of files) {
                 const slot = parseInt(file.cardName.replace('memory_card', '').replace('.mcd', ''))
-                console.log(slot)
                 this.updateModalSlot(slot, file.lastModified ?? Date.now())
             }
         }
@@ -211,7 +216,6 @@ export class CloudService {
 
         const saveEntries: FileEntry[] = []
         if (json != null && json.files != null) {
-            console.log(json.files)
             for (const file of json.files) {
                 saveEntries.push({
                     cardName: file.name,
