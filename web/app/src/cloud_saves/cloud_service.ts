@@ -2,6 +2,7 @@ import moment from "moment"
 
 const BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 const CLIENT_ID = "353451169812-j73f39lk2j30jkvtdshub7l7r08nj0iv.apps.googleusercontent.com"
+const TOKEN_EXPIRY_BUFFER_MS = 10000
 
 export interface FileEntry {
     cardName: string,
@@ -493,7 +494,7 @@ export class CloudService {
         }
     }
 
-    async cloudRequest(request: () => Promise<Response>, returnBuffer: boolean = false): Promise<any> {
+    async cloudRequest(request: () => Promise<Response>, returnBuffer: boolean = false, attemptAgain: boolean = true): Promise<any> {
         return new Promise(async (resolve, reject) => {
             await this.refreshTokensIfNeeded()
 
@@ -504,25 +505,30 @@ export class CloudService {
 
                 resolve(data)
             } else if (response.status == 401) {
+                if (attemptAgain) {
+                    const result = await this.cloudRequest(request, returnBuffer, false)
 
-                this.signOut()
+                    resolve(result)
+                } else {
+                    this.signOut()
 
-                const notification = document.getElementById("request-failure-notification")!
+                    const notification = document.getElementById("request-failure-notification")!
 
-                notification.style.display = "block"
+                    notification.style.display = "block"
 
-                let opacity = 1.0
+                    let opacity = 1.0
 
-                let interval = setInterval(() => {
-                    opacity -= 0.05
-                    notification.style.opacity = `${opacity}`
+                    let interval = setInterval(() => {
+                        opacity -= 0.05
+                        notification.style.opacity = `${opacity}`
 
-                    if (opacity <= 0) {
-                        clearInterval(interval)
-                    }
-                }, 100)
+                        if (opacity <= 0) {
+                            clearInterval(interval)
+                        }
+                    }, 100)
 
-                resolve(null)
+                    resolve(null)
+                }
             } else if (response.status == 404) {
                 const data = await response.json()
                 resolve(data)
@@ -552,7 +558,10 @@ export class CloudService {
 
         return new Promise((resolve, reject) => {
             const rsxExpires = parseInt(localStorage.getItem("rsx_access_expires") || "-1")
-            if (rsxExpires != null && (Date.now() >= rsxExpires || rsxExpires == -1)) {
+            // use a threshold of -10 seconds before actual expiration to avoid a case where this returns true and no refresh is done,
+            // but the actual request happens and the token expires. this may be an edge case, but just want to make sure that it
+            // doesn't happen
+            if (rsxExpires != null && (Date.now() >= (rsxExpires - TOKEN_EXPIRY_BUFFER_MS) || rsxExpires == -1)) {
                 // refresh tokens as they're expired
                 window.addEventListener("message", async (e) => {
                     if (e.data == "authFinished") {

@@ -11,6 +11,14 @@
     --psx-red: #c0524f;
 }
 
+#request-failure-notification {
+    display: none;
+    background: var(--psx-red);
+    width: 70%;
+    margin: 40px auto;
+    z-index: 10;
+}
+
 html, body {
     background-color: var(--psx-bg);
     color: var(--psx-text);
