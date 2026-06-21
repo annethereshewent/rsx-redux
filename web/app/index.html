@@ -88,7 +88,9 @@
             </div>
         </div>
     </nav>
-
+    <div id="request-failure-notification" class="notification is-danger">
+        An error occurred while contacting cloud server.
+    </div>
     <!-- ════════════════════════════════════════════
              Main content
         ════════════════════════════════════════════ -->
@@ -201,8 +203,9 @@
                     <p class="panel-title">Cloud</p>
                     <aside class="menu">
                         <ul class="menu-list">
-                            <li><a><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
-                            <li><a><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
+                            <li><a data-action="openCloudSaves"><span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>Cloud Saves</a></li>
+                            <li id="cloud-sign-in" class="is-active"><a data-action="cloudSignIn"><span class="icon"><i class="fa-solid fa-right-to-bracket"></i></span>Sign In</a></li>
+                            <li id="cloud-sign-out"><a data-action="cloudSignOut"><span class="icon"><i class="fa-solid fa-right-from-bracket"></i></span>Sign Out</a></li>
                         </ul>
                     </aside>
                 </div>
@@ -546,6 +549,137 @@
 
         </div>
     </div>
+    <div class="modal-backdrop" id="cloud-saves-modal">
+        <div class="modal-box cloud-saves-box" role="dialog" aria-modal="true" aria-labelledby="cloud-saves-title">
+
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <p class="modal-title" id="cloud-saves-title">Cloud saves</p>
+                </div>
+                <button class="modal-close-btn" id="cloud-saves-close" aria-label="Close" data-action="closeCloudSavesModal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <div class="cloud-saves-meta">
+                    <span class="cloud-saves-quota" id="cloud-saves-quota">
+                        <i class="fa-solid fa-sd-card"></i> 0 / 5 memory cards used
+                    </span>
+                </div>
+
+                <div class="cloud-saves-list" id="cloud-saves-list">
+                    <div class="cloud-save-slot is-empty" data-cloud-slot="1">
+                        <div class="cloud-save-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <div class="cloud-save-info">
+                            <div class="cloud-save-header">
+                                <span class="cloud-save-label">Card 1</span>
+                            </div>
+                            <p class="cloud-save-status is-empty-text">Empty slot</p>
+                            <p class="cloud-save-date"></p>
+                        </div>
+                        <div class="cloud-save-actions">
+                            <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="1" title="Upload a file to this slot" aria-label="Upload to Card 1">
+                                <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                                <span>Upload</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="cloud-save-slot is-empty" data-cloud-slot="2">
+                        <div class="cloud-save-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <div class="cloud-save-info">
+                            <div class="cloud-save-header">
+                                <span class="cloud-save-label">Card 2</span>
+                            </div>
+                            <p class="cloud-save-status is-empty-text">Empty slot</p>
+                            <p class="cloud-save-date"></p>
+                        </div>
+                        <div class="cloud-save-actions">
+                            <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="2" title="Upload a file to this slot" aria-label="Upload to Card 2">
+                                <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                                <span>Upload</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="cloud-save-slot is-empty" data-cloud-slot="3">
+                        <div class="cloud-save-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <div class="cloud-save-info">
+                            <div class="cloud-save-header">
+                                <span class="cloud-save-label">Card 3</span>
+                            </div>
+                            <p class="cloud-save-status is-empty-text">Empty slot</p>
+                            <p class="cloud-save-date"></p>
+                        </div>
+                        <div class="cloud-save-actions">
+                            <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="3" title="Upload a file to this slot" aria-label="Upload to Card 3">
+                                <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                                <span>Upload</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="cloud-save-slot is-empty" data-cloud-slot="4">
+                        <div class="cloud-save-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <div class="cloud-save-info">
+                            <div class="cloud-save-header">
+                                <span class="cloud-save-label">Card 4</span>
+                            </div>
+                            <p class="cloud-save-status is-empty-text">Empty slot</p>
+                            <p class="cloud-save-date"></p>
+                        </div>
+                        <div class="cloud-save-actions">
+                            <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="4" title="Upload a file to this slot" aria-label="Upload to Card 4">
+                                <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                                <span>Upload</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="cloud-save-slot is-empty" data-cloud-slot="5">
+                        <div class="cloud-save-icon">
+                            <i class="fa-solid fa-sd-card"></i>
+                        </div>
+                        <div class="cloud-save-info">
+                            <div class="cloud-save-header">
+                                <span class="cloud-save-label">Card 5</span>
+                            </div>
+                            <p class="cloud-save-status is-empty-text">Empty slot</p>
+                            <p class="cloud-save-date"></p>
+                        </div>
+                        <div class="cloud-save-actions">
+                            <button class="button is-psx is-small is-primary-action" data-action="replaceCloudCard" data-cloud-slot="5" title="Upload a file to this slot" aria-label="Upload to Card 5">
+                                <span class="icon"><i class="fa-solid fa-file-arrow-up"></i></span>
+                                <span>Upload</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="button is-psx" id="cloud-saves-upload-all" data-action="uploadAllLocalCards" style="margin-right: auto;">
+                    <span class="icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+                    <span>Upload all local cards</span>
+                </button>
+                <button class="button is-psx" id="cloud-saves-done" data-action="closeCloudSavesModal">Close</button>
+            </div>
+            <div style="text-align:center">
+                <i id="cloud-saves-loading" class="fa-solid fa-spinner fa-spin"></i>
+            </div>
+            <input type="file" id="cloud-saves-upload", accept=".mcd" hidden>
+        </div>
+    </div>
+    <iframe id="silent-sign-in" style="width: 1px; height: 1px"></iframe>
     <canvas id="save-state-canvas" style="display:none"></canvas>
 
     <input type="file" id="file-bios" accept=".bin,.BIN" hidden>

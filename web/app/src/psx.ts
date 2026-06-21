@@ -1,5 +1,6 @@
 import init, { PsxWebEmulator, InitOutput } from "../../pkg/rsx_redux_web"
 import wasmData from '../../pkg/rsx_redux_web_bg.wasm'
+import { CloudService } from "./cloud_saves/cloud_service"
 import { Joypad } from "./input/joypad"
 import { AudioOutput } from "./output/audio_output"
 import { VideoOutput } from "./output/video_output"
@@ -33,6 +34,7 @@ export class Psx {
     private biosBytes = new Uint8Array([])
     private rsxDb = new RsxDb()
     private stateManager: StateManager|null = null
+    private cloudService = new CloudService()
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -96,7 +98,10 @@ export class Psx {
         })
 
         document.addEventListener('keydown', async (ev) => {
-            if (ev.key.toLowerCase() == 'f5') {
+            if (ev.key.toLowerCase() == 'f4') {
+                ev.preventDefault()
+                this.waveVisualizer.toggle()
+            } else if (ev.key.toLowerCase() == 'f5') {
                 ev.preventDefault()
                 const imageUrl = this.getImageUrl()
                 const state = await this.stateManager?.createSaveState(0, imageUrl)
@@ -118,8 +123,179 @@ export class Psx {
         this.initializeEmulator()
     }
 
+    async syncCloudCard(el: HTMLElement) {
+        const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+        if (slot != null) {
+            const cardName = `memory_card${slot}`
+
+            const loading = document.getElementById('cloud-saves-loading')
+
+            loading!.style.display = 'block'
+
+            const data = (await this.cloudService.getCard(cardName)).data
+
+            loading!.style.display = 'none'
+
+            if (data != null) {
+                await this.rsxDb.saveMemoryCard(cardName, data)
+
+                const syncCloudCard = document.querySelector(`.cloud-save-slot[data-cloud-slot="${slot}"]`)?.querySelector('.sync-cloud-card')
+
+                if (syncCloudCard != null) {
+                    (syncCloudCard as HTMLElement).innerHTML = '<i class="fa-solid fa-check"></i>'
+
+                    setTimeout(() => {
+                        (syncCloudCard as HTMLElement).innerHTML = '<i class="fa-solid fa-arrows-rotate"></i>'
+                    }, 750)
+                }
+            }
+        }
+    }
+
+    async deleteCloudCard(el: HTMLElement) {
+        if (confirm("Are you sure you want to delete this memory card?")) {
+            const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+            if (slot != null) {
+                const cardName = `memory_card${slot}`
+
+                const loading = document.getElementById('cloud-saves-loading')
+
+                loading!.style.display = 'block'
+
+                if (await this.cloudService.deleteCard(cardName)) {
+                    this.cloudService.removeModalSlot(slot)
+                }
+
+                loading!.style.display = 'none'
+            }
+        }
+    }
+
+    async uploadAllLocalCards() {
+        const cards = await this.rsxDb.getMemoryCards()
+
+        const loading = document.getElementById('cloud-saves-loading')
+        loading!.style.display = 'block'
+        const promises = []
+        for (const card of cards) {
+            promises.push(this.cloudService.uploadCard(card.name, card.data))
+        }
+
+        await Promise.all(promises)
+
+        loading!.style.display = 'none'
+
+        const timestamp = Math.floor(Date.now() / 1000)
+
+        for (const card of cards) {
+            const slot = parseInt(card.name.replace('memory_card', ''))
+
+            this.cloudService.updateModalSlot(slot, timestamp)
+        }
+    }
+
+    getCardName(el: HTMLElement) {
+        const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+        if (slot != null) {
+            return `memory_card${slot}`
+        }
+
+        return null
+    }
+
+    async downloadCloudCard(el: HTMLElement) {
+        const cardName = this.getCardName(el)
+
+        if (cardName != null) {
+            const loading = document.getElementById('cloud-saves-loading')
+
+            loading!.style.display = 'block'
+
+            const data = (await this.cloudService.getCard(cardName)).data
+
+            loading!.style.display = 'none'
+
+            if (data != null) {
+                this.generateFile(data, cardName)
+            }
+        }
+    }
+
+    generateFile(data: Uint8Array, cardName: string) {
+        const blob = new Blob([data.buffer as ArrayBuffer], {
+            type: "application/octet-stream"
+        })
+
+        const objectUrl = URL.createObjectURL(blob)
+
+        const a = document.createElement('a')
+
+        a.href = objectUrl
+        a.download = `${cardName}.mcd`
+        document.body.append(a)
+        a.style.display = "none"
+
+        a.click()
+        a.remove()
+
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
+    }
+
+    async replaceCloudCard(el: HTMLElement) {
+        const slot = parseInt(el.dataset.cloudSlot ?? "null")
+
+        if (slot != null) {
+            const memoryCardName = `memory_card${slot}`
+
+            this.openFile('cloud-saves-upload', async (file) => {
+                const bytes = new Uint8Array(await this.readFile(file))
+
+                const loading = document.getElementById('cloud-saves-loading')
+
+                loading!.style.display = 'block'
+
+                await this.cloudService.uploadCard(memoryCardName, bytes)
+
+                loading!.style.display = 'none'
+
+                const timestamp = Math.floor(Date.now() / 1000)
+
+                this.cloudService.updateModalSlot(slot, timestamp)
+            })
+        }
+    }
+
+    checkOauth() {
+        this.cloudService.checkAuthentication()
+    }
+
+    cloudSignIn() {
+        this.cloudService.signIn()
+        window.addEventListener("message", (e) => {
+            if (e.data == "authFinished") {
+                this.cloudService.signInUser()
+                this.loadMemoryCard()
+            }
+        })
+    }
+
+    cloudSignOut() {
+        this.cloudService.signOut()
+    }
+
+    openCloudSaves() {
+        this.cloudService.openCloudSavesModal()
+    }
+
+    closeCloudSavesModal() {
+        this.cloudService.closeModal()
+    }
+
     async loadMemoryCard() {
-        const data = await this.rsxDb.getMemoryCard(this.memoryCard)
+        const data = this.cloudService.loggedIn ? (await this.cloudService.getCard(this.memoryCard)).data : await this.rsxDb.getMemoryCard(this.memoryCard)
 
         if (data != null) {
             this.memoryCardData = data as Uint8Array<ArrayBuffer>
@@ -325,8 +501,6 @@ export class Psx {
         this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
         this.stateManager.updateStateMenuList()
 
-        this.emulator!.set_memory_card(this.memoryCardData)
-
         if (/\.exe$/.test(file.name)) {
             this.emulator!.set_exe(binaryBytes)
         } else {
@@ -421,7 +595,11 @@ export class Psx {
 
         if (memoryCardData != null) {
             this.memoryCardData = memoryCardData
-            await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+            if (this.cloudService.loggedIn) {
+                await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
+            } else {
+                await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+            }
             document.getElementById('mem-card-status')!.textContent = "Saves found"
         }
     }

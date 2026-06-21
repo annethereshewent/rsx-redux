@@ -11,6 +11,14 @@
     --psx-red: #c0524f;
 }
 
+#request-failure-notification {
+    display: none;
+    background: var(--psx-red);
+    width: 70%;
+    margin: 40px auto;
+    z-index: 10;
+}
+
 html, body {
     background-color: var(--psx-bg);
     color: var(--psx-text);
@@ -301,6 +309,13 @@ html, body {
     &.has-saves {
         color: var(--psx-green);
     }
+}
+
+#cloud-sign-out, #cloud-sign-in {
+    display: none;
+}
+#cloud-sign-in.is-active, #cloud-sign-out.is-active {
+    display: block;
 }
 
 @media all and (display-mode: fullscreen) {

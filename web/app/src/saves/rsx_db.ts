@@ -27,6 +27,7 @@ interface RsxDB extends DBSchema {
         value: {
             name: string,
             data: Uint8Array,
+            lastModified?: number
         }
     }
 }
@@ -136,7 +137,17 @@ export class RsxDb {
             this.db = await openDB('rsx-db')
         }
 
-        await this.db.put('rsx-memory-cards', { name: memoryCard, data })
+        await this.db.put('rsx-memory-cards', { name: memoryCard, data, lastModified: Math.floor(Date.now() / 1000) })
 
+    }
+
+    async getMemoryCards() {
+        if (this.db == null) {
+            this.db = await openDB("rsx-db", currentVersion)
+        }
+
+        const cards = await this.db.getAll('rsx-memory-cards')
+
+        return cards
     }
 }
