@@ -501,8 +501,6 @@ export class Psx {
         this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
         this.stateManager.updateStateMenuList()
 
-        this.emulator!.set_memory_card(this.memoryCardData)
-
         if (/\.exe$/.test(file.name)) {
             this.emulator!.set_exe(binaryBytes)
         } else {
