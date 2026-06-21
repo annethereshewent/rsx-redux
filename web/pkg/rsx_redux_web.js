@@ -157,6 +157,12 @@ export class PsxWebEmulator {
         wasm.psxwebemulator_set_memory_card(this.__wbg_ptr, ptr0, len0);
     }
     /**
+     * @param {number} port
+     */
+    set_port(port) {
+        wasm.psxwebemulator_set_port(this.__wbg_ptr, port);
+    }
+    /**
      * @param {number} normalized_x
      * @param {number} normalized_y
      */
