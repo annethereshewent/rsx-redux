@@ -137,7 +137,7 @@ export class RsxDb {
             this.db = await openDB('rsx-db')
         }
 
-        await this.db.put('rsx-memory-cards', { name: memoryCard, data, lastModified: Date.now() })
+        await this.db.put('rsx-memory-cards', { name: memoryCard, data, lastModified: Math.floor(Date.now() / 1000) })
 
     }
 
