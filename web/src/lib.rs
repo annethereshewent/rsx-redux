@@ -216,6 +216,10 @@ impl PsxWebEmulator {
         }
     }
 
+    pub fn set_port(&mut self, port: u8) {
+        self.cpu.bus.peripherals.selected_controller = port;
+    }
+
     pub fn get_memory_bytes(&mut self) -> Option<Vec<u8>> {
         if self.cpu.bus.peripherals.memory_card.is_memory_dirty() {
             self.cpu.bus.peripherals.memory_card.clear_dirty();

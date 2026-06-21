@@ -23,6 +23,7 @@ export class PsxWebEmulator {
     set_left_x(value: number): void;
     set_left_y(value: number): void;
     set_memory_card(memory_bytes: Uint8Array): void;
+    set_port(port: number): void;
     set_right_thumbstick(normalized_x: number, normalized_y: number): void;
     step_frame(): void;
     switch_selected_controller(controller_id: number): void;
@@ -54,11 +55,12 @@ export interface InitOutput {
     readonly psxwebemulator_get_rumble: (a: number) => [number, number];
     readonly psxwebemulator_get_digital_mode: (a: number) => number;
     readonly psxwebemulator_set_digital_mode: (a: number, b: number) => void;
-    readonly psxwebemulator_switch_selected_controller: (a: number, b: number) => void;
     readonly psxwebemulator_close_shell: (a: number, b: number, c: number) => void;
     readonly psxwebemulator_open_shell: (a: number) => void;
     readonly psxwebemulator_reset: (a: number) => void;
+    readonly psxwebemulator_set_port: (a: number, b: number) => void;
     readonly psxwebemulator_get_memory_bytes: (a: number) => [number, number];
+    readonly psxwebemulator_switch_selected_controller: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __externref_table_alloc: () => number;

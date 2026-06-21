@@ -1,4 +1,4 @@
-import { InitOutput, PsxWebEmulator } from "../../../pkg/rsx_redux_web"
+import { PsxWebEmulator } from "../../../pkg/rsx_redux_web"
 
 const SAMPLE_RATE = 44100
 
@@ -24,14 +24,23 @@ export class AudioOutput {
             document.getElementById('volume-value')!.textContent = `${this.volumeLevel}%`
 
             this.gainNode.gain.value = this.volumeLevel / 100
+
+            localStorage.setItem('rsx-current-volume', this.volumeLevel.toString())
         })
     }
 
     toggleMute() {
+        this.isMuted = !this.isMuted
+        this.setMute()
+
+        localStorage.setItem('rsx-is-muted', JSON.stringify(this.isMuted))
+    }
+
+    setMute() {
         const muteIcon = document.getElementById('mute-icon')!
         const slider = document.getElementById('volume-slider') as HTMLInputElement
         const volumeValue = document.getElementById('volume-value')!
-        if (this.isMuted) {
+        if (!this.isMuted) {
             this.gainNode.gain.value = this.volumeLevel / 100
             muteIcon.classList.remove('fa-volume-xmark')
             muteIcon.classList.add('fa-volume-high')
@@ -46,8 +55,6 @@ export class AudioOutput {
             slider.value = '0'
             volumeValue.textContent = '0%'
         }
-
-        this.isMuted = !this.isMuted
     }
 
     closeModal() {
@@ -75,6 +82,26 @@ export class AudioOutput {
         this.gainNode.connect(this.audioContext.destination)
 
         this.gainNode.gain.value = this.volumeLevel / 100
+
+        const savedVolume = localStorage.getItem('rsx-current-volume')
+
+        if (savedVolume != null) {
+            this.volumeLevel = parseInt(savedVolume)
+            this.gainNode.gain.value = this.volumeLevel / 100
+            // javascript is being stupid so i need to add a semicolon here. otherwise it thinks i'm trying
+            // to call a function on volumeSlider on the next line
+            const volumeSlider = document.getElementById('volume-slider');
+
+            (volumeSlider as HTMLInputElement).value = savedVolume
+        }
+
+        const isMuted = localStorage.getItem('rsx-is-muted')
+
+        if (isMuted != null) {
+            this.isMuted = JSON.parse(isMuted)
+            this.setMute()
+        }
+
 
         await this.audioContext.resume()
     }

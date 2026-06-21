@@ -123,6 +123,25 @@ export class Psx {
         this.initializeEmulator()
     }
 
+    selectControllerPort(el: HTMLElement) {
+        if (this.emulator != null) {
+            const portStr = el.dataset.port
+
+            if (portStr != null) {
+                const port = parseInt(portStr)
+                this.emulator.set_port(port)
+
+                const unselected = portStr == '0' ? '1' : '0'
+
+                const unselectedEl = document.querySelector(`.port-pill[data-port="${unselected}"]`)
+                const selectedEl = document.querySelector(`.port-pill[data-port="${portStr}"]`)
+
+                unselectedEl!.classList.remove('is-active')
+                selectedEl!.classList.add('is-active')
+            }
+        }
+    }
+
     async syncCloudCard(el: HTMLElement) {
         const slot = parseInt(el.dataset.cloudSlot ?? "null")
 
