@@ -1,7 +1,7 @@
 import moment from "moment"
 
 const BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-const CLIENT_ID = "353451169812-j73f39lk2j30jkvtdshub7l7r08nj0iv.apps.googleusercontent.com"
+const CLIENT_ID = "353451169812-khtanjkfi98eh2bgcldmqt22g47og1ef.apps.googleusercontent.com"
 const TOKEN_EXPIRY_BUFFER_MS = 10000
 
 export interface FileEntry {
