@@ -27,6 +27,22 @@ export class AudioOutput {
 
             localStorage.setItem('rsx-current-volume', this.volumeLevel.toString())
         })
+
+        const savedVolume = localStorage.getItem('rsx-current-volume')
+
+        if (savedVolume != null) {
+            // javascript is being stupid so i need to add a semicolon here. otherwise it thinks i'm trying
+            // to call a function on volumeSlider on the next line
+            const volumeSlider = document.getElementById('volume-slider');
+            (volumeSlider as HTMLInputElement).value = savedVolume
+        }
+
+        const isMuted = localStorage.getItem('rsx-is-muted')
+
+        if (isMuted != null) {
+            this.isMuted = JSON.parse(isMuted)
+            this.setMute()
+        }
     }
 
     toggleMute() {
@@ -88,11 +104,6 @@ export class AudioOutput {
         if (savedVolume != null) {
             this.volumeLevel = parseInt(savedVolume)
             this.gainNode.gain.value = this.volumeLevel / 100
-            // javascript is being stupid so i need to add a semicolon here. otherwise it thinks i'm trying
-            // to call a function on volumeSlider on the next line
-            const volumeSlider = document.getElementById('volume-slider');
-
-            (volumeSlider as HTMLInputElement).value = savedVolume
         }
 
         const isMuted = localStorage.getItem('rsx-is-muted')
