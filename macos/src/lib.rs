@@ -8,7 +8,7 @@ use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 #[cfg(feature = "hardware_gpu")]
 use renderer_metal::renderer::Renderer;
-use rsx_redux::cpu::{bus::peripherals::memory_card::MEMORY_SIZE, CPU};
+use rsx_redux::cpu::{CPU, bus::peripherals::memory_card::MEMORY_SIZE};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -302,6 +302,9 @@ impl PsxMacEmulator {
     }
 
     pub fn open_shell(&mut self) {
-        self.cpu.bus.cdrom.open_shell(&mut self.cpu.bus.interrupt_stat);
+        self.cpu
+            .bus
+            .cdrom
+            .open_shell(&mut self.cpu.bus.interrupt_stat);
     }
 }
