@@ -1,15 +1,12 @@
 use std::cmp;
 
-use bytemuck::{Pod, Zeroable, cast_slice};
-use js_sys::{Float32Array, Uint16Array, wasm_bindgen::JsCast};
+use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
+use glow::{Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeShader, NativeTexture, NativeUniformLocation, PixelPackData, PixelUnpackData};
 use rsx_redux::cpu::bus::gpu::{
     CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors,
     VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
 };
-use web_sys::{
-    HtmlCanvasElement, WebGl2RenderingContext, WebGlBuffer, WebGlContextAttributes,
-    WebGlFramebuffer, WebGlProgram, WebGlShader, WebGlTexture, WebGlUniformLocation, window,
-};
+use sdl2::{video::{GLContext, GLProfile, Window}, VideoSubsystem};
 
 const QUAD_VERTS: [f32; 24] = [
     // pos        uv
@@ -60,55 +57,50 @@ impl GlVertex {
 }
 
 pub struct Renderer {
-    canvas: HtmlCanvasElement,
-    gl: WebGl2RenderingContext,
-    vram_read: WebGlTexture,
-    vram_write: WebGlTexture,
-    program: WebGlProgram,
-    vertex_buffer: WebGlBuffer,
-    quad_buffer: WebGlBuffer,
-    fbo_write: WebGlFramebuffer,
-    fbo_read: WebGlFramebuffer,
-    writeback_program: WebGlProgram,
-    fb_program: WebGlProgram,
-    location: Option<WebGlUniformLocation>,
-    loc_has_texture: Option<WebGlUniformLocation>,
-    loc_semitransparent: Option<WebGlUniformLocation>,
-    loc_modulate: Option<WebGlUniformLocation>,
-    loc_texture_mask_x: Option<WebGlUniformLocation>,
-    loc_texture_mask_y: Option<WebGlUniformLocation>,
-    loc_texture_offset_x: Option<WebGlUniformLocation>,
-    loc_texture_offset_y: Option<WebGlUniformLocation>,
-    loc_depth: Option<WebGlUniformLocation>,
-    loc_transparent_mode: Option<WebGlUniformLocation>,
-    loc_page: Option<WebGlUniformLocation>,
-    loc_clut: Option<WebGlUniformLocation>,
-    loc_force_mask_bit: Option<WebGlUniformLocation>,
-    loc_preserve_masked_pixels: Option<WebGlUniformLocation>,
+    gl: Context,
+    _gl_context: GLContext,
+    vram_read: NativeTexture,
+    vram_write: NativeTexture,
+    program: NativeProgram,
+    vertex_buffer: NativeBuffer,
+    quad_buffer: NativeBuffer,
+    fbo_write: NativeFramebuffer,
+    fbo_read: NativeFramebuffer,
+    writeback_program: NativeProgram,
+    fb_program: NativeProgram,
+    location: Option<NativeUniformLocation>,
+    loc_has_texture: Option<NativeUniformLocation>,
+    loc_semitransparent: Option<NativeUniformLocation>,
+    loc_modulate: Option<NativeUniformLocation>,
+    loc_texture_mask_x: Option<NativeUniformLocation>,
+    loc_texture_mask_y: Option<NativeUniformLocation>,
+    loc_texture_offset_x: Option<NativeUniformLocation>,
+    loc_texture_offset_y: Option<NativeUniformLocation>,
+    loc_depth: Option<NativeUniformLocation>,
+    loc_transparent_mode: Option<NativeUniformLocation>,
+    loc_page: Option<NativeUniformLocation>,
+    loc_clut: Option<NativeUniformLocation>,
+    loc_force_mask_bit: Option<NativeUniformLocation>,
+    loc_preserve_masked_pixels: Option<NativeUniformLocation>,
 }
 
 impl Renderer {
-    pub fn new(canvas_id: &str) -> Self {
-        let document = window().unwrap().document().unwrap();
-        let canvas = document
-            .get_element_by_id(canvas_id)
-            .unwrap()
-            .dyn_into::<HtmlCanvasElement>()
-            .unwrap();
+    fn glow_context(window: &Window) -> Context {
+        unsafe {
+            Context::from_loader_function(|s| window.subsystem().gl_get_proc_address(s) as _)
+        }
+    }
+    pub fn new(window: &Window, video: &VideoSubsystem, gl_context: GLContext) -> Self {
+        let gl_attr = video.gl_attr();
 
-        let context_options = WebGlContextAttributes::new();
-        context_options.set_alpha(false);
-        context_options.set_preserve_drawing_buffer(true);
+        gl_attr.set_alpha_size(0);
+        gl_attr.set_context_version(4, 1);
+        gl_attr.set_context_profile(GLProfile::Core);
 
-        let gl = canvas
-            .get_context_with_context_options("webgl2", &context_options)
-            .unwrap()
-            .unwrap()
-            .dyn_into::<WebGl2RenderingContext>()
-            .unwrap();
+        let gl = Self::glow_context(window);
 
-        let vram_read = gl.create_texture().unwrap();
-        let vram_write = gl.create_texture().unwrap();
+        let vram_read = unsafe { gl.create_texture().unwrap() };
+        let vram_write = unsafe { gl.create_texture().unwrap() };
 
         let fragment_shader_str = include_str!("shaders/fragment.glsl");
         let vertex_shader_str = include_str!("shaders/vertex.glsl");
@@ -122,73 +114,73 @@ impl Renderer {
 
         let fragment_shader = Self::compile_shader(
             &gl,
-            WebGl2RenderingContext::FRAGMENT_SHADER,
+            glow::FRAGMENT_SHADER,
             fragment_shader_str,
         )
         .unwrap();
         let vertex_shader = Self::compile_shader(
             &gl,
-            WebGl2RenderingContext::VERTEX_SHADER,
+            glow::VERTEX_SHADER,
             vertex_shader_str,
         )
         .unwrap();
         let fb_frag_shader = Self::compile_shader(
             &gl,
-            WebGl2RenderingContext::FRAGMENT_SHADER,
+            glow::FRAGMENT_SHADER,
             fb_frag_shader_str,
         )
         .unwrap();
         let fb_vert_shader = Self::compile_shader(
             &gl,
-            WebGl2RenderingContext::VERTEX_SHADER,
+            glow::VERTEX_SHADER,
             fb_vert_shader_str,
         )
         .unwrap();
 
         let writeback_frag_shader = Self::compile_shader(
             &gl,
-            WebGl2RenderingContext::FRAGMENT_SHADER,
+            glow::FRAGMENT_SHADER,
             writeback_frag_shader_str,
         )
         .unwrap();
         let writeback_vert_shader = Self::compile_shader(
             &gl,
-            WebGl2RenderingContext::VERTEX_SHADER,
+            glow::VERTEX_SHADER,
             writeback_vert_shader_str,
         )
         .unwrap();
 
-        let program = Self::link_program(&gl, &vertex_shader, &fragment_shader).unwrap();
-        let fb_program = Self::link_program(&gl, &fb_vert_shader, &fb_frag_shader).unwrap();
+        let program = Self::link_program(&gl, vertex_shader, fragment_shader).unwrap();
+        let fb_program = Self::link_program(&gl, fb_vert_shader, fb_frag_shader).unwrap();
         let writeback_program =
-            Self::link_program(&gl, &writeback_vert_shader, &writeback_frag_shader).unwrap();
+            Self::link_program(&gl, writeback_vert_shader, writeback_frag_shader).unwrap();
 
-        let location = gl.get_uniform_location(&program, "vramRead");
+        let location = unsafe { gl.get_uniform_location(program, "vramRead") };
 
-        let loc_has_texture = gl.get_uniform_location(&program, "hasTexture");
-        let loc_semitransparent = gl.get_uniform_location(&program, "semitransparent");
-        let loc_modulate = gl.get_uniform_location(&program, "modulate");
-        let loc_texture_mask_x = gl.get_uniform_location(&program, "textureMaskX");
-        let loc_texture_mask_y = gl.get_uniform_location(&program, "textureMaskY");
-        let loc_texture_offset_x = gl.get_uniform_location(&program, "textureOffsetX");
-        let loc_texture_offset_y = gl.get_uniform_location(&program, "textureOffsetY");
-        let loc_depth = gl.get_uniform_location(&program, "depth");
-        let loc_transparent_mode = gl.get_uniform_location(&program, "transparentMode");
-        let loc_page = gl.get_uniform_location(&program, "page");
-        let loc_clut = gl.get_uniform_location(&program, "clut");
-        let loc_force_mask_bit = gl.get_uniform_location(&program, "forceMaskBit");
-        let loc_preserve_masked_pixels = gl.get_uniform_location(&program, "preserveMaskedPixels");
+        let loc_has_texture = unsafe { gl.get_uniform_location(program, "hasTexture") };
+        let loc_semitransparent = unsafe { gl.get_uniform_location(program, "semitransparent") };
+        let loc_modulate = unsafe { gl.get_uniform_location(program, "modulate") };
+        let loc_texture_mask_x = unsafe { gl.get_uniform_location(program, "textureMaskX") };
+        let loc_texture_mask_y = unsafe { gl.get_uniform_location(program, "textureMaskY") };
+        let loc_texture_offset_x = unsafe { gl.get_uniform_location(program, "textureOffsetX") };
+        let loc_texture_offset_y = unsafe { gl.get_uniform_location(program, "textureOffsetY") };
+        let loc_depth = unsafe { gl.get_uniform_location(program, "depth") };
+        let loc_transparent_mode = unsafe { gl.get_uniform_location(program, "transparentMode") };
+        let loc_page = unsafe { gl.get_uniform_location(program, "page") };
+        let loc_clut = unsafe { gl.get_uniform_location(program, "clut") };
+        let loc_force_mask_bit = unsafe { gl.get_uniform_location(program, "forceMaskBit") };
+        let loc_preserve_masked_pixels = unsafe { gl.get_uniform_location(program, "preserveMaskedPixels") };
 
-        let vertex_buffer = gl.create_buffer().unwrap();
-        let quad_buffer = gl.create_buffer().unwrap();
+        let vertex_buffer = unsafe { gl.create_buffer().unwrap() };
+        let quad_buffer = unsafe { gl.create_buffer().unwrap() };
 
-        let fbo_write = gl.create_framebuffer().unwrap();
-        let fbo_read = gl.create_framebuffer().unwrap();
+        let fbo_write = unsafe { gl.create_framebuffer().unwrap() };
+        let fbo_read = unsafe { gl.create_framebuffer().unwrap() };
 
         Self::bind_texture_to_framebuffer(
             &gl,
-            WebGl2RenderingContext::TEXTURE0,
-            WebGl2RenderingContext::RGBA8,
+            glow::TEXTURE0,
+            glow::RGBA8,
             VRAM_WIDTH as i32,
             VRAM_HEIGHT as i32,
             &vram_write,
@@ -197,26 +189,30 @@ impl Renderer {
 
         Self::bind_texture_to_framebuffer(
             &gl,
-            WebGl2RenderingContext::TEXTURE1,
-            WebGl2RenderingContext::R16UI,
+            glow::TEXTURE1,
+            glow::R16UI,
             VRAM_WIDTH as i32,
             VRAM_HEIGHT as i32,
             &vram_read,
             &fbo_read,
         );
 
-        let float_view = Float32Array::from(QUAD_VERTS.as_slice());
+        // let float_view = Float32Array::from(QUAD_VERTS.as_slice());
 
-        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&quad_buffer));
-        gl.buffer_data_with_array_buffer_view(
-            WebGl2RenderingContext::ARRAY_BUFFER,
-            &float_view,
-            WebGl2RenderingContext::DYNAMIC_DRAW,
-        );
+        let slice: &[u8] = cast_slice(QUAD_VERTS.as_slice());
+
+        unsafe {
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(quad_buffer));
+            gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                slice,
+                glow::DYNAMIC_DRAW,
+            );
+        }
 
         Self {
-            canvas,
             gl,
+            _gl_context: gl_context,
             vram_read,
             vram_write,
             program,
@@ -244,103 +240,89 @@ impl Renderer {
     }
 
     fn bind_texture_to_framebuffer(
-        gl: &WebGl2RenderingContext,
+        gl: &Context,
         active_texture: u32,
         internal_format: u32,
         width: i32,
         height: i32,
-        texture: &WebGlTexture,
-        framebuffer: &WebGlFramebuffer,
+        texture: &NativeTexture,
+        framebuffer: &NativeFramebuffer,
     ) {
-        gl.active_texture(active_texture);
-        gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(texture));
+        unsafe {
+            gl.active_texture(active_texture);
+            gl.bind_texture(glow::TEXTURE_2D, Some(*texture));
 
-        gl.tex_storage_2d(
-            WebGl2RenderingContext::TEXTURE_2D,
-            1,
-            internal_format,
-            width,
-            height,
-        );
+            gl.tex_storage_2d(
+                glow::TEXTURE_2D,
+                1,
+                internal_format,
+                width,
+                height,
+            );
 
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
-            WebGl2RenderingContext::NEAREST as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
-            WebGl2RenderingContext::NEAREST as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_WRAP_S,
-            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
-        );
-        gl.tex_parameteri(
-            WebGl2RenderingContext::TEXTURE_2D,
-            WebGl2RenderingContext::TEXTURE_WRAP_T,
-            WebGl2RenderingContext::CLAMP_TO_EDGE as i32,
-        );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MIN_FILTER,
+                glow::NEAREST as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_MAG_FILTER,
+                glow::NEAREST as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_S,
+                glow::CLAMP_TO_EDGE as i32,
+            );
+            gl.tex_parameter_i32(
+                glow::TEXTURE_2D,
+                glow::TEXTURE_WRAP_T,
+                glow::CLAMP_TO_EDGE as i32,
+            );
 
-        gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(framebuffer));
-        gl.framebuffer_texture_2d(
-            WebGl2RenderingContext::FRAMEBUFFER,
-            WebGl2RenderingContext::COLOR_ATTACHMENT0,
-            WebGl2RenderingContext::TEXTURE_2D,
-            Some(texture),
-            0,
-        );
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(*framebuffer));
+            gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
+                glow::COLOR_ATTACHMENT0,
+                glow::TEXTURE_2D,
+                Some(*texture),
+                0,
+            );
+        }
     }
 
     fn compile_shader(
-        gl: &WebGl2RenderingContext,
+        gl: &Context,
         shader_type: u32,
         source: &str,
-    ) -> Result<WebGlShader, String> {
-        let shader = gl
-            .create_shader(shader_type)
-            .ok_or("Unable to create shader object".to_string())?;
+    ) -> Result<NativeShader, String> {
+        let shader = unsafe { gl
+            .create_shader(shader_type)?
+        };
 
-        gl.shader_source(&shader, source);
-        gl.compile_shader(&shader);
-
-        if gl
-            .get_shader_parameter(&shader, WebGl2RenderingContext::COMPILE_STATUS)
-            .as_bool()
-            .unwrap_or(false)
-        {
-            Ok(shader)
-        } else {
-            Err(gl
-                .get_shader_info_log(&shader)
-                .unwrap_or("unknown error creating shader".to_string()))
+        unsafe {
+            gl.shader_source(shader, source);
+            gl.compile_shader(shader);
         }
+
+        Ok(shader)
     }
 
     fn link_program(
-        gl: &WebGl2RenderingContext,
-        vertex_shader: &WebGlShader,
-        fragment_shader: &WebGlShader,
-    ) -> Result<WebGlProgram, String> {
-        let program = gl.create_program().ok_or("Unable to create gl program")?;
+        gl: &Context,
+        vertex_shader: NativeShader,
+        fragment_shader: NativeShader,
+    ) -> Result<NativeProgram, String> {
+        let program = unsafe { gl.create_program()? };
 
-        gl.attach_shader(&program, vertex_shader);
-        gl.attach_shader(&program, fragment_shader);
-        gl.link_program(&program);
-
-        if gl
-            .get_program_parameter(&program, WebGl2RenderingContext::LINK_STATUS)
-            .as_bool()
-            .unwrap_or(false)
-        {
-            Ok(program)
-        } else {
-            Err(gl
-                .get_program_info_log(&program)
-                .unwrap_or("Unable to create gl program for unknown reason".to_string()))
+        unsafe {
+            gl.attach_shader(program, vertex_shader);
+            gl.attach_shader(program, fragment_shader);
+            gl.link_program(program);
         }
+
+        Ok(program)
     }
 
     pub fn process(&self, gpu: &mut GPU) {
@@ -353,8 +335,10 @@ impl Renderer {
     }
 
     pub fn clear_color(&self) {
-        self.gl.clear_color(0.0, 0.0, 0.0, 0.0);
-        self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
+        unsafe {
+            self.gl.clear_color(0.0, 0.0, 0.0, 0.0);
+            self.gl.clear(glow::COLOR_BUFFER_BIT);
+        }
     }
 
     fn process_commands(&self, gpu: &mut GPU) {
@@ -425,60 +409,62 @@ impl Renderer {
             panic!("no gpu or polygon passed to vram_writeback");
         };
 
-        self.gl
-            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
+        unsafe {
+            self.gl
+                .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_read));
 
-        self.gl.use_program(Some(&self.writeback_program));
-        self.gl
-            .viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
+            self.gl.use_program(Some(self.writeback_program));
+            self.gl
+                .viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
 
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl
-            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+            self.gl.active_texture(glow::TEXTURE0);
+            self.gl
+                .bind_texture(glow::TEXTURE_2D, Some(self.vram_write));
 
-        let loc = self
-            .gl
-            .get_uniform_location(&self.writeback_program, "vramWrite");
+            let loc = self
+                .gl
+                .get_uniform_location(self.writeback_program, "vramWrite");
 
-        self.gl.uniform1i(loc.as_ref(), 0);
+            self.gl.uniform_1_i32(loc.as_ref(), 0);
 
-        self.bind_quad_verts();
+            self.bind_quad_verts();
 
-        self.gl.enable(WebGl2RenderingContext::SCISSOR_TEST);
-        self.gl
-            .scissor(start_x as i32, start_y as i32, width as i32, height as i32);
+            self.gl.enable(glow::SCISSOR_TEST);
+            self.gl
+                .scissor(start_x as i32, start_y as i32, width as i32, height as i32);
 
-        self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
-        self.gl.disable(WebGl2RenderingContext::SCISSOR_TEST);
+            self.gl.draw_arrays(glow::TRIANGLES, 0, 6);
+            self.gl.disable(glow::SCISSOR_TEST);
+        }
     }
 
     fn bind_quad_verts(&self) {
-        self.gl.bind_buffer(
-            WebGl2RenderingContext::ARRAY_BUFFER,
-            Some(&self.quad_buffer),
-        );
+        unsafe {
+            self.gl.bind_buffer(
+                glow::ARRAY_BUFFER,
+                Some(self.quad_buffer),
+            );
 
-        let quad_stride = 16; // 4 floats * 4 bytes each
+            let quad_stride = 16; // 4 floats * 4 bytes each
 
-        self.gl.vertex_attrib_pointer_with_i32(
-            0,
-            2,
-            WebGl2RenderingContext::FLOAT,
-            false,
-            quad_stride,
-            0,
-        );
-        self.gl.enable_vertex_attrib_array(0);
+            self.gl.vertex_attrib_pointer_i32(
+                0,
+                2,
+                glow::FLOAT,
+                quad_stride,
+                0,
+            );
+            self.gl.enable_vertex_attrib_array(0);
 
-        self.gl.vertex_attrib_pointer_with_i32(
-            1,
-            2,
-            WebGl2RenderingContext::FLOAT,
-            false,
-            quad_stride,
-            8,
-        );
-        self.gl.enable_vertex_attrib_array(1);
+            self.gl.vertex_attrib_pointer_i32(
+                1,
+                2,
+                glow::FLOAT,
+                quad_stride,
+                8,
+            );
+            self.gl.enable_vertex_attrib_array(1);
+        }
     }
 
     fn execute_cpu_to_vram(&self, params: VRamTransferParams) {
@@ -521,19 +507,20 @@ impl Renderer {
     fn handle_cpu_transfer(&self, params: CPUTransferParams) -> Vec<u16> {
         let mut rgba8_buf = vec![0u8; params.width as usize * params.height as usize * 4];
 
-        self.gl
-            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
-        self.gl
-            .read_pixels_with_opt_u8_array(
-                params.start_x as i32,
-                VRAM_HEIGHT as i32 - params.height as i32 - params.start_y as i32,
-                params.width as i32,
-                params.height as i32,
-                WebGl2RenderingContext::RGBA,
-                WebGl2RenderingContext::UNSIGNED_BYTE,
-                Some(&mut rgba8_buf),
-            )
-            .unwrap();
+        unsafe {
+            self.gl
+                .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_write));
+            self.gl
+                .read_pixels(
+                    params.start_x as i32,
+                    VRAM_HEIGHT as i32 - params.height as i32 - params.start_y as i32,
+                    params.width as i32,
+                    params.height as i32,
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    PixelPackData::Slice(Some(&mut rgba8_buf))
+                );
+        }
 
         let mut halfwords = Vec::new();
 
@@ -640,195 +627,195 @@ impl Renderer {
         }
 
         let vertices_bytes: &[u8] = cast_slice(&vertices);
-        let float_view = Float32Array::from(cast_slice::<u8, f32>(vertices_bytes));
 
-        self.gl.bind_buffer(
-            WebGl2RenderingContext::ARRAY_BUFFER,
-            Some(&self.vertex_buffer),
-        );
-        self.gl.buffer_data_with_array_buffer_view(
-            WebGl2RenderingContext::ARRAY_BUFFER,
-            &float_view,
-            WebGl2RenderingContext::DYNAMIC_DRAW,
-        );
+        unsafe {
+            self.gl.bind_buffer(
+                glow::ARRAY_BUFFER,
+                Some(self.vertex_buffer),
+            );
+            self.gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                vertices_bytes,
+                glow::DYNAMIC_DRAW,
+            );
 
-        let stride = std::mem::size_of::<GlVertex>() as i32;
-        self.gl.vertex_attrib_pointer_with_i32(
-            0,
-            2,
-            WebGl2RenderingContext::FLOAT,
-            false,
-            stride,
-            0,
-        );
-        self.gl.enable_vertex_attrib_array(0);
+            let stride = std::mem::size_of::<GlVertex>() as i32;
+            self.gl.vertex_attrib_pointer_i32(
+                0,
+                2,
+                glow::FLOAT,
+                stride,
+                0
+            );
+            self.gl.enable_vertex_attrib_array(0);
 
-        self.gl.vertex_attrib_pointer_with_i32(
-            1,
-            2,
-            WebGl2RenderingContext::FLOAT,
-            false,
-            stride,
-            8,
-        );
-        self.gl.enable_vertex_attrib_array(1);
+            self.gl.vertex_attrib_pointer_i32(
+                1,
+                2,
+                glow::FLOAT,
+                stride,
+                8,
+            );
+            self.gl.enable_vertex_attrib_array(1);
 
-        self.gl.vertex_attrib_pointer_with_i32(
-            2,
-            4,
-            WebGl2RenderingContext::FLOAT,
-            false,
-            stride,
-            16,
-        );
-        self.gl.enable_vertex_attrib_array(2);
+            self.gl.vertex_attrib_pointer_i32(
+                2,
+                4,
+                glow::FLOAT,
+                stride,
+                16,
+            );
+            self.gl.enable_vertex_attrib_array(2);
 
-        self.gl.vertex_attrib_pointer_with_i32(
-            3,
-            2,
-            WebGl2RenderingContext::FLOAT,
-            false,
-            stride,
-            32,
-        );
+            self.gl.vertex_attrib_pointer_i32(
+                3,
+                2,
+                glow::FLOAT,
+                stride,
+                32,
+            );
 
-        self.gl.enable_vertex_attrib_array(3);
+            self.gl.enable_vertex_attrib_array(3);
 
-        self.gl
-            .viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
+            self.gl
+                .viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
 
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl
-            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+            self.gl.active_texture(glow::TEXTURE0);
+            self.gl
+                .bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
 
-        self.gl.use_program(Some(&self.program));
+            self.gl.use_program(Some(self.program));
 
-        self.gl.uniform1i(self.location.as_ref(), 0);
-        self.gl.uniform1i(
-            self.loc_has_texture.as_ref(),
-            fragment_uniform.has_texture as i32,
-        );
-        self.gl.uniform1i(
-            self.loc_semitransparent.as_ref(),
-            fragment_uniform.semitransparent as i32,
-        );
-        self.gl
-            .uniform1i(self.loc_modulate.as_ref(), fragment_uniform.modulate as i32);
-        self.gl.uniform1i(
-            self.loc_force_mask_bit.as_ref(),
-            fragment_uniform.force_mask_bit as i32,
-        );
-        self.gl.uniform1i(
-            self.loc_preserve_masked_pixels.as_ref(),
-            fragment_uniform.preserve_masked_pixels as i32,
-        );
+            self.gl.uniform_1_i32(self.location.as_ref(), 0);
+            self.gl.uniform_1_i32(
+                self.loc_has_texture.as_ref(),
+                fragment_uniform.has_texture as i32,
+            );
+            self.gl.uniform_1_i32(
+                self.loc_semitransparent.as_ref(),
+                fragment_uniform.semitransparent as i32,
+            );
+            self.gl
+                .uniform_1_i32(self.loc_modulate.as_ref(), fragment_uniform.modulate as i32);
+            self.gl.uniform_1_i32(
+                self.loc_force_mask_bit.as_ref(),
+                fragment_uniform.force_mask_bit as i32,
+            );
+            self.gl.uniform_1_i32(
+                self.loc_preserve_masked_pixels.as_ref(),
+                fragment_uniform.preserve_masked_pixels as i32,
+            );
 
-        self.gl.uniform1ui(
-            self.loc_texture_mask_x.as_ref(),
-            fragment_uniform.texture_mask_x,
-        );
-        self.gl.uniform1ui(
-            self.loc_texture_mask_y.as_ref(),
-            fragment_uniform.texture_mask_y,
-        );
-        self.gl.uniform1ui(
-            self.loc_texture_offset_x.as_ref(),
-            fragment_uniform.texture_offset_x,
-        );
-        self.gl.uniform1ui(
-            self.loc_texture_offset_y.as_ref(),
-            fragment_uniform.texture_offset_y,
-        );
-        self.gl.uniform1ui(
-            self.loc_transparent_mode.as_ref(),
-            fragment_uniform.transparent_mode,
-        );
+            self.gl.uniform_1_u32(
+                self.loc_texture_mask_x.as_ref(),
+                fragment_uniform.texture_mask_x,
+            );
+            self.gl.uniform_1_u32(
+                self.loc_texture_mask_y.as_ref(),
+                fragment_uniform.texture_mask_y,
+            );
+            self.gl.uniform_1_u32(
+                self.loc_texture_offset_x.as_ref(),
+                fragment_uniform.texture_offset_x,
+            );
+            self.gl.uniform_1_u32(
+                self.loc_texture_offset_y.as_ref(),
+                fragment_uniform.texture_offset_y,
+            );
+            self.gl.uniform_1_u32(
+                self.loc_transparent_mode.as_ref(),
+                fragment_uniform.transparent_mode,
+            );
 
-        self.gl.uniform2ui(
-            self.loc_page.as_ref(),
-            fragment_uniform.page[0],
-            fragment_uniform.page[1],
-        );
+            self.gl.uniform_2_u32(
+                self.loc_page.as_ref(),
+                fragment_uniform.page[0],
+                fragment_uniform.page[1],
+            );
 
-        self.gl.uniform2ui(
-            self.loc_clut.as_ref(),
-            fragment_uniform.clut[0],
-            fragment_uniform.clut[1],
-        );
+            self.gl.uniform_2_u32(
+                self.loc_clut.as_ref(),
+                fragment_uniform.clut[0],
+                fragment_uniform.clut[1],
+            );
 
-        self.gl
-            .uniform1i(self.loc_depth.as_ref(), fragment_uniform.depth);
+            self.gl
+                .uniform_1_i32(self.loc_depth.as_ref(), fragment_uniform.depth);
 
-        self.gl
-            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
+            self.gl
+                .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_write));
 
-        let (start_x, start_y, width, height) = Self::get_drawing_area(polygon, true);
+            let (start_x, start_y, width, height) = Self::get_drawing_area(polygon, true);
 
-        self.gl.enable(WebGl2RenderingContext::SCISSOR_TEST);
-        self.gl
-            .scissor(start_x as i32, start_y as i32, width as i32, height as i32);
+            self.gl.enable(glow::SCISSOR_TEST);
+            self.gl
+                .scissor(start_x as i32, start_y as i32, width as i32, height as i32);
 
-        let primitive_type = if polygon.is_line {
-            WebGl2RenderingContext::LINES
-        } else {
-            WebGl2RenderingContext::TRIANGLES
-        };
+            let primitive_type = if polygon.is_line {
+                glow::LINES
+            } else {
+                glow::TRIANGLES
+            };
 
-        self.gl
-            .draw_arrays(primitive_type, 0, vertices.len() as i32);
+            self.gl
+                .draw_arrays(primitive_type, 0, vertices.len() as i32);
 
-        self.gl.disable(WebGl2RenderingContext::SCISSOR_TEST);
+            self.gl.disable(glow::SCISSOR_TEST);
+        }
     }
 
     pub fn present(&self, gpu: &mut GPU) {
         let (width, height) = gpu.get_dimensions();
 
-        self.canvas
-            .set_attribute("width", &format!("{width}"))
-            .unwrap();
-        self.canvas
-            .set_attribute("height", &format!("{height}"))
-            .unwrap();
-        self.gl.viewport(0, 0, width as i32, height as i32);
+        // self.canvas
+        //     .set_attribute("width", &format!("{width}"))
+        //     .unwrap();
+        // self.canvas
+        //     .set_attribute("height", &format!("{height}"))
+        //     .unwrap();
 
-        let loc_depth = self
-            .gl
-            .get_uniform_location(&self.fb_program, "displayDepth");
-        let loc_start = self
-            .gl
-            .get_uniform_location(&self.fb_program, "displayStart");
-        let loc_size = self
-            .gl
-            .get_uniform_location(&self.fb_program, "displaySize");
+        unsafe {
+            self.gl.viewport(0, 0, width as i32, height as i32);
 
-        self.gl.use_program(Some(&self.fb_program));
+            let loc_depth = self
+                .gl
+                .get_uniform_location(self.fb_program, "displayDepth");
+            let loc_start = self
+                .gl
+                .get_uniform_location(self.fb_program, "displayStart");
+            let loc_size = self
+                .gl
+                .get_uniform_location(self.fb_program, "displaySize");
 
-        self.gl
-            .uniform1ui(loc_depth.as_ref(), gpu.display_depth as u32);
-        self.gl
-            .uniform2ui(loc_start.as_ref(), gpu.display_start_x, gpu.display_start_y);
-        self.gl.uniform2ui(loc_size.as_ref(), width, height);
+            self.gl.use_program(Some(self.fb_program));
 
-        self.gl
-            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, None);
+            self.gl
+                .uniform_1_u32(loc_depth.as_ref(), gpu.display_depth as u32);
+            self.gl
+                .uniform_2_u32(loc_start.as_ref(), gpu.display_start_x, gpu.display_start_y);
+            self.gl.uniform_2_u32(loc_size.as_ref(), width, height);
 
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl
-            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
+            self.gl
+                .bind_framebuffer(glow::FRAMEBUFFER, None);
 
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
-        self.gl
-            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
+            self.gl.active_texture(glow::TEXTURE0);
+            self.gl
+                .bind_texture(glow::TEXTURE_2D, Some(self.vram_write));
 
-        let loc_write = self.gl.get_uniform_location(&self.fb_program, "vramWrite");
-        let loc_read = self.gl.get_uniform_location(&self.fb_program, "vramRead");
+            self.gl.active_texture(glow::TEXTURE1);
+            self.gl
+                .bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
 
-        self.gl.uniform1i(loc_write.as_ref(), 0);
-        self.gl.uniform1i(loc_read.as_ref(), 1);
+            let loc_write = self.gl.get_uniform_location(self.fb_program, "vramWrite");
+            let loc_read = self.gl.get_uniform_location(self.fb_program, "vramRead");
 
-        self.bind_quad_verts();
+            self.gl.uniform_1_i32(loc_write.as_ref(), 0);
+            self.gl.uniform_1_i32(loc_read.as_ref(), 1);
 
-        self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
+            self.bind_quad_verts();
+
+            self.gl.draw_arrays(glow::TRIANGLES, 0, 6);
+        }
     }
 
     fn execute_fill_vram(&self, params: FillVramParams) {
@@ -877,59 +864,60 @@ impl Renderer {
         halfwords: &[u16],
         invert: bool,
     ) {
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE0);
-        self.gl
-            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_write));
-
-        if invert {
+        unsafe {
+            self.gl.active_texture(glow::TEXTURE0);
             self.gl
-                .pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 1);
-        }
-        self.gl
-            .pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 4);
+                .bind_texture(glow::TEXTURE_2D, Some(self.vram_write));
 
-        let y_offset = if invert {
-            VRAM_HEIGHT as i32 - start_y - height
-        } else {
-            start_y
-        };
+            // if invert {
+            //     self.gl
+            //         .pixel_store_i32(glow::UNPACK_FLIP_Y_WEBGL, 1);
+            // }
 
-        self.gl
-            .tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_opt_u8_array(
-                WebGl2RenderingContext::TEXTURE_2D,
+            self.gl
+                .pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
+
+            let y_offset = if invert {
+                VRAM_HEIGHT as i32 - start_y - height
+            } else {
+                start_y
+            };
+
+            self.gl
+                .tex_sub_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    start_x,
+                    y_offset,
+                    width,
+                    height,
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    PixelUnpackData::Slice(Some(rgba8_bytes))
+                );
+
+            self.gl.active_texture(glow::TEXTURE1);
+            self.gl
+                .bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
+            self.gl
+                .pixel_store_i32(glow::UNPACK_ALIGNMENT, 2);
+
+            // let js_array = Uint16Array::from(halfwords);
+
+            let slice: &[u8] = cast_slice(halfwords);
+
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
                 0,
                 start_x,
-                y_offset,
+                start_y,
                 width,
                 height,
-                WebGl2RenderingContext::RGBA,
-                WebGl2RenderingContext::UNSIGNED_BYTE,
-                Some(rgba8_bytes),
-            )
-            .unwrap();
-
-        self.gl.active_texture(WebGl2RenderingContext::TEXTURE1);
-        self.gl
-            .bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&self.vram_read));
-        self.gl
-            .pixel_storei(WebGl2RenderingContext::UNPACK_ALIGNMENT, 2);
-        self.gl
-            .pixel_storei(WebGl2RenderingContext::UNPACK_FLIP_Y_WEBGL, 0);
-
-        let js_array = Uint16Array::from(halfwords);
-
-        self.gl.tex_sub_image_2d_with_i32_and_i32_and_u32_and_type_and_array_buffer_view_and_src_offset(
-            WebGl2RenderingContext::TEXTURE_2D,
-            0,
-            start_x,
-            start_y,
-            width,
-            height,
-            WebGl2RenderingContext::RED_INTEGER,
-            WebGl2RenderingContext::UNSIGNED_SHORT,
-            &js_array,
-            0,
-        ).unwrap();
+                glow::RED_INTEGER,
+                glow::UNSIGNED_SHORT,
+                PixelUnpackData::Slice(Some(slice))
+            );
+        }
     }
 
     fn execute_vram_to_vram(&self, params: VramToVramTransferParams) {
@@ -937,169 +925,173 @@ impl Renderer {
             && params.destination_start_y == params.source_start_y
         {
             // for some reason the PS1 will transfer from the same source to same destination as some sort of NOP,
-            // and webGL will break things if it attempts to do this blit, so it's best to explicitly return if that's the case
+            // and openGL will break things if it attempts to do this blit, so it's best to explicitly return if that's the case
             return;
         }
-        let temp_rgba_texture = self.gl.create_texture().unwrap();
-        let temp_rgba_fbo = self.gl.create_framebuffer().unwrap();
 
-        Self::bind_texture_to_framebuffer(
-            &self.gl,
-            WebGl2RenderingContext::TEXTURE2,
-            WebGl2RenderingContext::RGBA8,
-            params.width as i32,
-            params.height as i32,
-            &temp_rgba_texture,
-            &temp_rgba_fbo,
-        );
+        unsafe {
+            let temp_rgba_texture = self.gl.create_texture().unwrap();
+            let temp_rgba_fbo = self.gl.create_framebuffer().unwrap();
 
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::READ_FRAMEBUFFER,
-            Some(&self.fbo_write),
-        );
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
-            Some(&temp_rgba_fbo),
-        );
+            Self::bind_texture_to_framebuffer(
+                &self.gl,
+                glow::TEXTURE2,
+                glow::RGBA8,
+                params.width as i32,
+                params.height as i32,
+                &temp_rgba_texture,
+                &temp_rgba_fbo,
+            );
 
-        let source_y_flipped = (VRAM_HEIGHT as u32 - params.source_start_y - params.height) as i32;
-        let destination_y_flipped =
-            (VRAM_HEIGHT as u32 - params.destination_start_y - params.height) as i32;
+            self.gl.bind_framebuffer(
+                glow::READ_FRAMEBUFFER,
+                Some(self.fbo_write),
+            );
+            self.gl.bind_framebuffer(
+                glow::DRAW_FRAMEBUFFER,
+                Some(temp_rgba_fbo),
+            );
 
-        self.gl.blit_framebuffer(
-            params.source_start_x as i32,
-            source_y_flipped,
-            params.source_start_x as i32 + params.width as i32,
-            source_y_flipped + params.height as i32,
-            0,
-            0,
-            params.width as i32,
-            params.height as i32,
-            WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST,
-        );
+            let source_y_flipped = (VRAM_HEIGHT as u32 - params.source_start_y - params.height) as i32;
+            let destination_y_flipped =
+                (VRAM_HEIGHT as u32 - params.destination_start_y - params.height) as i32;
 
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::READ_FRAMEBUFFER,
-            Some(&temp_rgba_fbo),
-        );
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
-            Some(&self.fbo_write),
-        );
+            self.gl.blit_framebuffer(
+                params.source_start_x as i32,
+                source_y_flipped,
+                params.source_start_x as i32 + params.width as i32,
+                source_y_flipped + params.height as i32,
+                0,
+                0,
+                params.width as i32,
+                params.height as i32,
+                glow::COLOR_BUFFER_BIT,
+                glow::NEAREST,
+            );
 
-        self.gl.blit_framebuffer(
-            0,
-            0,
-            params.width as i32,
-            params.height as i32,
-            params.destination_start_x as i32,
-            destination_y_flipped,
-            params.destination_start_x as i32 + params.width as i32,
-            destination_y_flipped + params.height as i32,
-            WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST,
-        );
+            self.gl.bind_framebuffer(
+                glow::READ_FRAMEBUFFER,
+                Some(temp_rgba_fbo),
+            );
+            self.gl.bind_framebuffer(
+                glow::DRAW_FRAMEBUFFER,
+                Some(self.fbo_write),
+            );
 
-        self.gl.delete_texture(Some(&temp_rgba_texture));
-        self.gl.delete_framebuffer(Some(&temp_rgba_fbo));
+            self.gl.blit_framebuffer(
+                0,
+                0,
+                params.width as i32,
+                params.height as i32,
+                params.destination_start_x as i32,
+                destination_y_flipped,
+                params.destination_start_x as i32 + params.width as i32,
+                destination_y_flipped + params.height as i32,
+                glow::COLOR_BUFFER_BIT,
+                glow::NEAREST,
+            );
 
-        let temp_r16_texture = self.gl.create_texture().unwrap();
-        let temp_r16_fbo = self.gl.create_framebuffer().unwrap();
+            self.gl.delete_texture(temp_rgba_texture);
+            self.gl.delete_framebuffer(temp_rgba_fbo);
 
-        Self::bind_texture_to_framebuffer(
-            &self.gl,
-            WebGl2RenderingContext::TEXTURE3,
-            WebGl2RenderingContext::R16UI,
-            params.width as i32,
-            params.height as i32,
-            &temp_r16_texture,
-            &temp_r16_fbo,
-        );
+            let temp_r16_texture = self.gl.create_texture().unwrap();
+            let temp_r16_fbo = self.gl.create_framebuffer().unwrap();
 
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::READ_FRAMEBUFFER,
-            Some(&self.fbo_read),
-        );
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
-            Some(&temp_r16_fbo),
-        );
+            Self::bind_texture_to_framebuffer(
+                &self.gl,
+                glow::TEXTURE3,
+                glow::R16UI,
+                params.width as i32,
+                params.height as i32,
+                &temp_r16_texture,
+                &temp_r16_fbo,
+            );
 
-        self.gl.blit_framebuffer(
-            params.source_start_x as i32,
-            params.source_start_y as i32,
-            params.source_start_x as i32 + params.width as i32,
-            params.source_start_y as i32 + params.height as i32,
-            0,
-            0,
-            params.width as i32,
-            params.height as i32,
-            WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST,
-        );
+            self.gl.bind_framebuffer(
+                glow::READ_FRAMEBUFFER,
+                Some(self.fbo_read),
+            );
+            self.gl.bind_framebuffer(
+                glow::DRAW_FRAMEBUFFER,
+                Some(temp_r16_fbo),
+            );
 
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::READ_FRAMEBUFFER,
-            Some(&temp_r16_fbo),
-        );
-        self.gl.bind_framebuffer(
-            WebGl2RenderingContext::DRAW_FRAMEBUFFER,
-            Some(&self.fbo_read),
-        );
+            self.gl.blit_framebuffer(
+                params.source_start_x as i32,
+                params.source_start_y as i32,
+                params.source_start_x as i32 + params.width as i32,
+                params.source_start_y as i32 + params.height as i32,
+                0,
+                0,
+                params.width as i32,
+                params.height as i32,
+                glow::COLOR_BUFFER_BIT,
+                glow::NEAREST,
+            );
 
-        self.gl.blit_framebuffer(
-            0,
-            0,
-            params.width as i32,
-            params.height as i32,
-            params.destination_start_x as i32,
-            params.destination_start_y as i32,
-            params.destination_start_x as i32 + params.width as i32,
-            params.destination_start_y as i32 + params.height as i32,
-            WebGl2RenderingContext::COLOR_BUFFER_BIT,
-            WebGl2RenderingContext::NEAREST,
-        );
+            self.gl.bind_framebuffer(
+                glow::READ_FRAMEBUFFER,
+                Some(temp_r16_fbo),
+            );
+            self.gl.bind_framebuffer(
+                glow::DRAW_FRAMEBUFFER,
+                Some(self.fbo_read),
+            );
 
-        self.gl.delete_texture(Some(&temp_r16_texture));
-        self.gl.delete_framebuffer(Some(&temp_r16_fbo));
+            self.gl.blit_framebuffer(
+                0,
+                0,
+                params.width as i32,
+                params.height as i32,
+                params.destination_start_x as i32,
+                params.destination_start_y as i32,
+                params.destination_start_x as i32 + params.width as i32,
+                params.destination_start_y as i32 + params.height as i32,
+                glow::COLOR_BUFFER_BIT,
+                glow::NEAREST,
+            );
+
+            self.gl.delete_texture(temp_r16_texture);
+            self.gl.delete_framebuffer(temp_r16_fbo);
+        }
     }
 
     pub fn get_vram_textures(&self) -> (Vec<u8>, Vec<u8>) {
         let mut rgba8_buf = vec![0u8; VRAM_WIDTH * VRAM_HEIGHT * 4];
         let mut rgba16_buf = vec![0u16; VRAM_WIDTH * VRAM_HEIGHT];
 
-        self.gl
-            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_write));
-        self.gl
-            .read_pixels_with_opt_u8_array(
-                0,
-                0,
-                VRAM_WIDTH as i32,
-                VRAM_HEIGHT as i32,
-                WebGl2RenderingContext::RGBA,
-                WebGl2RenderingContext::UNSIGNED_BYTE,
-                Some(&mut rgba8_buf),
-            )
-            .unwrap();
-
-        self.gl
-            .bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, Some(&self.fbo_read));
-        {
-            let js_array =
-                unsafe { Uint16Array::view_mut_raw(rgba16_buf.as_mut_ptr(), rgba16_buf.len()) };
-
+        unsafe {
             self.gl
-                .read_pixels_with_opt_array_buffer_view(
+                .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_write));
+            self.gl
+                .read_pixels(
                     0,
                     0,
                     VRAM_WIDTH as i32,
                     VRAM_HEIGHT as i32,
-                    WebGl2RenderingContext::RED_INTEGER,
-                    WebGl2RenderingContext::UNSIGNED_SHORT,
-                    Some(&js_array),
-                )
-                .unwrap();
+                    glow::RGBA,
+                    glow::UNSIGNED_BYTE,
+                    PixelPackData::Slice(Some(&mut rgba8_buf)),
+                );
+
+            self.gl
+                .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_read));
+            {
+                // let js_array =
+                //     unsafe { Uint16Array::view_mut_raw(rgba16_buf.as_mut_ptr(), rgba16_buf.len()) };
+                let slice: &mut [u8] = cast_slice_mut(&mut rgba16_buf);
+
+                self.gl
+                    .read_pixels(
+                        0,
+                        0,
+                        VRAM_WIDTH as i32,
+                        VRAM_HEIGHT as i32,
+                        glow::RED_INTEGER,
+                        glow::UNSIGNED_SHORT,
+                        PixelPackData::Slice(Some(slice))
+                    )
+            }
         }
 
         let rgba16_bytes: &[u8] = cast_slice(&rgba16_buf);

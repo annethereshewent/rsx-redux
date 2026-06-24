@@ -6,6 +6,8 @@ use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 #[cfg(feature = "hardware_gpu_metal")]
 use renderer_metal::renderer::Renderer;
+#[cfg(feature = "hardware_gpu_opengl")]
+use renderer_opengl::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
@@ -85,6 +87,10 @@ pub struct Frontend {
     retry_attempts: usize,
     #[cfg(feature = "hardware_gpu_metal")]
     pub renderer: Renderer,
+    #[cfg(feature = "hardware_gpu_opengl")]
+    pub renderer: Renderer,
+    #[cfg(feature = "hardware_gpu_opengl")]
+    window: Window,
     #[cfg(feature = "software_gpu")]
     canvas: Canvas<Window>,
     device: AudioDevice<PsxAudioCallback>,
@@ -142,9 +148,21 @@ impl Frontend {
 
         let window = video_subsystem
             .window("RSX-redux", SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+            .opengl()
             .position_centered()
             .build()
             .unwrap();
+
+        #[cfg(feature = "hardware_gpu_opengl")]
+        let gl_context = window.gl_create_context().unwrap();
+        #[cfg(feature = "hardware_gpu_opengl")] {
+            window.gl_make_current(&gl_context).unwrap();
+            window.subsystem().gl_set_swap_interval(1).unwrap();
+        }
+
+
+        #[cfg(feature = "hardware_gpu_opengl")]
+        let renderer = Renderer::new(&window, &video_subsystem, gl_context);
 
         #[cfg(feature = "software_gpu")]
         let mut canvas = window.into_canvas().present_vsync().build().unwrap();
@@ -222,13 +240,21 @@ impl Frontend {
             renderer: Renderer::new(metal_layer),
             #[cfg(feature = "software_gpu")]
             canvas,
+            #[cfg(feature = "hardware_gpu_opengl")]
+            renderer,
             device,
             button_map,
             button_map2,
             controller_id: None,
             retry_attempts: 0,
             key_map,
+            #[cfg(feature = "hardware_gpu_opengl")]
+            window,
         }
+    }
+
+    pub fn end_frame(&self) {
+        self.window.gl_swap_window();
     }
 
     pub fn get_memory_card_path() -> Option<PathBuf> {
@@ -264,7 +290,7 @@ impl Frontend {
     fn get_quick_state_path(cpu: &CPU) -> PathBuf {
         #[cfg(feature = "software_gpu")]
         let filename = "quick_save_sw.state";
-        #[cfg(feature = "hardware_gpu_metal")]
+        #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_opengl"))]
         let filename = "quick_save_hw.state";
 
         let game_path = Path::new(&cpu.game_path);

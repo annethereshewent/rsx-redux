@@ -62,6 +62,8 @@ fn main() {
             cpu.step();
             #[cfg(feature = "hardware_gpu_metal")]
             frontend.renderer.process(&mut cpu.bus.gpu);
+            #[cfg(feature = "hardware_gpu_opengl")]
+            frontend.renderer.process(&mut cpu.bus.gpu);
         }
 
         cpu.bus.gpu.frame_finished = false;
@@ -71,10 +73,15 @@ fn main() {
 
         #[cfg(feature = "hardware_gpu_metal")]
         frontend.renderer.present(&mut cpu.bus.gpu);
+        #[cfg(feature = "hardware_gpu_opengl")] {
+            frontend.renderer.present(&mut cpu.bus.gpu);
+            frontend.end_frame();
+        }
         #[cfg(feature = "software_gpu")]
         frontend.render(&mut cpu.bus.gpu);
 
-        #[cfg(feature = "hardware_gpu_metal")]
+
+        #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_opengl"))]
         cpu.bus.gpu.cap_fps();
 
         frontend.handle_events(&mut cpu);
