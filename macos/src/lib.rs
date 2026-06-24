@@ -6,7 +6,7 @@ use std::{
 use memmap2::{Mmap, MmapMut};
 use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
-#[cfg(feature = "hardware_gpu")]
+#[cfg(feature = "hardware_gpu_metal")]
 use renderer_metal::renderer::Renderer;
 use rsx_redux::cpu::{CPU, bus::peripherals::memory_card::MEMORY_SIZE};
 
@@ -94,21 +94,21 @@ mod ffi {
 
 pub struct PsxMacEmulator {
     cpu: CPU,
-    #[cfg(feature = "hardware_gpu")]
+    #[cfg(feature = "hardware_gpu_metal")]
     renderer: Renderer,
     memory_path: String,
 }
 
 impl PsxMacEmulator {
     pub fn new(metal_layer_ptr: *mut c_void) -> Self {
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         let metal_layer: Retained<CAMetalLayer> = unsafe {
             Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer)
                 .expect("Couldn't cast pointer to CAMetalLayer!")
         };
         Self {
             cpu: CPU::new(None, "".to_string()),
-            #[cfg(feature = "hardware_gpu")]
+            #[cfg(feature = "hardware_gpu_metal")]
             renderer: Renderer::new(metal_layer),
             memory_path: "".to_string(),
         }
@@ -128,7 +128,7 @@ impl PsxMacEmulator {
     pub fn step_frame(&mut self) {
         while !self.cpu.bus.gpu.frame_finished {
             self.cpu.step();
-            #[cfg(feature = "hardware_gpu")]
+            #[cfg(feature = "hardware_gpu_metal")]
             self.renderer.process(&mut self.cpu.bus.gpu);
         }
 
@@ -137,12 +137,12 @@ impl PsxMacEmulator {
         #[cfg(feature = "software_gpu")]
         self.cpu.bus.gpu.cap_fps();
 
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         self.renderer.present(&mut self.cpu.bus.gpu);
         #[cfg(feature = "software_gpu")]
         self.render(&mut cpu.bus.gpu);
 
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         self.cpu.bus.gpu.cap_fps();
     }
 

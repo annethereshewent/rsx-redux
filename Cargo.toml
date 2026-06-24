@@ -15,8 +15,9 @@ ringbuf="0.4.8"
 memmap2 = "0.9.7"
 
 [features]
-default = ["hardware_gpu"]
-hardware_gpu = []
+default = ["hardware_gpu_opengl"]
+hardware_gpu_metal = []
+hardware_gpu_opengl = []
 software_gpu = []
 hardware_gpu_web = []
 debug = []
