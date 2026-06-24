@@ -83,6 +83,12 @@ mod ffi {
 
         #[swift_bridge(swift_name = "openShell")]
         fn open_shell(&mut self);
+
+        #[swift_bridge(swift_name = "setMemoryBytes")]
+        fn set_memory_bytes(&mut self, bytes: &[u8]);
+
+        #[swift_bridge(swift_name = "getMemoryBytes")]
+        fn get_memory_bytes(&mut self) -> Option<Vec<u8>>;
     }
 }
 
@@ -184,6 +190,23 @@ impl PsxMacEmulator {
             .peripherals
             .memory_card
             .set_memory_file(memory_card);
+    }
+
+    pub fn set_memory_bytes(&mut self, bytes: &[u8]) {
+        self.cpu
+            .bus
+            .peripherals
+            .memory_card
+            .set_memory_bytes(bytes.to_vec());
+    }
+
+    pub fn get_memory_bytes(&mut self) -> Option<Vec<u8>> {
+        if self.cpu.bus.peripherals.memory_card.is_memory_dirty() {
+            self.cpu.bus.peripherals.memory_card.clear_dirty();
+            return self.cpu.bus.peripherals.memory_card.get_memory_bytes();
+        }
+
+        None
     }
 
     fn get_memory_mmap(memory_path: &str) -> MmapMut {
