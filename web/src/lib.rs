@@ -184,7 +184,10 @@ impl PsxWebEmulator {
     }
 
     pub fn open_shell(&mut self) {
-        self.cpu.bus.cdrom.open_shell(&mut self.cpu.bus.interrupt_stat);
+        self.cpu
+            .bus
+            .cdrom
+            .open_shell(&mut self.cpu.bus.interrupt_stat);
     }
 
     #[cfg(feature = "software_gpu")]

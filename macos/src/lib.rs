@@ -8,7 +8,7 @@ use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 #[cfg(feature = "hardware_gpu")]
 use renderer_metal::renderer::Renderer;
-use rsx_redux::cpu::{bus::peripherals::memory_card::MEMORY_SIZE, CPU};
+use rsx_redux::cpu::{CPU, bus::peripherals::memory_card::MEMORY_SIZE};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -83,6 +83,12 @@ mod ffi {
 
         #[swift_bridge(swift_name = "openShell")]
         fn open_shell(&mut self);
+
+        #[swift_bridge(swift_name = "setMemoryBytes")]
+        fn set_memory_bytes(&mut self, bytes: &[u8]);
+
+        #[swift_bridge(swift_name = "getMemoryBytes")]
+        fn get_memory_bytes(&mut self) -> Option<Vec<u8>>;
     }
 }
 
@@ -186,6 +192,23 @@ impl PsxMacEmulator {
             .set_memory_file(memory_card);
     }
 
+    pub fn set_memory_bytes(&mut self, bytes: &[u8]) {
+        self.cpu
+            .bus
+            .peripherals
+            .memory_card
+            .set_memory_bytes(bytes.to_vec());
+    }
+
+    pub fn get_memory_bytes(&mut self) -> Option<Vec<u8>> {
+        if self.cpu.bus.peripherals.memory_card.is_memory_dirty() {
+            self.cpu.bus.peripherals.memory_card.clear_dirty();
+            return self.cpu.bus.peripherals.memory_card.get_memory_bytes();
+        }
+
+        None
+    }
+
     fn get_memory_mmap(memory_path: &str) -> MmapMut {
         let file = OpenOptions::new()
             .read(true)
@@ -279,6 +302,9 @@ impl PsxMacEmulator {
     }
 
     pub fn open_shell(&mut self) {
-        self.cpu.bus.cdrom.open_shell(&mut self.cpu.bus.interrupt_stat);
+        self.cpu
+            .bus
+            .cdrom
+            .open_shell(&mut self.cpu.bus.interrupt_stat);
     }
 }
