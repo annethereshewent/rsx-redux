@@ -159,7 +159,8 @@ impl MemoryCard {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     if let Some(memory_file) = &mut self.memory_file {
-                        memory_file[(128 * self.current_sector as usize) + self.current_byte] = command;
+                        memory_file[(128 * self.current_sector as usize) + self.current_byte] =
+                            command;
                     } else if let Some(memory_bytes) = &mut self.memory_bytes {
                         memory_bytes[(128 * self.current_sector as usize) + self.current_byte] =
                             command;
@@ -187,7 +188,6 @@ impl MemoryCard {
                     if self.memory_bytes.is_some() {
                         self.memory_card_dirty = true;
                     }
-
 
                     self.finished_transferring = true;
                 }
@@ -254,7 +254,7 @@ impl MemoryCard {
                     memory_file[(128 * self.current_sector as usize) + self.current_byte]
                 } else if let Some(memory_bytes) = &self.memory_bytes {
                     memory_bytes[(128 * self.current_sector as usize) + self.current_byte]
-                }  else {
+                } else {
                     0xff
                 };
 

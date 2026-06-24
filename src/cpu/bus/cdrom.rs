@@ -535,10 +535,12 @@ impl CDRom {
         self.controller_response_fifo.clear();
         self.result_fifo.clear();
 
-        #[cfg(not(target_arch = "wasm32"))] {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
             self.game_data = None;
         }
-        #[cfg(target_arch = "wasm32")] {
+        #[cfg(target_arch = "wasm32")]
+        {
             self.game_bytes = None;
         }
 
