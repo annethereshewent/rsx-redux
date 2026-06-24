@@ -285,7 +285,7 @@ pub struct GPU {
     pub texture_window_offset_y: u32,
     pub force_mask_bit: bool,
     pub preserve_masked_pixels: bool,
-    #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+     #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
     pub commands_ready: bool,
     num_vertices: usize,
     is_shaded: bool,
@@ -326,9 +326,9 @@ pub struct GPU {
     pub resolution_changed: bool,
     #[cfg(feature = "software_gpu")]
     pub vram: Box<[u8]>,
-    #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+     #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
     pub vram_read_tex: Box<[u8]>,
-    #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+     #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
     pub vram_write_tex: Box<[u8]>,
     dotclock_cycles: usize,
     cpu_transfer_x: u32,
@@ -387,7 +387,7 @@ impl GPU {
             texture_window_offset_y: 0,
             force_mask_bit: false,
             preserve_masked_pixels: false,
-            #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+             #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
             commands_ready: false,
             num_vertices: 0,
             is_shaded: false,
@@ -435,9 +435,9 @@ impl GPU {
             #[cfg(feature = "software_gpu")]
             picture: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 3].into_boxed_slice(),
             dither_table,
-            #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+             #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
             vram_read_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 2].into_boxed_slice(),
-            #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+             #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
             vram_write_tex: vec![0; VRAM_WIDTH * VRAM_HEIGHT * 4].into_boxed_slice(),
             previous_line_vertex: None,
             previous_line_color: None,
@@ -497,7 +497,7 @@ impl GPU {
         unsafe { *(&self.vram[vram_address] as *const u8 as *const u16) }
     }
 
-    #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+     #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
     fn transfer_to_cpu(&mut self) -> u16 {
         if !self.gpuread_fifo.is_empty() {
             let value = self.gpuread_fifo.pop_front().unwrap();
@@ -772,7 +772,7 @@ impl GPU {
             vertices.push(vertex);
         }
 
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             if vertices.len() > 3 {
                 // split up into two triangles
@@ -963,7 +963,7 @@ impl GPU {
     }
 
     fn push_rectangle(&mut self) {
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             self.commands_ready = true;
         }
@@ -1035,7 +1035,7 @@ impl GPU {
         let vertices1 = vec![vertices[0], vertices[1], vertices[2]];
         let vertices2 = vec![vertices[1], vertices[2], vertices[3]];
 
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
                 vertices: vertices1,
@@ -1181,7 +1181,7 @@ impl GPU {
         let width = dimensions & 0x3ff;
         let height = (dimensions >> 16) & 0x1ff;
 
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             self.gpu_commands
                 .push(GPUCommand::VRAMtoCPU(CPUTransferParams {
@@ -1247,7 +1247,7 @@ impl GPU {
         let width = dimensions & 0x3ff;
         let height = (dimensions >> 16) & 0x1ff;
 
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             self.gpu_commands
                 .push(GPUCommand::VramToVram(VramToVramTransferParams {
@@ -1309,7 +1309,7 @@ impl GPU {
         let w = ((dimensions & 0x3ff) + 0xf) & !0xf;
         let h = (dimensions >> 16) & 0x1ff;
 
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             let fill_vram_params = FillVramParams {
                 start_x,
@@ -1423,7 +1423,7 @@ impl GPU {
 
             self.rasterize_line(&polygon);
         }
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             self.push_line(vertex0, vertex1);
         }
@@ -1482,13 +1482,13 @@ impl GPU {
             self.rasterize_line(&polygon);
         }
 
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         {
             self.push_line(vertex0, vertex1);
         }
     }
 
-    #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+     #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
     fn push_line(&mut self, vertex0: Vertex, vertex1: Vertex) {
         self.gpu_commands.push(GPUCommand::RenderPolygon(Polygon {
             vertices: vec![vertex0, vertex1],
@@ -1539,7 +1539,7 @@ impl GPU {
 
         self.read_x += 1;
 
-        #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
         self.vram_transfer_halfwords.push(halfword);
 
         if self.read_x == self.transfer_width {
@@ -1550,7 +1550,7 @@ impl GPU {
             if self.read_y == self.transfer_height {
                 self.transfer_type = None;
 
-                #[cfg(any(feature = "hardware_gpu", feature = "hardware_gpu_web"))]
+                 #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_web", feature="hardware_gpu_opengl"))]
                 {
                     self.gpu_commands
                         .push(GPUCommand::CPUtoVram(VRamTransferParams {

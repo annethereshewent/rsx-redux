@@ -12,6 +12,6 @@ objc2 = "0.6.1"
 objc2-foundation = "0.3.1"
 
 [features]
-default = ["hardware_gpu"]
-hardware_gpu = ["rsx-redux/hardware_gpu"]
+default = ["hardware_gpu_metal"]
+hardware_gpu_metal = ["rsx-redux/hardware_gpu_metal"]
 bundle_shaders = []

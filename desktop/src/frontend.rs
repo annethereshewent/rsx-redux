@@ -1,10 +1,10 @@
 use dirs_next::data_dir;
 use memmap2::{Mmap, MmapMut};
-#[cfg(feature = "hardware_gpu")]
+#[cfg(feature = "hardware_gpu_metal")]
 use objc2::rc::Retained;
-#[cfg(feature = "hardware_gpu")]
+#[cfg(feature = "hardware_gpu_metal")]
 use objc2_quartz_core::CAMetalLayer;
-#[cfg(feature = "hardware_gpu")]
+#[cfg(feature = "hardware_gpu_metal")]
 use renderer_metal::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -17,7 +17,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 #[cfg(feature = "software_gpu")]
 use sdl2::render::Canvas;
-#[cfg(feature = "hardware_gpu")]
+#[cfg(feature = "hardware_gpu_metal")]
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
@@ -76,14 +76,14 @@ impl PsxAudioCallback {
 }
 
 pub struct Frontend {
-    #[cfg(feature = "hardware_gpu")]
+    #[cfg(feature = "hardware_gpu_metal")]
     _window: Window,
     event_pump: EventPump,
     controller: Option<GameController>,
     game_controller_subsystem: GameControllerSubsystem,
     controller_id: Option<u32>,
     retry_attempts: usize,
-    #[cfg(feature = "hardware_gpu")]
+    #[cfg(feature = "hardware_gpu_metal")]
     pub renderer: Renderer,
     #[cfg(feature = "software_gpu")]
     canvas: Canvas<Window>,
@@ -152,12 +152,12 @@ impl Frontend {
         #[cfg(feature = "software_gpu")]
         canvas.set_scale(3.0, 3.0).unwrap();
 
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         let metal_view = unsafe { SDL_Metal_CreateView(window.raw()) };
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         let metal_layer_ptr = unsafe { SDL_Metal_GetLayer(metal_view) };
 
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         let metal_layer: Retained<CAMetalLayer> = unsafe {
             Retained::from_raw(metal_layer_ptr as *mut CAMetalLayer)
                 .expect("Couldn't cast pointer to CAMetalLayer!")
@@ -213,12 +213,12 @@ impl Frontend {
             (Keycode::J, 15),
         ]);
         Self {
-            #[cfg(feature = "hardware_gpu")]
+            #[cfg(feature = "hardware_gpu_metal")]
             _window: window,
             event_pump: sdl_context.event_pump().unwrap(),
             controller,
             game_controller_subsystem,
-            #[cfg(feature = "hardware_gpu")]
+            #[cfg(feature = "hardware_gpu_metal")]
             renderer: Renderer::new(metal_layer),
             #[cfg(feature = "software_gpu")]
             canvas,
@@ -264,7 +264,7 @@ impl Frontend {
     fn get_quick_state_path(cpu: &CPU) -> PathBuf {
         #[cfg(feature = "software_gpu")]
         let filename = "quick_save_sw.state";
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         let filename = "quick_save_hw.state";
 
         let game_path = Path::new(&cpu.game_path);
@@ -315,7 +315,7 @@ impl Frontend {
         }
     }
 
-    #[cfg(feature = "hardware_gpu")]
+    #[cfg(feature = "hardware_gpu_metal")]
     fn load_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
         Self::load_quick_state_inner(cpu, |cpu| {
             renderer.set_vram_textures(&cpu.bus.gpu.vram_read_tex, &cpu.bus.gpu.vram_write_tex);
@@ -346,7 +346,7 @@ impl Frontend {
         Self::create_quick_state_inner(cpu, |_| {});
     }
 
-    #[cfg(feature = "hardware_gpu")]
+    #[cfg(feature = "hardware_gpu_metal")]
     fn create_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
         Self::create_quick_state_inner(cpu, |cpu| {
             let (vram_read, vram_write) = renderer.get_vram_textures();
@@ -391,13 +391,13 @@ impl Frontend {
                                 Keycode::F5 => {
                                     #[cfg(feature = "software_gpu")]
                                     Self::create_quick_state(cpu);
-                                    #[cfg(feature = "hardware_gpu")]
+                                    #[cfg(feature = "hardware_gpu_metal")]
                                     Self::create_quick_state(&mut self.renderer, cpu);
                                 }
                                 Keycode::F7 => {
                                     #[cfg(feature = "software_gpu")]
                                     Self::load_quick_state(cpu);
-                                    #[cfg(feature = "hardware_gpu")]
+                                    #[cfg(feature = "hardware_gpu_metal")]
                                     Self::load_quick_state(&mut self.renderer, cpu);
                                 }
                                 Keycode::W => {

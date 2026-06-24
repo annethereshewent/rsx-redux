@@ -1,0 +1,12 @@
+[package]
+name = "renderer-opengl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rsx-redux = { path = "..", default-features = false }
+glow = "0.16.0"
+
+[features]
+default = ["hardware_gpu_opengl"]
+hardware_gpu_opengl = ["rsx-redux/hardware_gpu_opengl"]

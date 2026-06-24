@@ -1,6 +1,6 @@
 #!/bin/bash
 
-FEATURES="hardware_gpu"
+FEATURES="hardware_gpu_metal"
 
 if [[ "$2" == "--debug" ]]; then
     FEATURES="$FEATURES,debug"
