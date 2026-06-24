@@ -6,7 +6,7 @@ use rsx_redux::cpu::bus::gpu::{
     CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors,
     VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
 };
-use sdl2::{video::{GLContext, GLProfile, Window}, VideoSubsystem};
+use sdl2::{video::{GLContext, Window}};
 
 const QUAD_VERTS: [f32; 24] = [
     // pos        uv
@@ -303,6 +303,10 @@ impl Renderer {
         unsafe {
             gl.shader_source(shader, source);
             gl.compile_shader(shader);
+
+            if !gl.get_shader_compile_status(shader) {
+                println!("shader compile error: {}", gl.get_shader_info_log(shader));
+            }
         }
 
         Ok(shader)
@@ -319,6 +323,9 @@ impl Renderer {
             gl.attach_shader(program, vertex_shader);
             gl.attach_shader(program, fragment_shader);
             gl.link_program(program);
+            if !gl.get_program_link_status(program) {
+                println!("program completion error: {}", gl.get_program_info_log(program));
+            }
         }
 
         Ok(program)
@@ -643,37 +650,41 @@ impl Renderer {
             );
 
             let stride = std::mem::size_of::<GlVertex>() as i32;
-            self.gl.vertex_attrib_pointer_i32(
+            self.gl.vertex_attrib_pointer_f32(
                 0,
                 2,
                 glow::FLOAT,
+                false,
                 stride,
                 0
             );
             self.gl.enable_vertex_attrib_array(0);
 
-            self.gl.vertex_attrib_pointer_i32(
+            self.gl.vertex_attrib_pointer_f32(
                 1,
                 2,
                 glow::FLOAT,
+                false,
                 stride,
                 8,
             );
             self.gl.enable_vertex_attrib_array(1);
 
-            self.gl.vertex_attrib_pointer_i32(
+            self.gl.vertex_attrib_pointer_f32(
                 2,
                 4,
                 glow::FLOAT,
+                false,
                 stride,
                 16,
             );
             self.gl.enable_vertex_attrib_array(2);
 
-            self.gl.vertex_attrib_pointer_i32(
+            self.gl.vertex_attrib_pointer_f32(
                 3,
                 2,
                 glow::FLOAT,
+                false,
                 stride,
                 32,
             );
@@ -768,7 +779,6 @@ impl Renderer {
     }
 
     pub fn present(&self, gpu: &mut GPU) {
-        println!("presenting!");
         let (width, height) = gpu.get_dimensions();
 
         // self.canvas
@@ -819,6 +829,7 @@ impl Renderer {
             self.bind_quad_verts();
 
             self.gl.draw_arrays(glow::TRIANGLES, 0, 6);
+            }
         }
     }
 
