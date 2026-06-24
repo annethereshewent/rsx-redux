@@ -11,7 +11,6 @@ use renderer_opengl::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
-use sdl2::video::GLProfile;
 use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
@@ -22,6 +21,7 @@ use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::Canvas;
 #[cfg(feature = "hardware_gpu_metal")]
 use sdl2::sys::{SDL_Metal_CreateView, SDL_Metal_GetLayer};
+use sdl2::video::GLProfile;
 use sdl2::{EventPump, controller::GameController, event::Event, video::Window};
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
@@ -162,7 +162,8 @@ impl Frontend {
 
         #[cfg(feature = "hardware_gpu_opengl")]
         let gl_context = window.gl_create_context().unwrap();
-        #[cfg(feature = "hardware_gpu_opengl")] {
+        #[cfg(feature = "hardware_gpu_opengl")]
+        {
             window.gl_make_current(&gl_context).unwrap();
             window.subsystem().gl_set_swap_interval(1).unwrap();
         }

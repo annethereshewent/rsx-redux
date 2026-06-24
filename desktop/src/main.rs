@@ -73,13 +73,13 @@ fn main() {
 
         #[cfg(feature = "hardware_gpu_metal")]
         frontend.renderer.present(&mut cpu.bus.gpu);
-        #[cfg(feature = "hardware_gpu_opengl")] {
+        #[cfg(feature = "hardware_gpu_opengl")]
+        {
             frontend.renderer.present(&mut cpu.bus.gpu);
             frontend.end_frame();
         }
         #[cfg(feature = "software_gpu")]
         frontend.render(&mut cpu.bus.gpu);
-
 
         #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_opengl"))]
         cpu.bus.gpu.cap_fps();

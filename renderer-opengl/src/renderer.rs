@@ -1,12 +1,16 @@
 use std::cmp;
 
-use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
-use glow::{Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeShader, NativeTexture, NativeUniformLocation, NativeVertexArray, PixelPackData, PixelUnpackData};
-use rsx_redux::cpu::bus::gpu::{
-    CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors,
-    VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
+use bytemuck::{Pod, Zeroable, cast_slice, cast_slice_mut};
+use glow::{
+    Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeShader,
+    NativeTexture, NativeUniformLocation, NativeVertexArray, PixelPackData, PixelUnpackData,
 };
-use sdl2::{video::{GLContext, Window}};
+use rsx_redux::cpu::bus::gpu::{
+    CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, SCREEN_HEIGHT,
+    SCREEN_WIDTH, TexturePageColors, VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams,
+    VramToVramTransferParams,
+};
+use sdl2::video::{GLContext, Window};
 
 const QUAD_VERTS: [f32; 24] = [
     // pos        uv
@@ -87,9 +91,7 @@ pub struct Renderer {
 
 impl Renderer {
     fn glow_context(window: &Window) -> Context {
-        unsafe {
-            Context::from_loader_function(|s| window.subsystem().gl_get_proc_address(s) as _)
-        }
+        unsafe { Context::from_loader_function(|s| window.subsystem().gl_get_proc_address(s) as _) }
     }
     pub fn new(window: &Window, gl_context: GLContext) -> Self {
         let gl = Self::glow_context(window);
@@ -107,43 +109,19 @@ impl Renderer {
         // create a new fragment shader just for writeback
         let writeback_frag_shader_str = include_str!("shaders/fragment_writeback.glsl");
 
-        let fragment_shader = Self::compile_shader(
-            &gl,
-            glow::FRAGMENT_SHADER,
-            fragment_shader_str,
-        )
-        .unwrap();
-        let vertex_shader = Self::compile_shader(
-            &gl,
-            glow::VERTEX_SHADER,
-            vertex_shader_str,
-        )
-        .unwrap();
-        let fb_frag_shader = Self::compile_shader(
-            &gl,
-            glow::FRAGMENT_SHADER,
-            fb_frag_shader_str,
-        )
-        .unwrap();
-        let fb_vert_shader = Self::compile_shader(
-            &gl,
-            glow::VERTEX_SHADER,
-            fb_vert_shader_str,
-        )
-        .unwrap();
+        let fragment_shader =
+            Self::compile_shader(&gl, glow::FRAGMENT_SHADER, fragment_shader_str).unwrap();
+        let vertex_shader =
+            Self::compile_shader(&gl, glow::VERTEX_SHADER, vertex_shader_str).unwrap();
+        let fb_frag_shader =
+            Self::compile_shader(&gl, glow::FRAGMENT_SHADER, fb_frag_shader_str).unwrap();
+        let fb_vert_shader =
+            Self::compile_shader(&gl, glow::VERTEX_SHADER, fb_vert_shader_str).unwrap();
 
-        let writeback_frag_shader = Self::compile_shader(
-            &gl,
-            glow::FRAGMENT_SHADER,
-            writeback_frag_shader_str,
-        )
-        .unwrap();
-        let writeback_vert_shader = Self::compile_shader(
-            &gl,
-            glow::VERTEX_SHADER,
-            writeback_vert_shader_str,
-        )
-        .unwrap();
+        let writeback_frag_shader =
+            Self::compile_shader(&gl, glow::FRAGMENT_SHADER, writeback_frag_shader_str).unwrap();
+        let writeback_vert_shader =
+            Self::compile_shader(&gl, glow::VERTEX_SHADER, writeback_vert_shader_str).unwrap();
 
         let program = Self::link_program(&gl, vertex_shader, fragment_shader).unwrap();
         let fb_program = Self::link_program(&gl, fb_vert_shader, fb_frag_shader).unwrap();
@@ -164,7 +142,8 @@ impl Renderer {
         let loc_page = unsafe { gl.get_uniform_location(program, "page") };
         let loc_clut = unsafe { gl.get_uniform_location(program, "clut") };
         let loc_force_mask_bit = unsafe { gl.get_uniform_location(program, "forceMaskBit") };
-        let loc_preserve_masked_pixels = unsafe { gl.get_uniform_location(program, "preserveMaskedPixels") };
+        let loc_preserve_masked_pixels =
+            unsafe { gl.get_uniform_location(program, "preserveMaskedPixels") };
 
         let vertex_buffer = unsafe { gl.create_buffer().unwrap() };
         let quad_buffer = unsafe { gl.create_buffer().unwrap() };
@@ -192,21 +171,17 @@ impl Renderer {
             &fbo_read,
         );
 
-        // let float_view = Float32Array::from(QUAD_VERTS.as_slice());
-
         let slice: &[u8] = cast_slice(QUAD_VERTS.as_slice());
 
         unsafe {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(quad_buffer));
-            gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                slice,
-                glow::DYNAMIC_DRAW,
-            );
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, slice, glow::DYNAMIC_DRAW);
         }
 
         let quad_vao = unsafe { gl.create_vertex_array().unwrap() };
-        unsafe { gl.bind_vertex_array(Some(quad_vao)); }
+        unsafe {
+            gl.bind_vertex_array(Some(quad_vao));
+        }
 
         Self {
             quad_vao,
@@ -251,13 +226,7 @@ impl Renderer {
             gl.active_texture(active_texture);
             gl.bind_texture(glow::TEXTURE_2D, Some(*texture));
 
-            gl.tex_storage_2d(
-                glow::TEXTURE_2D,
-                1,
-                internal_format,
-                width,
-                height,
-            );
+            gl.tex_storage_2d(glow::TEXTURE_2D, 1, internal_format, width, height);
 
             gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
@@ -296,9 +265,7 @@ impl Renderer {
         shader_type: u32,
         source: &str,
     ) -> Result<NativeShader, String> {
-        let shader = unsafe { gl
-            .create_shader(shader_type)?
-        };
+        let shader = unsafe { gl.create_shader(shader_type)? };
 
         unsafe {
             gl.shader_source(shader, source);
@@ -324,7 +291,10 @@ impl Renderer {
             gl.attach_shader(program, fragment_shader);
             gl.link_program(program);
             if !gl.get_program_link_status(program) {
-                println!("program completion error: {}", gl.get_program_info_log(program));
+                println!(
+                    "program completion error: {}",
+                    gl.get_program_info_log(program)
+                );
             }
         }
 
@@ -447,32 +417,17 @@ impl Renderer {
     fn bind_quad_verts(&self) {
         unsafe {
             self.gl.bind_vertex_array(Some(self.quad_vao));
-            self.gl.bind_buffer(
-                glow::ARRAY_BUFFER,
-                Some(self.quad_buffer),
-            );
+            self.gl
+                .bind_buffer(glow::ARRAY_BUFFER, Some(self.quad_buffer));
 
             let quad_stride = 16; // 4 floats * 4 bytes each
 
-            self.gl.vertex_attrib_pointer_f32(
-                0,
-                2,
-                glow::FLOAT,
-                false,
-                quad_stride,
-                0,
-
-            );
+            self.gl
+                .vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, quad_stride, 0);
             self.gl.enable_vertex_attrib_array(0);
 
-            self.gl.vertex_attrib_pointer_f32(
-                1,
-                2,
-                glow::FLOAT,
-                false,
-                quad_stride,
-                8,
-            );
+            self.gl
+                .vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, quad_stride, 8);
             self.gl.enable_vertex_attrib_array(1);
         }
     }
@@ -520,16 +475,15 @@ impl Renderer {
         unsafe {
             self.gl
                 .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_write));
-            self.gl
-                .read_pixels(
-                    params.start_x as i32,
-                    VRAM_HEIGHT as i32 - params.height as i32 - params.start_y as i32,
-                    params.width as i32,
-                    params.height as i32,
-                    glow::RGBA,
-                    glow::UNSIGNED_BYTE,
-                    PixelPackData::Slice(Some(&mut rgba8_buf))
-                );
+            self.gl.read_pixels(
+                params.start_x as i32,
+                VRAM_HEIGHT as i32 - params.height as i32 - params.start_y as i32,
+                params.width as i32,
+                params.height as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                PixelPackData::Slice(Some(&mut rgba8_buf)),
+            );
         }
 
         let mut halfwords = Vec::new();
@@ -639,55 +593,26 @@ impl Renderer {
         let vertices_bytes: &[u8] = cast_slice(&vertices);
 
         unsafe {
-            self.gl.bind_buffer(
-                glow::ARRAY_BUFFER,
-                Some(self.vertex_buffer),
-            );
-            self.gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                vertices_bytes,
-                glow::DYNAMIC_DRAW,
-            );
+            self.gl
+                .bind_buffer(glow::ARRAY_BUFFER, Some(self.vertex_buffer));
+            self.gl
+                .buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_bytes, glow::DYNAMIC_DRAW);
 
             let stride = std::mem::size_of::<GlVertex>() as i32;
-            self.gl.vertex_attrib_pointer_f32(
-                0,
-                2,
-                glow::FLOAT,
-                false,
-                stride,
-                0
-            );
+            self.gl
+                .vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, stride, 0);
             self.gl.enable_vertex_attrib_array(0);
 
-            self.gl.vertex_attrib_pointer_f32(
-                1,
-                2,
-                glow::FLOAT,
-                false,
-                stride,
-                8,
-            );
+            self.gl
+                .vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, stride, 8);
             self.gl.enable_vertex_attrib_array(1);
 
-            self.gl.vertex_attrib_pointer_f32(
-                2,
-                4,
-                glow::FLOAT,
-                false,
-                stride,
-                16,
-            );
+            self.gl
+                .vertex_attrib_pointer_f32(2, 4, glow::FLOAT, false, stride, 16);
             self.gl.enable_vertex_attrib_array(2);
 
-            self.gl.vertex_attrib_pointer_f32(
-                3,
-                2,
-                glow::FLOAT,
-                false,
-                stride,
-                32,
-            );
+            self.gl
+                .vertex_attrib_pointer_f32(3, 2, glow::FLOAT, false, stride, 32);
 
             self.gl.enable_vertex_attrib_array(3);
 
@@ -695,8 +620,7 @@ impl Renderer {
                 .viewport(0, 0, VRAM_WIDTH as i32, VRAM_HEIGHT as i32);
 
             self.gl.active_texture(glow::TEXTURE0);
-            self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
 
             self.gl.use_program(Some(self.program));
 
@@ -781,15 +705,9 @@ impl Renderer {
     pub fn present(&self, gpu: &mut GPU) {
         let (width, height) = gpu.get_dimensions();
 
-        // self.canvas
-        //     .set_attribute("width", &format!("{width}"))
-        //     .unwrap();
-        // self.canvas
-        //     .set_attribute("height", &format!("{height}"))
-        //     .unwrap();
-
         unsafe {
-            self.gl.viewport(0, 0, width as i32, height as i32);
+            self.gl
+                .viewport(0, 0, SCREEN_WIDTH as i32, SCREEN_HEIGHT as i32);
 
             let loc_depth = self
                 .gl
@@ -797,9 +715,7 @@ impl Renderer {
             let loc_start = self
                 .gl
                 .get_uniform_location(self.fb_program, "displayStart");
-            let loc_size = self
-                .gl
-                .get_uniform_location(self.fb_program, "displaySize");
+            let loc_size = self.gl.get_uniform_location(self.fb_program, "displaySize");
 
             self.gl.use_program(Some(self.fb_program));
 
@@ -809,16 +725,14 @@ impl Renderer {
                 .uniform_2_u32(loc_start.as_ref(), gpu.display_start_x, gpu.display_start_y);
             self.gl.uniform_2_u32(loc_size.as_ref(), width, height);
 
-            self.gl
-                .bind_framebuffer(glow::FRAMEBUFFER, None);
+            self.gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
             self.gl.active_texture(glow::TEXTURE0);
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.vram_write));
 
             self.gl.active_texture(glow::TEXTURE1);
-            self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
 
             let loc_write = self.gl.get_uniform_location(self.fb_program, "vramWrite");
             let loc_read = self.gl.get_uniform_location(self.fb_program, "vramRead");
@@ -883,13 +797,20 @@ impl Renderer {
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.vram_write));
 
-            // if invert {
-            //     self.gl
-            //         .pixel_store_i32(glow::UNPACK_FLIP_Y_WEBGL, 1);
-            // }
+            let bytes = if invert {
+                let flipped: Vec<u8> = rgba8_bytes
+                    .chunks(width as usize * 4)
+                    .rev()
+                    .flatten()
+                    .copied()
+                    .collect();
 
-            self.gl
-                .pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
+                flipped
+            } else {
+                rgba8_bytes.to_vec()
+            };
+
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);
 
             let y_offset = if invert {
                 VRAM_HEIGHT as i32 - start_y - height
@@ -897,26 +818,21 @@ impl Renderer {
                 start_y
             };
 
-            self.gl
-                .tex_sub_image_2d(
-                    glow::TEXTURE_2D,
-                    0,
-                    start_x,
-                    y_offset,
-                    width,
-                    height,
-                    glow::RGBA,
-                    glow::UNSIGNED_BYTE,
-                    PixelUnpackData::Slice(Some(rgba8_bytes))
-                );
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                start_x,
+                y_offset,
+                width,
+                height,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                PixelUnpackData::Slice(Some(&bytes)),
+            );
 
             self.gl.active_texture(glow::TEXTURE1);
-            self.gl
-                .bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
-            self.gl
-                .pixel_store_i32(glow::UNPACK_ALIGNMENT, 2);
-
-            // let js_array = Uint16Array::from(halfwords);
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(self.vram_read));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 2);
 
             let slice: &[u8] = cast_slice(halfwords);
 
@@ -929,7 +845,7 @@ impl Renderer {
                 height,
                 glow::RED_INTEGER,
                 glow::UNSIGNED_SHORT,
-                PixelUnpackData::Slice(Some(slice))
+                PixelUnpackData::Slice(Some(slice)),
             );
         }
     }
@@ -957,16 +873,13 @@ impl Renderer {
                 &temp_rgba_fbo,
             );
 
-            self.gl.bind_framebuffer(
-                glow::READ_FRAMEBUFFER,
-                Some(self.fbo_write),
-            );
-            self.gl.bind_framebuffer(
-                glow::DRAW_FRAMEBUFFER,
-                Some(temp_rgba_fbo),
-            );
+            self.gl
+                .bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.fbo_write));
+            self.gl
+                .bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(temp_rgba_fbo));
 
-            let source_y_flipped = (VRAM_HEIGHT as u32 - params.source_start_y - params.height) as i32;
+            let source_y_flipped =
+                (VRAM_HEIGHT as u32 - params.source_start_y - params.height) as i32;
             let destination_y_flipped =
                 (VRAM_HEIGHT as u32 - params.destination_start_y - params.height) as i32;
 
@@ -983,14 +896,10 @@ impl Renderer {
                 glow::NEAREST,
             );
 
-            self.gl.bind_framebuffer(
-                glow::READ_FRAMEBUFFER,
-                Some(temp_rgba_fbo),
-            );
-            self.gl.bind_framebuffer(
-                glow::DRAW_FRAMEBUFFER,
-                Some(self.fbo_write),
-            );
+            self.gl
+                .bind_framebuffer(glow::READ_FRAMEBUFFER, Some(temp_rgba_fbo));
+            self.gl
+                .bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(self.fbo_write));
 
             self.gl.blit_framebuffer(
                 0,
@@ -1021,14 +930,10 @@ impl Renderer {
                 &temp_r16_fbo,
             );
 
-            self.gl.bind_framebuffer(
-                glow::READ_FRAMEBUFFER,
-                Some(self.fbo_read),
-            );
-            self.gl.bind_framebuffer(
-                glow::DRAW_FRAMEBUFFER,
-                Some(temp_r16_fbo),
-            );
+            self.gl
+                .bind_framebuffer(glow::READ_FRAMEBUFFER, Some(self.fbo_read));
+            self.gl
+                .bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(temp_r16_fbo));
 
             self.gl.blit_framebuffer(
                 params.source_start_x as i32,
@@ -1043,14 +948,10 @@ impl Renderer {
                 glow::NEAREST,
             );
 
-            self.gl.bind_framebuffer(
-                glow::READ_FRAMEBUFFER,
-                Some(temp_r16_fbo),
-            );
-            self.gl.bind_framebuffer(
-                glow::DRAW_FRAMEBUFFER,
-                Some(self.fbo_read),
-            );
+            self.gl
+                .bind_framebuffer(glow::READ_FRAMEBUFFER, Some(temp_r16_fbo));
+            self.gl
+                .bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(self.fbo_read));
 
             self.gl.blit_framebuffer(
                 0,
@@ -1077,34 +978,30 @@ impl Renderer {
         unsafe {
             self.gl
                 .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_write));
-            self.gl
-                .read_pixels(
-                    0,
-                    0,
-                    VRAM_WIDTH as i32,
-                    VRAM_HEIGHT as i32,
-                    glow::RGBA,
-                    glow::UNSIGNED_BYTE,
-                    PixelPackData::Slice(Some(&mut rgba8_buf)),
-                );
+            self.gl.read_pixels(
+                0,
+                0,
+                VRAM_WIDTH as i32,
+                VRAM_HEIGHT as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                PixelPackData::Slice(Some(&mut rgba8_buf)),
+            );
 
             self.gl
                 .bind_framebuffer(glow::FRAMEBUFFER, Some(self.fbo_read));
             {
-                // let js_array =
-                //     unsafe { Uint16Array::view_mut_raw(rgba16_buf.as_mut_ptr(), rgba16_buf.len()) };
                 let slice: &mut [u8] = cast_slice_mut(&mut rgba16_buf);
 
-                self.gl
-                    .read_pixels(
-                        0,
-                        0,
-                        VRAM_WIDTH as i32,
-                        VRAM_HEIGHT as i32,
-                        glow::RED_INTEGER,
-                        glow::UNSIGNED_SHORT,
-                        PixelPackData::Slice(Some(slice))
-                    )
+                self.gl.read_pixels(
+                    0,
+                    0,
+                    VRAM_WIDTH as i32,
+                    VRAM_HEIGHT as i32,
+                    glow::RED_INTEGER,
+                    glow::UNSIGNED_SHORT,
+                    PixelPackData::Slice(Some(slice)),
+                )
             }
         }
 
