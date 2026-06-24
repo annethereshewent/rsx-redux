@@ -11,6 +11,7 @@ use renderer_opengl::renderer::Renderer;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
+use sdl2::video::GLProfile;
 use sdl2::GameControllerSubsystem;
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::controller::{Axis, Button};
@@ -153,6 +154,12 @@ impl Frontend {
             .build()
             .unwrap();
 
+        let gl_attr = video_subsystem.gl_attr();
+
+        gl_attr.set_alpha_size(0);
+        gl_attr.set_context_version(4, 1);
+        gl_attr.set_context_profile(GLProfile::Core);
+
         #[cfg(feature = "hardware_gpu_opengl")]
         let gl_context = window.gl_create_context().unwrap();
         #[cfg(feature = "hardware_gpu_opengl")] {
@@ -160,9 +167,8 @@ impl Frontend {
             window.subsystem().gl_set_swap_interval(1).unwrap();
         }
 
-
         #[cfg(feature = "hardware_gpu_opengl")]
-        let renderer = Renderer::new(&window, &video_subsystem, gl_context);
+        let renderer = Renderer::new(&window, gl_context);
 
         #[cfg(feature = "software_gpu")]
         let mut canvas = window.into_canvas().present_vsync().build().unwrap();

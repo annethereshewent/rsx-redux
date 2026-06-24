@@ -1,7 +1,7 @@
 use std::cmp;
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
-use glow::{Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeShader, NativeTexture, NativeUniformLocation, PixelPackData, PixelUnpackData};
+use glow::{Context, HasContext, NativeBuffer, NativeFramebuffer, NativeProgram, NativeShader, NativeTexture, NativeUniformLocation, NativeVertexArray, PixelPackData, PixelUnpackData};
 use rsx_redux::cpu::bus::gpu::{
     CPUTransferParams, DisplayDepth, FillVramParams, GPU, GPUCommand, Polygon, TexturePageColors,
     VRAM_HEIGHT, VRAM_WIDTH, VRamTransferParams, VramToVramTransferParams,
@@ -82,6 +82,7 @@ pub struct Renderer {
     loc_clut: Option<NativeUniformLocation>,
     loc_force_mask_bit: Option<NativeUniformLocation>,
     loc_preserve_masked_pixels: Option<NativeUniformLocation>,
+    quad_vao: NativeVertexArray,
 }
 
 impl Renderer {
@@ -90,13 +91,7 @@ impl Renderer {
             Context::from_loader_function(|s| window.subsystem().gl_get_proc_address(s) as _)
         }
     }
-    pub fn new(window: &Window, video: &VideoSubsystem, gl_context: GLContext) -> Self {
-        let gl_attr = video.gl_attr();
-
-        gl_attr.set_alpha_size(0);
-        gl_attr.set_context_version(4, 1);
-        gl_attr.set_context_profile(GLProfile::Core);
-
+    pub fn new(window: &Window, gl_context: GLContext) -> Self {
         let gl = Self::glow_context(window);
 
         let vram_read = unsafe { gl.create_texture().unwrap() };
@@ -210,7 +205,11 @@ impl Renderer {
             );
         }
 
+        let quad_vao = unsafe { gl.create_vertex_array().unwrap() };
+        unsafe { gl.bind_vertex_array(Some(quad_vao)); }
+
         Self {
+            quad_vao,
             gl,
             _gl_context: gl_context,
             vram_read,
@@ -440,6 +439,7 @@ impl Renderer {
 
     fn bind_quad_verts(&self) {
         unsafe {
+            self.gl.bind_vertex_array(Some(self.quad_vao));
             self.gl.bind_buffer(
                 glow::ARRAY_BUFFER,
                 Some(self.quad_buffer),
@@ -447,19 +447,22 @@ impl Renderer {
 
             let quad_stride = 16; // 4 floats * 4 bytes each
 
-            self.gl.vertex_attrib_pointer_i32(
+            self.gl.vertex_attrib_pointer_f32(
                 0,
                 2,
                 glow::FLOAT,
+                false,
                 quad_stride,
                 0,
+
             );
             self.gl.enable_vertex_attrib_array(0);
 
-            self.gl.vertex_attrib_pointer_i32(
+            self.gl.vertex_attrib_pointer_f32(
                 1,
                 2,
                 glow::FLOAT,
+                false,
                 quad_stride,
                 8,
             );
@@ -765,6 +768,7 @@ impl Renderer {
     }
 
     pub fn present(&self, gpu: &mut GPU) {
+        println!("presenting!");
         let (width, height) = gpu.get_dimensions();
 
         // self.canvas
