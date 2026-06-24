@@ -829,7 +829,6 @@ impl Renderer {
             self.bind_quad_verts();
 
             self.gl.draw_arrays(glow::TRIANGLES, 0, 6);
-            }
         }
     }
 
