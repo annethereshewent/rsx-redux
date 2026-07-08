@@ -86,6 +86,7 @@ pub struct Renderer {
     loc_clut: Option<NativeUniformLocation>,
     loc_force_mask_bit: Option<NativeUniformLocation>,
     loc_preserve_masked_pixels: Option<NativeUniformLocation>,
+    loc_vram_write: Option<NativeUniformLocation>,
     quad_vao: NativeVertexArray,
 }
 
@@ -144,6 +145,9 @@ impl Renderer {
         let loc_force_mask_bit = unsafe { gl.get_uniform_location(program, "forceMaskBit") };
         let loc_preserve_masked_pixels =
             unsafe { gl.get_uniform_location(program, "preserveMaskedPixels") };
+
+        let loc_vram_write = unsafe { gl
+            .get_uniform_location(writeback_program, "vramWrite") };
 
         let vertex_buffer = unsafe { gl.create_buffer().unwrap() };
         let quad_buffer = unsafe { gl.create_buffer().unwrap() };
@@ -210,6 +214,7 @@ impl Renderer {
             loc_clut,
             loc_force_mask_bit,
             loc_preserve_masked_pixels,
+            loc_vram_write
         }
     }
 
@@ -397,11 +402,7 @@ impl Renderer {
             self.gl
                 .bind_texture(glow::TEXTURE_2D, Some(self.vram_write));
 
-            let loc = self
-                .gl
-                .get_uniform_location(self.writeback_program, "vramWrite");
-
-            self.gl.uniform_1_i32(loc.as_ref(), 0);
+            self.gl.uniform_1_i32(self.loc_vram_write.as_ref(), 0);
 
             self.bind_quad_verts();
 
