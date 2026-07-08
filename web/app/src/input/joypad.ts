@@ -293,12 +293,15 @@ export class Joypad {
             smallMotor *= 0.2
             largeMotor /= 255
 
-            gamepad.vibrationActuator.playEffect("dual-rumble", {
-                startDelay: 0,
-                duration: 200,
-                weakMagnitude: smallMotor,
-                strongMagnitude: largeMotor,
-            })
+            if (smallMotor != 0 || largeMotor != 0) {
+                // note: use optional chaining in case vibrationActuator isn't supported.
+                gamepad.vibrationActuator?.playEffect("dual-rumble", {
+                    startDelay: 0,
+                    duration: 200,
+                    weakMagnitude: smallMotor,
+                    strongMagnitude: largeMotor,
+                })
+            }
         }
     }
 }
