@@ -23,7 +23,7 @@ uniform uvec2 clut;
 uniform bool forceMaskBit;
 uniform bool preserveMaskedPixels;
 
-vec4 getTexColor4bpp(usampler2D vramRead) {
+vec4 getTexColor4bpp(usampler2D vramRead, out bool shouldDiscard) {
     uint u = uint(vUv.x) & 0xffu;
     uint v = uint(vUv.y) & 0xffu;
 
@@ -46,7 +46,7 @@ vec4 getTexColor4bpp(usampler2D vramRead) {
     uint texel = texelFetch(vramRead, ivec2(texelIndex + clut.x, clut.y), 0).r;
 
     if (texel == 0u) {
-        discard;
+        shouldDiscard = true;
     }
 
     uint r = texel & 0x1fu;
@@ -57,7 +57,7 @@ vec4 getTexColor4bpp(usampler2D vramRead) {
     return vec4(r, g, b, a) / 31.0;
 }
 
-vec4 getTexColor8bpp(usampler2D vramRead) {
+vec4 getTexColor8bpp(usampler2D vramRead, out bool shouldDiscard) {
     uint u = uint(vUv.x) & 0xffu;
     uint v = uint(vUv.y) & 0xffu;
 
@@ -74,7 +74,7 @@ vec4 getTexColor8bpp(usampler2D vramRead) {
     uint texel = texelFetch(vramRead, ivec2(texelIndex + clut.x, clut.y), 0).r;
 
     if (texel == 0u) {
-        discard;
+        shouldDiscard = true;
     }
 
     uint r = texel & 0x1fu;
@@ -85,7 +85,7 @@ vec4 getTexColor8bpp(usampler2D vramRead) {
     return vec4(r, g, b, a) / 31.0;
 }
 
-vec4 getTexColor15bpp(usampler2D vramRead) {
+vec4 getTexColor15bpp(usampler2D vramRead, out bool shouldDiscard) {
     uint u = uint(vUv.x) & 0xffu;
     uint v = uint(vUv.y) & 0xffu;
 
@@ -98,7 +98,7 @@ vec4 getTexColor15bpp(usampler2D vramRead) {
     uint texel = texelFetch(vramRead, ivec2(offsetU, offsetV), 0).r;
 
     if (texel == 0u) {
-        discard;
+        shouldDiscard = true;
     }
 
     uint r = texel & 0x1fu;
@@ -132,18 +132,24 @@ void main() {
         }
     }
 
+    bool shouldDiscard = false;
+
     if (hasTexture) {
         vec4 texColor;
         switch (depth) {
             case 0:
-                texColor = getTexColor4bpp(vramRead);
+                texColor = getTexColor4bpp(vramRead, shouldDiscard);
                 break;
             case 1:
-                texColor = getTexColor8bpp(vramRead);
+                texColor = getTexColor8bpp(vramRead, shouldDiscard);
                 break;
             case 2:
-                texColor = getTexColor15bpp(vramRead);
+                texColor = getTexColor15bpp(vramRead, shouldDiscard);
                 break;
+        }
+
+        if (shouldDiscard) {
+            discard;
         }
 
         texAlpha = texColor[3];
