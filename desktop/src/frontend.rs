@@ -265,6 +265,7 @@ impl Frontend {
         }
     }
 
+    #[cfg(feature = "hardware_gpu_opengl")]
     pub fn end_frame(&self) {
         self.window.gl_swap_window();
     }
