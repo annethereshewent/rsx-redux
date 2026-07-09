@@ -363,6 +363,13 @@ impl Frontend {
         });
     }
 
+    #[cfg(feature = "hardware_gpu_opengl")]
+    fn load_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
+        Self::load_quick_state_inner(cpu, |cpu| {
+            renderer.set_vram_textures(cpu.bus.gpu.vram_read_tex.to_vec(), cpu.bus.gpu.vram_write_tex.to_vec());
+        });
+    }
+
     #[cfg(feature = "software_gpu")]
     fn load_quick_state(cpu: &mut CPU) {
         Self::load_quick_state_inner(cpu, |_| {});
@@ -388,6 +395,16 @@ impl Frontend {
     }
 
     #[cfg(feature = "hardware_gpu_metal")]
+    fn create_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
+        Self::create_quick_state_inner(cpu, |cpu| {
+            let (vram_read, vram_write) = renderer.get_vram_textures();
+
+            cpu.bus.gpu.vram_read_tex = vram_read.into_boxed_slice();
+            cpu.bus.gpu.vram_write_tex = vram_write.into_boxed_slice();
+        });
+    }
+
+    #[cfg(feature = "hardware_gpu_opengl")]
     fn create_quick_state(renderer: &mut Renderer, cpu: &mut CPU) {
         Self::create_quick_state_inner(cpu, |cpu| {
             let (vram_read, vram_write) = renderer.get_vram_textures();
@@ -434,11 +451,15 @@ impl Frontend {
                                     Self::create_quick_state(cpu);
                                     #[cfg(feature = "hardware_gpu_metal")]
                                     Self::create_quick_state(&mut self.renderer, cpu);
+                                    #[cfg(feature = "hardware_gpu_opengl")]
+                                    Self::create_quick_state(&mut self.renderer, cpu);
                                 }
                                 Keycode::F7 => {
                                     #[cfg(feature = "software_gpu")]
                                     Self::load_quick_state(cpu);
                                     #[cfg(feature = "hardware_gpu_metal")]
+                                    Self::load_quick_state(&mut self.renderer, cpu);
+                                    #[cfg(feature = "hardware_gpu_opengl")]
                                     Self::load_quick_state(&mut self.renderer, cpu);
                                 }
                                 Keycode::W => {
