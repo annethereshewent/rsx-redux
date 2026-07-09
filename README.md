@@ -2,21 +2,27 @@
 
 ## About
 
-This is a Playstation emulator written in Rust. It's a rewrite of the <a href="https://github.com/annethereshewent/RSX">RSX emulator</a>, with hardware rendering being the primary feature. Currently supports Metal on desktop and webGL on web, OpenGL coming soon! Web version is now available at https://rsx-redux.onrender.com/, and there is also a MacOS app available for use at https://github.com/annethereshewent/rsx-redux-macos. iOS port will eventually be available. 
+This is a Playstation emulator written in Rust. It's a rewrite of the <a href="https://github.com/annethereshewent/RSX">RSX emulator</a>, with hardware rendering being the primary feature. Currently supports Metal, WebGL, and openGL! Web version is available at https://rsx-redux.onrender.com/, and there is also a MacOS app available for use at https://github.com/annethereshewent/rsx-redux-macos. iOS port will eventually be available. 
 
-## How to run
+## Getting started
 
-To run on your desktop locally, ensure you have a copy of the Playstation BIOS in the desktop/ directory, and use the two scripts provided in the desktop/ directory:
+To run on your desktop locally, ensure you have a copy of the Playstation BIOS in the desktop/ directory.
 
-For the software renderer (works on any OS):
+Also ensure that you have SDL2 installed, as it is necessary to build and run.
+
+### Running
+
+Use the included scripts to run the emulator, `software.sh`, `hardware_metal.sh`, or `hardware_gl.sh`.
+
+For the software renderer:
 
 `./software.sh <path-to-rom-or-exe>`
 
-For the hardware renderer (ARM MacOS only), do something similar:
+For the hardware renderer, either use `hardware_metal.sh` or `hardware_gl.sh` to run the script, ie:
 
-`./hardware.sh <path-to-rom-or-exe>`
+`./hardware_gl.sh <path-to-rom-or-exe>`
 
-To compile the binary, use `cargo build --release` but remember to specify whether to use the hardware gpu or software renderer with `--features [hardware_gpu|software_gpu] --no-default-features`.
+To compile the binary, use `cargo build --release` but remember to specify whether to use the hardware gpu or software renderer with `--features [hardware_gpu_metal|hardware_gpu_opengl|software_gpu] --no-default-features`.
 
 ## Controls
 
