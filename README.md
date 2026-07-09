@@ -26,7 +26,7 @@ To compile the binary, use `cargo build --release` but remember to specify wheth
 
 ## Controls
 
-Works great with a dualshock-like controller! Supports Xbox 360, dualshock, and dualsense controllers. Controls are exactly like on the Playstation.
+Works great with a dualshock-like controller! Supports Xbox, dualshock, and dualsense controllers. Controls are exactly like on the Playstation.
 
 For keyboard support (custom keyboard mappings available on the MacOS app), use:
 
