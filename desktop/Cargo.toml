@@ -5,19 +5,32 @@ edition = "2024"
 
 [dependencies]
 rsx-redux = { path = "..", default-features = false }
-renderer-metal = { path = "../renderer-metal", optional=true, default-features = false }
+renderer-metal = { path = "../renderer-metal", optional = true, default-features = false }
+renderer-opengl = { path = "../renderer-opengl", optional = true, default-features = false }
 sdl2 = "0.37"
-objc2 = "0.6.1"
+objc2 = { version = "0.6.1", optional = true }
 sdl2-sys = "0.37.0"
-objc2-quartz-core = { version = "0.3.1", features = ["CAMetalLayer"] }
-objc2-core-foundation = "0.3.1"
+objc2-quartz-core = { version = "0.3.1", features = ["CAMetalLayer"], optional = true }
+objc2-core-foundation = { version = "0.3.1", optional = true }
+glow = { version = "0.16.0", optional = true }
 memmap2 = "0.9.7"
 ringbuf="0.4.8"
 dirs-next = "2.0.0"
 zstd = "0.13"
 
 [features]
-default = ["hardware_gpu"]
+default = ["hardware_gpu_opengl"]
 software_gpu = ["rsx-redux/software_gpu"]
-hardware_gpu = ["rsx-redux/hardware_gpu", "renderer-metal/hardware_gpu"]
+hardware_gpu_metal = [
+    "rsx-redux/hardware_gpu_metal",
+    "renderer-metal/hardware_gpu_metal",
+    "dep:objc2",
+    "dep:objc2-quartz-core",
+    "dep:objc2-core-foundation"
+]
+hardware_gpu_opengl = [
+    "rsx-redux/hardware_gpu_opengl",
+    "renderer-opengl",
+    "dep:glow"
+]
 debug = ["rsx-redux/debug"]

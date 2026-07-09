@@ -6,7 +6,7 @@ use std::{
 
 use frontend::Frontend;
 use memmap2::Mmap;
-#[cfg(feature = "hardware_gpu")]
+#[cfg(feature = "hardware_gpu_metal")]
 use objc2_core_foundation::CGSize;
 use rsx_redux::cpu::CPU;
 
@@ -51,7 +51,7 @@ fn main() {
 
     let mut frontend = Frontend::new(&cpu.bus.gpu);
 
-    #[cfg(feature = "hardware_gpu")]
+    #[cfg(feature = "hardware_gpu_metal")]
     frontend.renderer.metal_layer.setDrawableSize(CGSize::new(
         cpu.bus.gpu.display_width as f64,
         cpu.bus.gpu.display_height as f64,
@@ -60,7 +60,9 @@ fn main() {
     loop {
         while !cpu.bus.gpu.frame_finished {
             cpu.step();
-            #[cfg(feature = "hardware_gpu")]
+            #[cfg(feature = "hardware_gpu_metal")]
+            frontend.renderer.process(&mut cpu.bus.gpu);
+            #[cfg(feature = "hardware_gpu_opengl")]
             frontend.renderer.process(&mut cpu.bus.gpu);
         }
 
@@ -69,12 +71,17 @@ fn main() {
         #[cfg(feature = "software_gpu")]
         cpu.bus.gpu.cap_fps();
 
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(feature = "hardware_gpu_metal")]
         frontend.renderer.present(&mut cpu.bus.gpu);
+        #[cfg(feature = "hardware_gpu_opengl")]
+        {
+            frontend.renderer.present(&mut cpu.bus.gpu);
+            frontend.end_frame();
+        }
         #[cfg(feature = "software_gpu")]
         frontend.render(&mut cpu.bus.gpu);
 
-        #[cfg(feature = "hardware_gpu")]
+        #[cfg(any(feature = "hardware_gpu_metal", feature = "hardware_gpu_opengl"))]
         cpu.bus.gpu.cap_fps();
 
         frontend.handle_events(&mut cpu);
