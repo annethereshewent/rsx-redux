@@ -6,6 +6,7 @@ use objc2::rc::Retained;
 use objc2_quartz_core::CAMetalLayer;
 #[cfg(feature = "hardware_gpu")]
 use renderer_metal::renderer::Renderer;
+use rsx_redux::cpu::bus::spu::NUM_SAMPLES;
 use rsx_redux::cpu::CPU;
 use rsx_redux::cpu::bus::gpu::{GPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use rsx_redux::cpu::bus::peripherals::memory_card::MEMORY_SIZE;
@@ -71,6 +72,10 @@ impl PsxAudioCallback {
     pub fn push_samples(&mut self, samples: Vec<i16>) {
         for sample in samples.iter() {
             self.audio_buffer.push_back(*sample);
+        }
+
+        while self.audio_buffer.len() > NUM_SAMPLES {
+            self.audio_buffer.pop_front();
         }
     }
 }
@@ -234,6 +239,9 @@ impl Frontend {
     pub fn get_memory_card_path() -> Option<PathBuf> {
         if let Some(mut memory_path) = data_dir() {
             memory_path.push("RSX-redux");
+
+            fs::create_dir_all(&memory_path).unwrap();
+
             memory_path.push("memory_card.mcd");
 
             return Some(memory_path);
