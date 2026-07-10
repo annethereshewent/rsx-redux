@@ -60,10 +60,10 @@ export class CloudService {
         }
 
         window.addEventListener("message", (e) => {
-            if (e.data == "authFinished") {
+            if (e.data == "authFinished" && e.origin == location.origin) {
                 this.signInUser()
             }
-        })
+        }, { once: true })
     }
 
     closeModal() {
@@ -175,6 +175,8 @@ export class CloudService {
                     lastModified: moment(file.modifiedTime).unix(),
                     data: new Uint8Array((body as ArrayBuffer)),
                 }
+
+                console.log("got the data!")
 
                 return returnVal
             }
@@ -504,7 +506,7 @@ export class CloudService {
                 const data = returnBuffer ? await response.arrayBuffer() : response.json()
 
                 resolve(data)
-            } else if (response.status == 401) {
+            } else if (response.status == 401 || response.status == 403) {
                 if (attemptAgain) {
                     const result = await this.cloudRequest(request, returnBuffer, false)
 
@@ -556,25 +558,34 @@ export class CloudService {
             return
         }
 
-        return new Promise((resolve, reject) => {
+        const authPromise = new Promise((resolve, reject) => {
             const rsxExpires = parseInt(localStorage.getItem("rsx_access_expires") || "-1")
             // use a threshold of -10 seconds before actual expiration to avoid a case where this returns true and no refresh is done,
             // but the actual request happens and the token expires. this may be an edge case, but just want to make sure that it
             // doesn't happen
             if (rsxExpires != null && (Date.now() >= (rsxExpires - TOKEN_EXPIRY_BUFFER_MS) || rsxExpires == -1)) {
                 // refresh tokens as they're expired
-                window.addEventListener("message", async (e) => {
-                    if (e.data == "authFinished") {
+
+                const eventListener = async (e: MessageEvent) => {
+                    if (e.data == "authFinished" && e.origin == location.origin) {
+                        console.log("finished refreshing tokens!")
                         this.signInUser()
 
                         resolve(null)
                     }
-                })
+                }
+                window.addEventListener("message", eventListener, { once: true })
 
                 this.silentSignIn()
             } else {
                 resolve(null)
             }
         })
+
+        const timeoutPromise = new Promise((resolve, reject) => {
+            setTimeout(() => reject(new  Error("Silent sign in timed out")), 10000)
+        })
+
+        return Promise.race([authPromise, timeoutPromise])
     }
 }

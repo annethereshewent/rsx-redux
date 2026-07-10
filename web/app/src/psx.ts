@@ -294,11 +294,11 @@ export class Psx {
     cloudSignIn() {
         this.cloudService.signIn()
         window.addEventListener("message", (e) => {
-            if (e.data == "authFinished") {
+            if (e.data == "authFinished" && e.origin == location.origin) {
                 this.cloudService.signInUser()
                 this.loadMemoryCard()
             }
-        })
+        }, { once: true })
     }
 
     cloudSignOut() {
@@ -527,7 +527,10 @@ export class Psx {
             this.emulator!.set_exe(null)
         }
 
-        this.emulator!.set_memory_card(this.memoryCardData)
+        // Even though we load the memory card on page load, this might be the "wrong" one due to a race condition where:
+        // the auth token expired, it's currently signing in, and in between that, it loads the local memory card instead.
+        // so we want to make sure that the emulator is using the correct memory card by loading it on game-load as well.
+        await this.loadMemoryCard()
 
         this.audioOutput.setEmulator(this.emulator!)
         this.audioOutput.initAudio()
