@@ -176,8 +176,6 @@ export class CloudService {
                     data: new Uint8Array((body as ArrayBuffer)),
                 }
 
-                console.log("got the data!")
-
                 return returnVal
             }
 
