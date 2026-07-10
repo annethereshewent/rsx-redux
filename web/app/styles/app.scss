@@ -378,7 +378,9 @@ html, body {
     .columns {
         padding: 0;
     }
-
+    html {
+        overflow: hidden;
+    }
     body {
         background: #000000;
         height: 100vh;
