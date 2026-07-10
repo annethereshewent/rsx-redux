@@ -35,6 +35,7 @@ export class Psx {
     private rsxDb = new RsxDb()
     private stateManager: StateManager|null = null
     private cloudService = new CloudService()
+    private memoryCardLoaded = false
 
     constructor() {
         document.addEventListener("click", (e) => {
@@ -528,9 +529,14 @@ export class Psx {
         }
 
         // Even though we load the memory card on page load, this might be the "wrong" one due to a race condition where:
-        // the auth token expired, it's currently signing in, and in between that, it loads the local memory card instead.
+        // the auth token expired, it's currently signing in, and in between that, it loads the local indexeddb memory card instead.
         // so we want to make sure that the emulator is using the correct memory card by loading it on game-load as well.
-        await this.loadMemoryCard()
+
+        // Only do this once on the initial game load to avoid unnecessary API calls after it's already been loaded once.
+        if (!this.memoryCardLoaded) {
+            await this.loadMemoryCard()
+            this.memoryCardLoaded = true
+        }
 
         this.audioOutput.setEmulator(this.emulator!)
         this.audioOutput.initAudio()
