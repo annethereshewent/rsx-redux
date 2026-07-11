@@ -49,7 +49,7 @@ fn main() {
 
             let base_path = file_path.parent().unwrap();
 
-            let mut cpu = CPU::new(None, "".to_string());
+            let mut cpu = CPU::new(None, args[1].to_string());
 
             cpu.bus.cdrom.parse_cue(base_path.to_path_buf(), cue_contents);
 

@@ -341,11 +341,27 @@ impl Frontend {
                 let game_path = cpu.game_path.clone();
                 cpu.load_save_state(&bytes);
 
-                let game_file = File::open(&game_path).unwrap();
+                let file_path = Path::new(&game_path);
 
-                let game_data = unsafe { Mmap::map(&game_file).unwrap() };
+                let extension = file_path.extension().unwrap().to_str().unwrap();
 
-                cpu.bus.cdrom.load_game_desktop(game_data);
+                match extension {
+                    "bin" => {
+                        let game_file = File::open(&game_path).unwrap();
+                        let game_data = unsafe { Mmap::map(&game_file).unwrap() };
+
+                        cpu.bus.cdrom.load_game_desktop(game_data);
+                    }
+                    "cue" => {
+                        let cue_contents = fs::read_to_string(&game_path).unwrap();
+
+                        let base_path = file_path.parent().unwrap();
+
+                        cpu.bus.cdrom.parse_cue(base_path.to_path_buf(), cue_contents);
+                    }
+                    _ => panic!("unknown extension received: {extension}")
+                }
+
                 cpu.reload_instructions();
                 cpu.bus.scheduler.deserialize_scheduler();
                 cpu.bus
