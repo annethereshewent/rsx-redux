@@ -551,9 +551,34 @@ impl CDRom {
             }
         }
 
-        println!("got filename {filename}");
-
         filename
+    }
+
+    fn parse_cue_index(line: &str) -> TrackIndex {
+        let tokens: Vec<_> = line.split(" ").collect();
+
+        if tokens.len() != 3 {
+            panic!("invalid cue line found: {line}");
+        }
+
+        let index_num: usize = tokens[1].parse().unwrap();
+
+        let msf_str = tokens.last().unwrap();
+
+        let msf_tokens: Vec<_> = msf_str.split(':').collect();
+
+        if msf_tokens.len() != 3 {
+            panic!("invalid cue line found: {line}");
+        }
+
+        TrackIndex {
+            index_num,
+            msf: Msf {
+                amm: msf_tokens[0].parse().unwrap(),
+                ass: msf_tokens[1].parse().unwrap(),
+                asect: msf_tokens[2].parse().unwrap()
+            }
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -599,31 +624,10 @@ impl CDRom {
 
                 current_track_index += 1;
             } else if line.contains("INDEX") {
-                let tokens: Vec<_> = line.split(" ").collect();
-
-                if tokens.len() != 3 {
-                    panic!("invalid cue line found: {line}");
-                }
-
-                let index_num: usize = tokens[1].parse().unwrap();
-
-                let msf_str = tokens.last().unwrap();
-
-                let msf_tokens: Vec<_> = msf_str.split(':').collect();
-
-                if msf_tokens.len() != 3 {
-                    panic!("invalid cue line found: {line}");
-                }
+                let index = Self::parse_cue_index(line);
 
                 if let Some(track) = &mut current_track {
-                    track.indexes.push(TrackIndex {
-                        index_num,
-                        msf: Msf {
-                            amm: msf_tokens[0].parse().unwrap(),
-                            ass: msf_tokens[1].parse().unwrap(),
-                            asect: msf_tokens[2].parse().unwrap()
-                        }
-                    })
+                    track.indexes.push(index);
                 }
             }
         }
