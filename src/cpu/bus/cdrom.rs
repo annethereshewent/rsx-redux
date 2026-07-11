@@ -66,6 +66,7 @@ struct Track {
     track_num: usize,
     file_index: usize,
     indexes: Vec<TrackIndex>,
+    start_lba: usize,
     is_audio: bool,
 }
 
@@ -619,7 +620,8 @@ impl CDRom {
                     file_index: bin_files.len() - 1,
                     track_num: current_track_index,
                     indexes: Vec::new(),
-                    is_audio
+                    is_audio,
+                    start_lba: 0
                 });
 
                 current_track_index += 1;
@@ -636,8 +638,36 @@ impl CDRom {
             tracks.push(track);
         }
 
+        // finally iterate through tracks again to calculate the start lba for each one
+        let mut current_lba = 0;
+
+        for i in 0..tracks.len() {
+            tracks[i].start_lba = current_lba;
+
+            let start_index = Self::get_track_offset(&tracks[i]);
+
+            let track_end_offset = if let Some(next_track) = tracks.get(i + 1) {
+                if next_track.file_index == tracks[i].file_index {
+                    Self::get_track_offset(next_track)
+                } else {
+                    bin_files[tracks[i].file_index].len()
+                }
+            } else {
+                bin_files[tracks[i].file_index].len()
+            };
+
+            let length_sectors = (track_end_offset - start_index) / BYTES_PER_SECTOR;
+            current_lba += length_sectors;
+        }
+
         self.bin_files = bin_files;
         self.tracks = tracks;
+    }
+
+    fn get_track_offset(track: &Track) -> usize {
+        let index01 = track.indexes.iter().find(|index| index.index_num == 1).unwrap();
+
+        ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75 + index01.msf.asect as usize) * BYTES_PER_SECTOR
     }
 
     fn check_commands(&mut self) {
@@ -946,15 +976,55 @@ impl CDRom {
     fn gettn(&mut self) {
         self.stat();
 
-        self.controller_response_fifo.push_back(1);
-        self.controller_response_fifo.push_back(1);
+        if self.tracks.len() > 0 {
+            self.controller_response_fifo.push_back(self.tracks[0].track_num as u8);
+            self.controller_response_fifo.push_back(self.tracks.last().unwrap().track_num as u8);
+        } else {
+            self.controller_response_fifo.push_back(1);
+            self.controller_response_fifo.push_back(1);
+        }
     }
 
     fn gettd(&mut self) {
         self.stat();
 
-        self.controller_response_fifo.push_back(0);
-        self.controller_response_fifo.push_back(0);
+        if self.tracks.len() > 0 {
+            let track_num = self.controller_param_fifo.pop_front().unwrap();
+
+            if track_num == 0 {
+                let last_track = self.tracks.last().unwrap();
+
+                let index01 = last_track.indexes.iter().find(|index| index.index_num == 1).unwrap();
+
+                let file_len = self.bin_files[last_track.file_index].len();
+
+                let start_index = ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75 + index01.msf.asect as usize) * BYTES_PER_SECTOR;
+
+                let remaining = file_len - start_index;
+
+                let track_length_sectors = remaining / BYTES_PER_SECTOR;
+
+                let end_lba = last_track.start_lba + track_length_sectors;
+
+                let total_sectors = end_lba + 150; // add lead-in back to lba
+                let mm = total_sectors / (60 * 75);
+                let ss = (total_sectors / 75) % 60;
+
+                println!("[DEBUG]Track 0 for gettd detected");
+
+                self.controller_response_fifo.push_back(mm as u8);
+                self.controller_response_fifo.push_back(ss as u8);
+
+            } else if let Some(track) = self.tracks.iter().find(|track| track.track_num as u8 == track_num) {
+                let index01 = track.indexes.iter().find(|index| index.index_num == 1).unwrap();
+
+                self.controller_response_fifo.push_back(index01.msf.amm);
+                self.controller_response_fifo.push_back(index01.msf.ass);
+            }
+        } else {
+            self.controller_response_fifo.push_back(0);
+            self.controller_response_fifo.push_back(0);
+        }
     }
 
     fn getloc_p(&mut self) {
