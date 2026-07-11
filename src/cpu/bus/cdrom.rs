@@ -367,6 +367,7 @@ pub struct CDRom {
     tracks: Vec<Track>,
     current_file_index: usize,
     is_audio_cd: bool,
+    rate: i8,
 }
 
 impl CDRom {
@@ -426,6 +427,7 @@ impl CDRom {
             tracks: Vec::new(),
             current_file_index: 0,
             is_audio_cd: false,
+            rate: 0,
         }
     }
 
@@ -945,6 +947,8 @@ impl CDRom {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
             0x3 => self.play(),
+            0x4 => self.forward(),
+            0x5 => self.backward(),
             0x6 | 0x1b => self.cd_read_command(),
             0x7 => self.motor_on(),
             0x8 => self.stop(),
@@ -969,8 +973,30 @@ impl CDRom {
         self.controller_param_fifo.clear();
     }
 
+    fn backward(&mut self) {
+        self.stat();
+
+        if self.rate > 0 {
+            self.rate = 0;
+        }
+
+        self.rate = (self.rate - 4).min(-12);
+    }
+
+    fn forward(&mut self) {
+        self.stat();
+
+        if self.rate < 0 {
+            self.rate = 0;
+        }
+
+        self.rate = (self.rate + 4).max(12);
+    }
+
     fn play(&mut self) {
         self.stat();
+
+        self.rate = 0;
 
         if let Some(track_num) = self.controller_param_fifo.pop_front() {
             if track_num != 0 {
@@ -1153,6 +1179,7 @@ impl CDRom {
 
         let index1_offset = Self::get_track_offset(track);
         let byte_offset = index1_offset + (lba - track.start_lba) * BYTES_PER_SECTOR;
+        let max_length = self.bin_files.last().unwrap().len();
 
         self.subchannel_q.track = track_num as u8;
         self.subchannel_q.index = 1;
@@ -1177,21 +1204,31 @@ impl CDRom {
             spu.cd_right_samples.push_back(right);
         }
 
-        self.current_msf.asect += 1;
+        if self.rate != 0 {
+            let current_lba = self.get_pointer() / BYTES_PER_SECTOR;
+            let lba = (current_lba as isize + self.rate as isize).clamp(150, max_length as isize / BYTES_PER_SECTOR as isize) as usize;
 
-        if self.current_msf.asect >= 75 {
-            self.current_msf.asect -= 75;
-            self.current_msf.ass += 1;
+            self.current_msf.amm = (lba / (60 * 75)) as u8;
+            self.current_msf.ass = ((lba / 75) % 60) as u8;
+            self.current_msf.asect = (lba % 75) as u8;
+        } else {
+            self.current_msf.asect += 1;
 
-            if self.current_msf.ass >= 60 {
-                self.current_msf.amm += 1;
-                self.current_msf.ass = 0;
+            if self.current_msf.asect >= 75 {
+                self.current_msf.asect -= 75;
+                self.current_msf.ass += 1;
 
-                if self.current_msf.amm == 74 {
-                    self.current_msf.amm = 0;
+                if self.current_msf.ass >= 60 {
+                    self.current_msf.amm += 1;
+                    self.current_msf.ass = 0;
+
+                    if self.current_msf.amm == 74 {
+                        self.current_msf.amm = 0;
+                    }
                 }
             }
         }
+
         if self.is_playing {
             self.drive_cycles += self.get_drive_cycles();
         }
