@@ -61,15 +61,15 @@ const ZIGZAG_TABLE: [[i32; 29]; 7] = [
     ],
 ];
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Track {
     track_num: usize,
     file_index: usize,
     indexes: Vec<TrackIndex>,
     start_lba: usize,
-    is_audio: bool,
 }
 
+#[derive(Debug)]
 struct TrackIndex {
     index_num: usize,
     msf: Msf,
@@ -364,6 +364,7 @@ pub struct CDRom {
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     tracks: Vec<Track>,
+    current_file_index: usize,
 }
 
 impl CDRom {
@@ -420,7 +421,8 @@ impl CDRom {
             subchannel_q: SubchannelQ::new(),
             #[cfg(not(target_arch = "wasm32"))]
             bin_files: Vec::new(),
-            tracks: Vec::new()
+            tracks: Vec::new(),
+            current_file_index: 0,
         }
     }
 
@@ -577,8 +579,8 @@ impl CDRom {
             msf: Msf {
                 amm: msf_tokens[0].parse().unwrap(),
                 ass: msf_tokens[1].parse().unwrap(),
-                asect: msf_tokens[2].parse().unwrap()
-            }
+                asect: msf_tokens[2].parse().unwrap(),
+            },
         }
     }
 
@@ -614,14 +616,11 @@ impl CDRom {
                     tracks.push(track);
                 }
 
-                let is_audio = line.contains("AUDIO");
-
                 current_track = Some(Track {
                     file_index: bin_files.len() - 1,
                     track_num: current_track_index,
                     indexes: Vec::new(),
-                    is_audio,
-                    start_lba: 0
+                    start_lba: 0,
                 });
 
                 current_track_index += 1;
@@ -665,9 +664,15 @@ impl CDRom {
     }
 
     fn get_track_offset(track: &Track) -> usize {
-        let index01 = track.indexes.iter().find(|index| index.index_num == 1).unwrap();
+        let index01 = track
+            .indexes
+            .iter()
+            .find(|index| index.index_num == 1)
+            .unwrap();
 
-        ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75 + index01.msf.asect as usize) * BYTES_PER_SECTOR
+        ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75
+            + index01.msf.asect as usize)
+            * BYTES_PER_SECTOR
     }
 
     fn check_commands(&mut self) {
@@ -787,7 +792,7 @@ impl CDRom {
                 DriveMode::Seek => self.seek_cd(),
                 DriveMode::Stat => self.cd_stat(),
                 DriveMode::Read => self.cd_read_sector(spu, interrupt_register),
-                DriveMode::Play => todo!("play drive"),
+                DriveMode::Play => self.cd_play_audio(spu),
             }
         }
     }
@@ -931,6 +936,7 @@ impl CDRom {
         match self.command {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
+            0x3 => self.play(),
             0x6 | 0x1b => self.cd_read_command(),
             0x7 => self.motor_on(),
             0x8 => self.stop(),
@@ -955,6 +961,45 @@ impl CDRom {
         self.controller_param_fifo.clear();
     }
 
+    fn play(&mut self) {
+        self.stat();
+
+        if let Some(track_num) = self.controller_param_fifo.pop_front() {
+            if track_num != 0 {
+                let track = self
+                    .tracks
+                    .iter()
+                    .find(|track| track.track_num == track_num as usize)
+                    .expect("Track number should exist for play command");
+
+                let absolute_lba = track.start_lba + 150;
+                self.msf.amm = (absolute_lba / (60 * 75)) as u8;
+                self.msf.ass = ((absolute_lba / 75) % 60) as u8;
+                self.msf.asect = (absolute_lba % 75) as u8;
+
+                self.pre_seek = true;
+            }
+        }
+
+        if !self.pre_seek {
+            self.is_playing = true;
+            self.is_seeking = false;
+            self.is_reading = false;
+
+            self.drive_cycles = self.get_drive_cycles();
+            self.drive_mode = DriveMode::Play;
+        } else {
+            self.is_seeking = true;
+            self.is_playing = false;
+            self.is_reading = false;
+            self.next_mode = Some(DriveMode::Play);
+
+            let cycles = if self.double_speed { 14 } else { 28 };
+            self.drive_cycles += cycles;
+            self.drive_mode = DriveMode::Seek;
+        }
+    }
+
     fn motor_on(&mut self) {
         self.stat();
 
@@ -977,8 +1022,10 @@ impl CDRom {
         self.stat();
 
         if self.tracks.len() > 0 {
-            self.controller_response_fifo.push_back(self.tracks[0].track_num as u8);
-            self.controller_response_fifo.push_back(self.tracks.last().unwrap().track_num as u8);
+            self.controller_response_fifo
+                .push_back(self.tracks[0].track_num as u8);
+            self.controller_response_fifo
+                .push_back(self.tracks.last().unwrap().track_num as u8);
         } else {
             self.controller_response_fifo.push_back(1);
             self.controller_response_fifo.push_back(1);
@@ -989,16 +1036,22 @@ impl CDRom {
         self.stat();
 
         if self.tracks.len() > 0 {
-            let track_num = self.controller_param_fifo.pop_front().unwrap();
+            let track_num = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
 
             if track_num == 0 {
                 let last_track = self.tracks.last().unwrap();
 
-                let index01 = last_track.indexes.iter().find(|index| index.index_num == 1).unwrap();
+                let index01 = last_track
+                    .indexes
+                    .iter()
+                    .find(|index| index.index_num == 1)
+                    .unwrap();
 
                 let file_len = self.bin_files[last_track.file_index].len();
 
-                let start_index = ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75 + index01.msf.asect as usize) * BYTES_PER_SECTOR;
+                let start_index = ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75
+                    + index01.msf.asect as usize)
+                    * BYTES_PER_SECTOR;
 
                 let remaining = file_len - start_index;
 
@@ -1010,16 +1063,19 @@ impl CDRom {
                 let mm = total_sectors / (60 * 75);
                 let ss = (total_sectors / 75) % 60;
 
-                println!("[DEBUG]Track 0 for gettd detected");
+                self.controller_response_fifo.push_back(mm as u8);
+                self.controller_response_fifo.push_back(ss as u8);
+            } else if let Some(track) = self
+                .tracks
+                .iter()
+                .find(|track| track.track_num as u8 == track_num)
+            {
+                let absolute_lba = track.start_lba + 150;
+                let mm = absolute_lba / (60 * 75);
+                let ss = (absolute_lba / 75) % 60;
 
                 self.controller_response_fifo.push_back(mm as u8);
                 self.controller_response_fifo.push_back(ss as u8);
-
-            } else if let Some(track) = self.tracks.iter().find(|track| track.track_num as u8 == track_num) {
-                let index01 = track.indexes.iter().find(|index| index.index_num == 1).unwrap();
-
-                self.controller_response_fifo.push_back(index01.msf.amm);
-                self.controller_response_fifo.push_back(index01.msf.ass);
             }
         } else {
             self.controller_response_fifo.push_back(0);
@@ -1053,6 +1109,77 @@ impl CDRom {
 
         self.subresponse_mode = SubresponseMode::GetStat;
         self.subresponse_cycles += 44100;
+    }
+
+    fn get_track(&self, lba: usize) -> &Track {
+        self.tracks
+            .iter()
+            .rev()
+            .find(|track| track.start_lba <= lba)
+            .unwrap_or(&self.tracks[0])
+    }
+
+    fn cd_play_audio(&mut self, spu: &mut SPU) {
+        if !self.is_playing {
+            self.drive_mode = DriveMode::Idle;
+            self.drive_cycles += 1;
+
+            return;
+        }
+
+        let lba = ((self.current_msf.amm as usize * 60 + self.current_msf.ass as usize) * 75
+            + self.current_msf.asect as usize)
+            - 150;
+
+        let track = self.get_track(lba);
+
+        let track_num = track.track_num;
+        let file_index = track.file_index;
+
+        let index1_offset = Self::get_track_offset(track);
+        let byte_offset = index1_offset + (lba - track.start_lba) * BYTES_PER_SECTOR;
+
+        self.subchannel_q.track = track_num as u8;
+        self.subchannel_q.index = 1;
+        self.subchannel_q.amm = self.current_msf.amm;
+        self.subchannel_q.ass = self.current_msf.ass;
+        self.subchannel_q.asect = self.current_msf.asect;
+        self.subchannel_q.mm = self.current_msf.amm;
+        self.subchannel_q.ss = self.current_msf.ass - 2;
+        self.subchannel_q.sect = self.current_msf.asect;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.output_buffer
+                .copy_from_slice(&self.bin_files[file_index][byte_offset..byte_offset + 0x930]);
+        }
+
+        for chunk in self.output_buffer.chunks_exact(4) {
+            let left = i16::from_le_bytes([chunk[0], chunk[1]]);
+            let right = i16::from_le_bytes([chunk[2], chunk[3]]);
+
+            spu.cd_left_samples.push_back(left);
+            spu.cd_right_samples.push_back(right);
+        }
+
+        self.current_msf.asect += 1;
+
+        if self.current_msf.asect >= 75 {
+            self.current_msf.asect -= 75;
+            self.current_msf.ass += 1;
+
+            if self.current_msf.ass >= 60 {
+                self.current_msf.amm += 1;
+                self.current_msf.ass = 0;
+
+                if self.current_msf.amm == 74 {
+                    self.current_msf.amm = 0;
+                }
+            }
+        }
+        if self.is_playing {
+            self.drive_cycles += self.get_drive_cycles();
+        }
     }
 
     fn cd_read_sector(&mut self, spu: &mut SPU, interrupt_register: &mut InterruptRegister) {
