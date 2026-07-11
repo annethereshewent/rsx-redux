@@ -366,6 +366,7 @@ pub struct CDRom {
     #[serde(skip_deserializing)]
     tracks: Vec<Track>,
     current_file_index: usize,
+    is_audio_cd: bool,
 }
 
 impl CDRom {
@@ -424,6 +425,7 @@ impl CDRom {
             bin_files: Vec::new(),
             tracks: Vec::new(),
             current_file_index: 0,
+            is_audio_cd: false,
         }
     }
 
@@ -615,6 +617,9 @@ impl CDRom {
             } else if line.contains("TRACK") {
                 if let Some(track) = current_track.take() {
                     tracks.push(track);
+                } else if line.contains("AUDIO") {
+                    // if the first track is *not* a MODE2 track, then assume it's an audio cd
+                    self.is_audio_cd = true;
                 }
 
                 current_track = Some(Track {
@@ -969,6 +974,9 @@ impl CDRom {
 
         if let Some(track_num) = self.controller_param_fifo.pop_front() {
             if track_num != 0 {
+
+                let track_num = Self::bcd_to_u8(track_num);
+
                 let track = self
                     .tracks
                     .iter()
@@ -1617,16 +1625,26 @@ impl CDRom {
 
     fn read_id(&mut self) {
         if self.irqs == 0 {
-            self.irq_latch = 0x2;
+            if !self.is_audio_cd {
+                self.irq_latch = 0x2;
 
-            let bytes = "SCEA".as_bytes();
+                let bytes = "SCEA".as_bytes();
 
-            self.controller_response_fifo.push_back(0x2);
-            self.controller_response_fifo.push_back(0x0);
-            self.controller_response_fifo.push_back(0x20);
-            self.controller_response_fifo.push_back(0x0);
-            for byte in bytes {
-                self.controller_response_fifo.push_back(*byte);
+                self.controller_response_fifo.push_back(0x2);
+                self.controller_response_fifo.push_back(0x0);
+                self.controller_response_fifo.push_back(0x20);
+                self.controller_response_fifo.push_back(0x0);
+                for byte in bytes {
+                    self.controller_response_fifo.push_back(*byte);
+                }
+            } else {
+                self.irq_latch = 0x5;
+
+                self.controller_response_fifo.push_back(0xa);
+                self.controller_response_fifo.push_back(0x90);
+                for _ in 0..6 {
+                    self.controller_response_fifo.push_back(0x0);
+                }
             }
 
             self.controller_mode = ControllerMode::ClearResponseFifo;
