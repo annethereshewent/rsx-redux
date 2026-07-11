@@ -67,6 +67,7 @@ struct Track {
     file_index: usize,
     indexes: Vec<TrackIndex>,
     start_lba: usize,
+    file_start_lba: usize,
 }
 
 #[derive(Debug)]
@@ -621,6 +622,7 @@ impl CDRom {
                     track_num: current_track_index,
                     indexes: Vec::new(),
                     start_lba: 0,
+                    file_start_lba: 0,
                 });
 
                 current_track_index += 1;
@@ -641,7 +643,8 @@ impl CDRom {
         let mut current_lba = 0;
 
         for i in 0..tracks.len() {
-            tracks[i].start_lba = current_lba;
+            tracks[i].file_start_lba = current_lba;
+            tracks[i].start_lba = current_lba + 150;
 
             let start_index = Self::get_track_offset(&tracks[i]);
 
@@ -1063,8 +1066,10 @@ impl CDRom {
                 let mm = total_sectors / (60 * 75);
                 let ss = (total_sectors / 75) % 60;
 
-                self.controller_response_fifo.push_back(mm as u8);
-                self.controller_response_fifo.push_back(ss as u8);
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(mm as u8));
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(ss as u8));
             } else if let Some(track) = self
                 .tracks
                 .iter()
@@ -1074,8 +1079,10 @@ impl CDRom {
                 let mm = absolute_lba / (60 * 75);
                 let ss = (absolute_lba / 75) % 60;
 
-                self.controller_response_fifo.push_back(mm as u8);
-                self.controller_response_fifo.push_back(ss as u8);
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(mm as u8));
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(ss as u8));
             }
         } else {
             self.controller_response_fifo.push_back(0);
@@ -1115,7 +1122,7 @@ impl CDRom {
         self.tracks
             .iter()
             .rev()
-            .find(|track| track.start_lba <= lba)
+            .find(|track| track.file_start_lba <= lba)
             .unwrap_or(&self.tracks[0])
     }
 
