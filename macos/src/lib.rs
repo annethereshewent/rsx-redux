@@ -1,6 +1,7 @@
 use std::{
     ffi::c_void,
-    fs::{self, File, OpenOptions}, path::Path,
+    fs::{self, File, OpenOptions},
+    path::Path,
 };
 
 use memmap2::{Mmap, MmapMut};
@@ -138,7 +139,10 @@ impl PsxMacEmulator {
 
                 let base_path = file_path.parent().unwrap();
 
-                self.cpu.bus.cdrom.parse_cue(base_path.to_path_buf(), cue_contents);
+                self.cpu
+                    .bus
+                    .cdrom
+                    .parse_cue(base_path.to_path_buf(), cue_contents);
             }
             _ => panic!("invalid extension received: {file_extension}"),
         }
@@ -265,9 +269,12 @@ impl PsxMacEmulator {
 
                     let base_path = file_path.parent().unwrap();
 
-                    self.cpu.bus.cdrom.parse_cue(base_path.to_path_buf(), cue_contents);
+                    self.cpu
+                        .bus
+                        .cdrom
+                        .parse_cue(base_path.to_path_buf(), cue_contents);
                 }
-                _ => panic!("unknown extension received: {extension}")
+                _ => panic!("unknown extension received: {extension}"),
             }
 
             self.cpu.reload_instructions();
