@@ -5,7 +5,7 @@ export class PsxWebEmulator {
     free(): void;
     [Symbol.dispose](): void;
     add_bin_file(filename: string, contents: Uint8Array): void;
-    close_shell(bytes: Uint8Array): void;
+    close_shell(): void;
     drain_samples(): Int16Array;
     get_digital_mode(): boolean;
     get_dimensions(): Uint32Array;
@@ -59,7 +59,7 @@ export interface InitOutput {
     readonly psxwebemulator_get_rumble: (a: number) => [number, number];
     readonly psxwebemulator_get_digital_mode: (a: number) => number;
     readonly psxwebemulator_set_digital_mode: (a: number, b: number) => void;
-    readonly psxwebemulator_close_shell: (a: number, b: number, c: number) => void;
+    readonly psxwebemulator_close_shell: (a: number) => void;
     readonly psxwebemulator_open_shell: (a: number) => void;
     readonly psxwebemulator_reset: (a: number) => void;
     readonly psxwebemulator_set_port: (a: number, b: number) => void;

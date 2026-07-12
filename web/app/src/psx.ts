@@ -270,8 +270,8 @@ export class Psx {
         if (slot != null) {
             const memoryCardName = `memory_card${slot}`
 
-            this.openFile('cloud-saves-upload', async (file) => {
-                const bytes = new Uint8Array(await this.readFile(file))
+            this.openFile('cloud-saves-upload', async (files) => {
+                const bytes = new Uint8Array(await this.readFile(files[0]))
 
                 const loading = document.getElementById('cloud-saves-loading')
 
@@ -427,7 +427,7 @@ export class Psx {
             return
         }
 
-        this.openFile('file-bios', (file) => this.handleBiosFile(file))
+        this.openFile('file-bios', (files) => this.handleBiosFile(files[0]))
     }
 
     loadGame() {
@@ -435,10 +435,10 @@ export class Psx {
             return
         }
 
-        this.openFile('file-game', (file) => this.startGame(file))
+        this.openFile('file-game', (files) => this.startGame(files))
     }
 
-    openFile(input: string, callback: (file: File) => void) {
+    openFile(input: string, callback: (files: File[]) => void) {
         const gameInput = document.getElementById(input)
 
         if (gameInput != null) {
@@ -446,9 +446,9 @@ export class Psx {
                 const files = (e.target as HTMLInputElement)?.files
 
                 if (files != null) {
-                    const file = files[0]
+                    const filesCopy = Array.from(files)
 
-                    callback(file)
+                    callback(filesCopy)
                 }
 
                 (e.target as HTMLInputElement).value = ''
@@ -481,15 +481,34 @@ export class Psx {
         this.audioOutput.closeModal()
     }
 
-    async startGame(file: File) {
+    async parseCueFile(files: File[]) {
+        let cueFileContents = ""
+
+        console.log("what?")
+        console.log(files[1])
+
+        for (const file of files) {
+            console.log("hello!!!!!")
+            console.log(file.name)
+            if (/\.cue$/.test(file.name)) {
+                cueFileContents = await file.text()
+            } else if (/\.bin$/.test(file.name)) {
+                const data = await file.arrayBuffer()
+                const binaryBytes = new Uint8Array(data)
+
+                console.log(file.name)
+
+                this.emulator!.add_bin_file(file.name, binaryBytes)
+            }
+        }
+
+        this.emulator!.parse_cue(cueFileContents)
+        this.emulator!.set_exe(null)
+    }
+
+    async startGame(files: File[]) {
         this.isPaused = false
         this.isRunning = true
-
-        const data = await this.readFile(file)
-
-        const gameName = file.name.substring(0, file.name.lastIndexOf('.'))
-
-        const binaryBytes = new Uint8Array(data)
 
         cancelAnimationFrame(this.frameNumber)
 
@@ -518,14 +537,37 @@ export class Psx {
             this.emulator!.reset()
         }
 
-        this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
-        this.stateManager.updateStateMenuList()
+        if (files.length == 1) {
+            const file = files[0]
 
-        if (/\.exe$/.test(file.name)) {
-            this.emulator!.set_exe(binaryBytes)
+            if (!/\.bin/.test(file.name)) {
+                throw new Error("Bin file expected")
+            }
+
+            const data = await this.readFile(file)
+
+            const gameName = file.name.substring(0, file.name.lastIndexOf('.'))
+
+            this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
+            this.stateManager.updateStateMenuList()
+
+            const binaryBytes = new Uint8Array(data)
+
+            if (/\.exe$/.test(file.name)) {
+                this.emulator!.set_exe(binaryBytes)
+            } else {
+                this.emulator!.load_rom(binaryBytes)
+                this.emulator!.set_exe(null)
+            }
         } else {
-            this.emulator!.load_rom(binaryBytes)
-            this.emulator!.set_exe(null)
+            await this.parseCueFile(files)
+
+            const file = files.find((file) => /\.cue/.test(file.name))
+
+            const gameName = file!.name.substring(0, file!.name.lastIndexOf('.'))
+
+            this.stateManager = new StateManager(gameName, this.rsxDb, this.emulator!)
+            this.stateManager.updateStateMenuList()
         }
 
         // Even though we load the memory card on page load, this might be the "wrong" one due to a race condition where:
@@ -672,14 +714,21 @@ export class Psx {
 
         this.emulator!.open_shell()
 
-        this.openFile('file-disc', (file) => this.swapDiscInner(file))
+        this.openFile('file-disc', (files) => this.swapDiscInner(files))
     }
 
-    async swapDiscInner(gameFile: File) {
-        const data = await this.readFile(gameFile)
+    async swapDiscInner(files: File[]) {
+        if (files.length == 1) {
+            const gameFile = files[0]
+            const data = await this.readFile(gameFile)
 
-        const bytes = new Uint8Array(data)
+            const bytes = new Uint8Array(data)
 
-        this.emulator?.close_shell(bytes)
+            this.emulator?.load_rom(bytes)
+            this.emulator?.close_shell()
+        } else {
+            await this.parseCueFile(files)
+            this.emulator?.close_shell()
+        }
     }
 }

@@ -114,11 +114,19 @@ impl PsxWebEmulator {
     }
 
     pub fn load_state(&mut self, data: &[u8]) {
-        let game_data = self.cpu.bus.cdrom.game_bytes.clone().unwrap();
+        if let Some(game_data) = self.cpu.bus.cdrom.game_bytes.clone() {
+            self.cpu.load_save_state(data);
 
-        self.cpu.load_save_state(data);
+            self.cpu.bus.cdrom.load_game_web(game_data.clone());
+        } else if self.cpu.bus.cdrom.bin_files.len() > 0 {
+            let bin_files = self.cpu.bus.cdrom.bin_files.clone();
+            let tracks = self.cpu.bus.cdrom.tracks.clone();
 
-        self.cpu.bus.cdrom.load_game_web(game_data);
+            self.cpu.load_save_state(data);
+
+            self.cpu.bus.cdrom.tracks = tracks.to_vec();
+            self.cpu.bus.cdrom.bin_files = bin_files;
+        }
 
         self.cpu.reload_instructions();
 
@@ -186,8 +194,7 @@ impl PsxWebEmulator {
         self.cpu.bus.peripherals.selected_controller = controller_id;
     }
 
-    pub fn close_shell(&mut self, bytes: &[u8]) {
-        self.load_rom(bytes);
+    pub fn close_shell(&mut self) {
         self.cpu.bus.cdrom.close_shell();
     }
 

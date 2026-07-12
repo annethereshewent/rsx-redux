@@ -65,8 +65,8 @@ const ZIGZAG_TABLE: [[i32; 29]; 7] = [
     ],
 ];
 
-#[derive(Default, Debug)]
-struct Track {
+#[derive(Default, Debug, Clone)]
+pub struct Track {
     track_num: usize,
     file_index: usize,
     indexes: Vec<TrackIndex>,
@@ -74,7 +74,7 @@ struct Track {
     file_start_lba: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 struct TrackIndex {
     index_num: usize,
     msf: Msf,
@@ -235,7 +235,7 @@ impl CDHeader {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 struct Msf {
     pub ass: u8,
     pub asect: u8,
@@ -352,7 +352,7 @@ pub struct CDRom {
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     #[cfg(target_arch = "wasm32")]
-    bin_files: Vec<Vec<u8>>,
+    pub bin_files: Vec<Vec<u8>>,
     current_header: CDHeader,
     subheader: CDSubheader,
     output_buffer: Box<[u8]>,
@@ -373,10 +373,10 @@ pub struct CDRom {
     #[cfg(not(target_arch = "wasm32"))]
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
-    bin_files: Vec<Mmap>,
+    pub bin_files: Vec<Mmap>,
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
-    tracks: Vec<Track>,
+    pub tracks: Vec<Track>,
     current_file_index: usize,
     is_audio_cd: bool,
     rate: i8,
@@ -764,6 +764,8 @@ impl CDRom {
         #[cfg(target_arch = "wasm32")]
         {
             self.game_bytes = None;
+            self.bin_files = Vec::new();
+            self.tracks = Vec::new();
         }
 
         self.stat();
@@ -1311,6 +1313,13 @@ impl CDRom {
                     CDHeader::from_buf(&game_bytes[pointer + 0xc..pointer + 0x10]),
                     CDSubheader::from_buf(&game_bytes[pointer + 0x10..pointer + 0x14]),
                 )
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
+
+                (
+                    CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]),
+                    CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]),
+                )
             } else {
                 panic!("game data not specified")
             }
@@ -1390,10 +1399,10 @@ impl CDRom {
         }
 
         let mut audio_sector = [0; 0x914];
+        let pointer = self.get_pointer() + 24;
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let pointer = self.get_pointer() + 24;
             if let Some(game_data) = &self.game_data {
                 audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914]);
             } else if self.bin_files.len() > 0 {
@@ -1405,11 +1414,16 @@ impl CDRom {
             }
         }
         #[cfg(target_arch = "wasm32")]
-        if let Some(game_bytes) = &self.game_bytes {
-            let pointer = self.get_pointer() + 24;
-            audio_sector.copy_from_slice(&game_bytes[pointer..pointer + 0x914])
-        } else {
-            panic!("game data not specified");
+        {
+            if let Some(game_bytes) = &self.game_bytes {
+                audio_sector.copy_from_slice(&game_bytes[pointer..pointer + 0x914])
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
+
+                audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914]);
+            } else {
+                panic!("game data not specified");
+            }
         }
 
         for i in 0..0x12 {
@@ -1526,9 +1540,10 @@ impl CDRom {
     }
 
     fn read_data(&mut self, interrupt_register: &mut InterruptRegister) {
+        let pointer = self.get_pointer();
+
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let pointer = self.get_pointer();
             if let Some(game_data) = &self.game_data {
                 self.output_buffer
                     .copy_from_slice(&game_data[pointer..pointer + 0x930]);
@@ -1542,13 +1557,18 @@ impl CDRom {
             }
         }
         #[cfg(target_arch = "wasm32")]
-        if let Some(game_bytes) = &self.game_bytes {
-            let pointer = self.get_pointer();
+        {
+            if let Some(game_bytes) = &self.game_bytes {
+                self.output_buffer
+                    .copy_from_slice(&game_bytes[pointer..pointer + 0x930]);
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
 
-            self.output_buffer
-                .copy_from_slice(&game_bytes[pointer..pointer + 0x930]);
-        } else {
-            panic!("game data not specified");
+                self.output_buffer
+                    .copy_from_slice(&game_data[pointer..pointer + 0x930]);
+            } else {
+                panic!("game data not specified");
+            }
         }
 
         let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"

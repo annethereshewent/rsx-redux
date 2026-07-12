@@ -22,13 +22,8 @@ export class PsxWebEmulator {
         const len1 = WASM_VECTOR_LEN;
         wasm.psxwebemulator_add_bin_file(this.__wbg_ptr, ptr0, len0, ptr1, len1);
     }
-    /**
-     * @param {Uint8Array} bytes
-     */
-    close_shell(bytes) {
-        const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.psxwebemulator_close_shell(this.__wbg_ptr, ptr0, len0);
+    close_shell() {
+        wasm.psxwebemulator_close_shell(this.__wbg_ptr);
     }
     /**
      * @returns {Int16Array}
