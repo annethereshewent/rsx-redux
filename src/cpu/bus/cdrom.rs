@@ -1,4 +1,8 @@
-use std::{collections::VecDeque, fs::File, path::PathBuf};
+#[cfg(target_arch = "wasm32")]
+use std::{collections::HashMap, mem};
+#[cfg(not(target_arch = "wasm32"))]
+use std::{fs::File, path::PathBuf};
+use std::{collections::VecDeque, ops::Deref};
 
 #[cfg(not(target_arch = "wasm32"))]
 use memmap2::Mmap;
@@ -341,6 +345,14 @@ pub struct CDRom {
     #[serde(skip_deserializing)]
     #[cfg(target_arch = "wasm32")]
     pub game_bytes: Option<Vec<u8>>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(target_arch = "wasm32")]
+    bin_files_map: HashMap<String, Vec<u8>>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(target_arch = "wasm32")]
+    bin_files: Vec<Vec<u8>>,
     current_header: CDHeader,
     subheader: CDSubheader,
     output_buffer: Box<[u8]>,
@@ -428,6 +440,10 @@ impl CDRom {
             current_file_index: 0,
             is_audio_cd: false,
             rate: 0,
+            #[cfg(target_arch = "wasm32")]
+            bin_files_map: HashMap::new(),
+            #[cfg(target_arch = "wasm32")]
+            bin_files: Vec::new(),
         }
     }
 
@@ -589,8 +605,41 @@ impl CDRom {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn parse_cue(&mut self, cue_contents: String) {
+        let bin_files_map = mem::take(&mut self.bin_files_map);
+
+        let (tracks, bin_files) = self.parse_cue_inner(cue_contents, |filename| {
+            bin_files_map.get(&filename).unwrap().clone()
+        });
+
+        self.bin_files = bin_files;
+        self.tracks = tracks;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn add_bin_file(&mut self, filename: &str, contents: &[u8]) {
+        self.bin_files_map.insert(filename.to_string(), contents.to_vec());
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn parse_cue(&mut self, base_path: PathBuf, cue_contents: String) {
+        let (tracks, bin_files) = self.parse_cue_inner(cue_contents, |filename| {
+            let mut file_path = base_path.clone();
+            file_path.push(filename);
+            let file = File::open(file_path).unwrap();
+            unsafe { Mmap::map(&file).unwrap() }
+        });
+
+        self.tracks = tracks;
+        self.bin_files = bin_files;
+    }
+
+    fn parse_cue_inner<T, F>(&mut self, cue_contents: String, mut callback: F) -> (Vec<Track>, Vec<T>)
+    where
+        T: Deref<Target = [u8]>,
+        F: FnMut(String) -> T
+    {
         let lines: Vec<_> = cue_contents.split("\n").collect();
 
         let mut current_track_index = 1;
@@ -609,13 +658,7 @@ impl CDRom {
             if line.contains("FILE") {
                 let filename = Self::parse_cue_filename(line);
 
-                let mut file_path = base_path.clone();
-                file_path.push(filename.clone());
-
-                let file = File::open(file_path).unwrap();
-                let bin_data = unsafe { Mmap::map(&file).unwrap() };
-
-                bin_files.push(bin_data);
+                bin_files.push(callback(filename));
             } else if line.contains("TRACK") {
                 if let Some(track) = current_track.take() {
                     tracks.push(track);
@@ -669,8 +712,7 @@ impl CDRom {
             current_lba += length_sectors;
         }
 
-        self.bin_files = bin_files;
-        self.tracks = tracks;
+        (tracks, bin_files)
     }
 
     fn get_track_offset(track: &Track) -> usize {
@@ -1190,11 +1232,8 @@ impl CDRom {
         self.subchannel_q.ss = self.current_msf.ass - 2;
         self.subchannel_q.sect = self.current_msf.asect;
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.output_buffer
-                .copy_from_slice(&self.bin_files[file_index][byte_offset..byte_offset + 0x930]);
-        }
+        self.output_buffer
+            .copy_from_slice(&self.bin_files[file_index][byte_offset..byte_offset + 0x930]);
 
         for chunk in self.output_buffer.chunks_exact(4) {
             let left = i16::from_le_bytes([chunk[0], chunk[1]]);

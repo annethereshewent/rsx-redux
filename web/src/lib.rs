@@ -45,6 +45,14 @@ impl PsxWebEmulator {
         self.cpu.bus.cdrom.game_bytes = Some(game_bytes.to_vec());
     }
 
+    pub fn parse_cue(&mut self, cue_file_contents: &str) {
+        self.cpu.bus.cdrom.parse_cue(cue_file_contents.to_string());
+    }
+
+    pub fn add_bin_file(&mut self, filename: &str, contents: &[u8]) {
+        self.cpu.bus.cdrom.add_bin_file(filename, contents);
+    }
+
     pub fn step_frame(&mut self) {
         self.renderer.clear_color();
         while !self.cpu.bus.gpu.frame_finished {

@@ -12,6 +12,17 @@ export class PsxWebEmulator {
         wasm.__wbg_psxwebemulator_free(ptr, 0);
     }
     /**
+     * @param {string} filename
+     * @param {Uint8Array} contents
+     */
+    add_bin_file(filename, contents) {
+        const ptr0 = passStringToWasm0(filename, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(contents, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.psxwebemulator_add_bin_file(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+    }
+    /**
      * @param {Uint8Array} bytes
      */
     close_shell(bytes) {
@@ -102,6 +113,14 @@ export class PsxWebEmulator {
     }
     open_shell() {
         wasm.psxwebemulator_open_shell(this.__wbg_ptr);
+    }
+    /**
+     * @param {string} cue_file_contents
+     */
+    parse_cue(cue_file_contents) {
+        const ptr0 = passStringToWasm0(cue_file_contents, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.psxwebemulator_parse_cue(this.__wbg_ptr, ptr0, len0);
     }
     reset() {
         wasm.psxwebemulator_reset(this.__wbg_ptr);

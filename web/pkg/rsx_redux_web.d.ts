@@ -4,6 +4,7 @@
 export class PsxWebEmulator {
     free(): void;
     [Symbol.dispose](): void;
+    add_bin_file(filename: string, contents: Uint8Array): void;
     close_shell(bytes: Uint8Array): void;
     drain_samples(): Int16Array;
     get_digital_mode(): boolean;
@@ -15,6 +16,7 @@ export class PsxWebEmulator {
     load_state(data: Uint8Array): void;
     constructor(canvas_id: string);
     open_shell(): void;
+    parse_cue(cue_file_contents: string): void;
     reset(): void;
     save_state(): Uint8Array;
     set_digital_mode(mode: boolean): void;
@@ -39,6 +41,8 @@ export interface InitOutput {
     readonly psxwebemulator_new: (a: number, b: number) => number;
     readonly psxwebemulator_load_bios: (a: number, b: number, c: number) => void;
     readonly psxwebemulator_load_rom: (a: number, b: number, c: number) => void;
+    readonly psxwebemulator_parse_cue: (a: number, b: number, c: number) => void;
+    readonly psxwebemulator_add_bin_file: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly psxwebemulator_step_frame: (a: number) => void;
     readonly psxwebemulator_drain_samples: (a: number) => [number, number];
     readonly psxwebemulator_update_input: (a: number, b: number, c: number) => void;
