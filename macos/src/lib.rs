@@ -1,6 +1,7 @@
 use std::{
     ffi::c_void,
     fs::{self, File, OpenOptions},
+    path::Path,
 };
 
 use memmap2::{Mmap, MmapMut};
@@ -120,8 +121,32 @@ impl PsxMacEmulator {
     }
 
     pub fn load_rom(&mut self, game_path: &str) {
-        let file = File::open(game_path).unwrap();
-        self.cpu.bus.cdrom.game_data = unsafe { Some(Mmap::map(&file).unwrap()) };
+        let file_path = Path::new(game_path);
+
+        let file_extension = file_path
+            .extension()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or_default();
+
+        match file_extension {
+            "bin" => {
+                let file = File::open(game_path).unwrap();
+                self.cpu.bus.cdrom.game_data = unsafe { Some(Mmap::map(&file).unwrap()) };
+            }
+            "cue" => {
+                let cue_contents = fs::read_to_string(game_path).unwrap();
+
+                let base_path = file_path.parent().unwrap();
+
+                self.cpu
+                    .bus
+                    .cdrom
+                    .parse_cue(base_path.to_path_buf(), cue_contents);
+            }
+            _ => panic!("invalid extension received: {file_extension}"),
+        }
+
         self.cpu.game_path = game_path.to_string();
     }
 
@@ -226,21 +251,35 @@ impl PsxMacEmulator {
         if let Ok(bytes) = zstd::decode_all(&*data) {
             self.cpu.load_save_state(&bytes);
 
-            let game_file = File::open(&self.cpu.game_path).unwrap();
+            let game_path = self.cpu.game_path.clone();
 
-            let game_data = unsafe { Mmap::map(&game_file).unwrap() };
+            let file_path = Path::new(&game_path);
 
-            self.cpu.bus.cdrom.load_game_desktop(game_data);
+            let extension = file_path.extension().unwrap().to_str().unwrap();
+
+            match extension {
+                "bin" => {
+                    let game_file = File::open(&game_path).unwrap();
+                    let game_data = unsafe { Mmap::map(&game_file).unwrap() };
+
+                    self.cpu.bus.cdrom.load_game_desktop(game_data);
+                }
+                "cue" => {
+                    let cue_contents = fs::read_to_string(&game_path).unwrap();
+
+                    let base_path = file_path.parent().unwrap();
+
+                    self.cpu
+                        .bus
+                        .cdrom
+                        .parse_cue(base_path.to_path_buf(), cue_contents);
+                }
+                _ => panic!("unknown extension received: {extension}"),
+            }
 
             self.cpu.reload_instructions();
 
             self.cpu.bus.scheduler.deserialize_scheduler();
-
-            self.cpu
-                .bus
-                .peripherals
-                .memory_card
-                .set_memory_file(Some(Self::get_memory_mmap(&self.memory_path)));
 
             self.renderer.set_vram_textures(
                 &self.cpu.bus.gpu.vram_read_tex,

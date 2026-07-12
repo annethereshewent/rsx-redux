@@ -1,4 +1,8 @@
-use std::collections::VecDeque;
+#[cfg(target_arch = "wasm32")]
+use std::{collections::HashMap, mem};
+#[cfg(not(target_arch = "wasm32"))]
+use std::{fs::File, path::PathBuf};
+use std::{collections::VecDeque, ops::Deref};
 
 #[cfg(not(target_arch = "wasm32"))]
 use memmap2::Mmap;
@@ -60,6 +64,21 @@ const ZIGZAG_TABLE: [[i32; 29]; 7] = [
         -0x0008, 0x0002, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
     ],
 ];
+
+#[derive(Default, Debug, Clone)]
+pub struct Track {
+    track_num: usize,
+    file_index: usize,
+    indexes: Vec<TrackIndex>,
+    start_lba: usize,
+    file_start_lba: usize,
+}
+
+#[derive(Debug, Copy, Clone)]
+struct TrackIndex {
+    index_num: usize,
+    msf: Msf,
+}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 enum CDMode {
@@ -216,7 +235,7 @@ impl CDHeader {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 struct Msf {
     pub ass: u8,
     pub asect: u8,
@@ -326,6 +345,14 @@ pub struct CDRom {
     #[serde(skip_deserializing)]
     #[cfg(target_arch = "wasm32")]
     pub game_bytes: Option<Vec<u8>>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(target_arch = "wasm32")]
+    bin_files_map: HashMap<String, Vec<u8>>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    #[cfg(target_arch = "wasm32")]
+    pub bin_files: Vec<Vec<u8>>,
     current_header: CDHeader,
     subheader: CDSubheader,
     output_buffer: Box<[u8]>,
@@ -343,6 +370,16 @@ pub struct CDRom {
     controller_cycles: usize,
     subresponse_cycles: usize,
     subchannel_q: SubchannelQ,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    pub bin_files: Vec<Mmap>,
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    pub tracks: Vec<Track>,
+    current_file_index: usize,
+    is_audio_cd: bool,
+    rate: i8,
 }
 
 impl CDRom {
@@ -397,6 +434,16 @@ impl CDRom {
             subresponse_cycles: 1,
             ringbuffer: [[0; 32]; 2],
             subchannel_q: SubchannelQ::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            bin_files: Vec::new(),
+            tracks: Vec::new(),
+            current_file_index: 0,
+            is_audio_cd: false,
+            rate: 0,
+            #[cfg(target_arch = "wasm32")]
+            bin_files_map: HashMap::new(),
+            #[cfg(target_arch = "wasm32")]
+            bin_files: Vec::new(),
         }
     }
 
@@ -507,6 +554,179 @@ impl CDRom {
         self.execute_subcommand(subcommand);
     }
 
+    fn parse_cue_filename(line: &str) -> String {
+        let substring = line.replace("FILE ", "");
+
+        let mut filename = "".to_string();
+
+        for (index, char) in substring.chars().enumerate() {
+            if index == 0 {
+                if char == '"' {
+                    continue;
+                } else {
+                    panic!("found an invalid cue file. line: {line}");
+                }
+            }
+
+            if char != '"' {
+                filename.push(char);
+            } else {
+                break;
+            }
+        }
+
+        filename
+    }
+
+    fn parse_cue_index(line: &str) -> TrackIndex {
+        let tokens: Vec<_> = line.split(" ").collect();
+
+        if tokens.len() != 3 {
+            panic!("invalid cue line found: {line}");
+        }
+
+        let index_num: usize = tokens[1].parse().unwrap();
+
+        let msf_str = tokens.last().unwrap();
+
+        let msf_tokens: Vec<_> = msf_str.split(':').collect();
+
+        if msf_tokens.len() != 3 {
+            panic!("invalid cue line found: {line}");
+        }
+
+        TrackIndex {
+            index_num,
+            msf: Msf {
+                amm: msf_tokens[0].parse().unwrap(),
+                ass: msf_tokens[1].parse().unwrap(),
+                asect: msf_tokens[2].parse().unwrap(),
+            },
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn parse_cue(&mut self, cue_contents: String) {
+        let bin_files_map = mem::take(&mut self.bin_files_map);
+
+        let (tracks, bin_files) = self.parse_cue_inner(cue_contents, |filename| {
+            bin_files_map.get(&filename).unwrap().clone()
+        });
+
+        self.bin_files = bin_files;
+        self.tracks = tracks;
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn add_bin_file(&mut self, filename: &str, contents: &[u8]) {
+        self.bin_files_map.insert(filename.to_string(), contents.to_vec());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn parse_cue(&mut self, base_path: PathBuf, cue_contents: String) {
+        let (tracks, bin_files) = self.parse_cue_inner(cue_contents, |filename| {
+            let mut file_path = base_path.clone();
+            file_path.push(filename);
+            let file = File::open(file_path).unwrap();
+            unsafe { Mmap::map(&file).unwrap() }
+        });
+
+        self.tracks = tracks;
+        self.bin_files = bin_files;
+    }
+
+    fn parse_cue_inner<T, F>(&mut self, cue_contents: String, mut callback: F) -> (Vec<Track>, Vec<T>)
+    where
+        T: Deref<Target = [u8]>,
+        F: FnMut(String) -> T
+    {
+        let lines: Vec<_> = cue_contents.split("\n").collect();
+
+        let mut current_track_index = 1;
+        let mut bin_files = Vec::new();
+        let mut current_track: Option<Track> = None;
+
+        let mut tracks = Vec::new();
+
+        for line in lines {
+            let line = line.trim();
+
+            if line.is_empty() {
+                continue;
+            }
+
+            if line.contains("FILE") {
+                let filename = Self::parse_cue_filename(line);
+
+                bin_files.push(callback(filename));
+            } else if line.contains("TRACK") {
+                if let Some(track) = current_track.take() {
+                    tracks.push(track);
+                } else if line.contains("AUDIO") {
+                    // if the first track is *not* a MODE2 track, then assume it's an audio cd
+                    self.is_audio_cd = true;
+                }
+
+                current_track = Some(Track {
+                    file_index: bin_files.len() - 1,
+                    track_num: current_track_index,
+                    indexes: Vec::new(),
+                    start_lba: 0,
+                    file_start_lba: 0,
+                });
+
+                current_track_index += 1;
+            } else if line.contains("INDEX") {
+                let index = Self::parse_cue_index(line);
+
+                if let Some(track) = &mut current_track {
+                    track.indexes.push(index);
+                }
+            }
+        }
+
+        if let Some(track) = current_track.take() {
+            tracks.push(track);
+        }
+
+        // finally iterate through tracks again to calculate the start lba for each one
+        let mut current_lba = 0;
+
+        for i in 0..tracks.len() {
+            tracks[i].file_start_lba = current_lba;
+            tracks[i].start_lba = current_lba + 150;
+
+            let start_index = Self::get_track_offset(&tracks[i]);
+
+            let track_end_offset = if let Some(next_track) = tracks.get(i + 1) {
+                if next_track.file_index == tracks[i].file_index {
+                    Self::get_track_offset(next_track)
+                } else {
+                    bin_files[tracks[i].file_index].len()
+                }
+            } else {
+                bin_files[tracks[i].file_index].len()
+            };
+
+            let length_sectors = (track_end_offset - start_index) / BYTES_PER_SECTOR;
+            current_lba += length_sectors;
+        }
+
+        (tracks, bin_files)
+    }
+
+    fn get_track_offset(track: &Track) -> usize {
+        let index01 = track
+            .indexes
+            .iter()
+            .find(|index| index.index_num == 1)
+            .unwrap();
+
+        ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75
+            + index01.msf.asect as usize)
+            * BYTES_PER_SECTOR
+    }
+
     fn check_commands(&mut self) {
         if self.command_latch.is_some() {
             if !self.parameter_fifo.is_empty() {
@@ -538,10 +758,14 @@ impl CDRom {
         #[cfg(not(target_arch = "wasm32"))]
         {
             self.game_data = None;
+            self.bin_files = Vec::new();
+            self.tracks = Vec::new();
         }
         #[cfg(target_arch = "wasm32")]
         {
             self.game_bytes = None;
+            self.bin_files = Vec::new();
+            self.tracks = Vec::new();
         }
 
         self.stat();
@@ -622,7 +846,7 @@ impl CDRom {
                 DriveMode::Seek => self.seek_cd(),
                 DriveMode::Stat => self.cd_stat(),
                 DriveMode::Read => self.cd_read_sector(spu, interrupt_register),
-                DriveMode::Play => todo!("play drive"),
+                DriveMode::Play => self.cd_play_audio(spu),
             }
         }
     }
@@ -766,6 +990,9 @@ impl CDRom {
         match self.command {
             0x1 => self.stat(),
             0x2 => self.set_loc(),
+            0x3 => self.play(),
+            0x4 => self.forward(),
+            0x5 => self.backward(),
             0x6 | 0x1b => self.cd_read_command(),
             0x7 => self.motor_on(),
             0x8 => self.stop(),
@@ -790,6 +1017,70 @@ impl CDRom {
         self.controller_param_fifo.clear();
     }
 
+    fn backward(&mut self) {
+        self.stat();
+
+        if self.rate > 0 {
+            self.rate = 0;
+        }
+
+        self.rate = (self.rate - 4).min(-12);
+    }
+
+    fn forward(&mut self) {
+        self.stat();
+
+        if self.rate < 0 {
+            self.rate = 0;
+        }
+
+        self.rate = (self.rate + 4).max(12);
+    }
+
+    fn play(&mut self) {
+        self.stat();
+
+        self.rate = 0;
+
+        if let Some(track_num) = self.controller_param_fifo.pop_front() {
+            if track_num != 0 {
+
+                let track_num = Self::bcd_to_u8(track_num);
+
+                let track = self
+                    .tracks
+                    .iter()
+                    .find(|track| track.track_num == track_num as usize)
+                    .expect("Track number should exist for play command");
+
+                let absolute_lba = track.start_lba + 150;
+                self.msf.amm = (absolute_lba / (60 * 75)) as u8;
+                self.msf.ass = ((absolute_lba / 75) % 60) as u8;
+                self.msf.asect = (absolute_lba % 75) as u8;
+
+                self.pre_seek = true;
+            }
+        }
+
+        if !self.pre_seek {
+            self.is_playing = true;
+            self.is_seeking = false;
+            self.is_reading = false;
+
+            self.drive_cycles = self.get_drive_cycles();
+            self.drive_mode = DriveMode::Play;
+        } else {
+            self.is_seeking = true;
+            self.is_playing = false;
+            self.is_reading = false;
+            self.next_mode = Some(DriveMode::Play);
+
+            let cycles = if self.double_speed { 14 } else { 28 };
+            self.drive_cycles += cycles;
+            self.drive_mode = DriveMode::Seek;
+        }
+    }
+
     fn motor_on(&mut self) {
         self.stat();
 
@@ -811,15 +1102,70 @@ impl CDRom {
     fn gettn(&mut self) {
         self.stat();
 
-        self.controller_response_fifo.push_back(1);
-        self.controller_response_fifo.push_back(1);
+        if self.tracks.len() > 0 {
+            self.controller_response_fifo
+                .push_back(self.tracks[0].track_num as u8);
+            self.controller_response_fifo
+                .push_back(self.tracks.last().unwrap().track_num as u8);
+        } else {
+            self.controller_response_fifo.push_back(1);
+            self.controller_response_fifo.push_back(1);
+        }
     }
 
     fn gettd(&mut self) {
         self.stat();
 
-        self.controller_response_fifo.push_back(0);
-        self.controller_response_fifo.push_back(0);
+        if self.tracks.len() > 0 {
+            let track_num = Self::bcd_to_u8(self.controller_param_fifo.pop_front().unwrap());
+
+            if track_num == 0 {
+                let last_track = self.tracks.last().unwrap();
+
+                let index01 = last_track
+                    .indexes
+                    .iter()
+                    .find(|index| index.index_num == 1)
+                    .unwrap();
+
+                let file_len = self.bin_files[last_track.file_index].len();
+
+                let start_index = ((index01.msf.amm as usize * 60 + index01.msf.ass as usize) * 75
+                    + index01.msf.asect as usize)
+                    * BYTES_PER_SECTOR;
+
+                let remaining = file_len - start_index;
+
+                let track_length_sectors = remaining / BYTES_PER_SECTOR;
+
+                let end_lba = last_track.start_lba + track_length_sectors;
+
+                let total_sectors = end_lba + 150; // add lead-in back to lba
+                let mm = total_sectors / (60 * 75);
+                let ss = (total_sectors / 75) % 60;
+
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(mm as u8));
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(ss as u8));
+            } else if let Some(track) = self
+                .tracks
+                .iter()
+                .find(|track| track.track_num as u8 == track_num)
+            {
+                let absolute_lba = track.start_lba + 150;
+                let mm = absolute_lba / (60 * 75);
+                let ss = (absolute_lba / 75) % 60;
+
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(mm as u8));
+                self.controller_response_fifo
+                    .push_back(Self::u8_to_bcd(ss as u8));
+            }
+        } else {
+            self.controller_response_fifo.push_back(0);
+            self.controller_response_fifo.push_back(0);
+        }
     }
 
     fn getloc_p(&mut self) {
@@ -850,6 +1196,85 @@ impl CDRom {
         self.subresponse_cycles += 44100;
     }
 
+    fn get_track(&self, lba: usize) -> &Track {
+        self.tracks
+            .iter()
+            .rev()
+            .find(|track| track.file_start_lba <= lba)
+            .unwrap_or(&self.tracks[0])
+    }
+
+    fn cd_play_audio(&mut self, spu: &mut SPU) {
+        if !self.is_playing {
+            self.drive_mode = DriveMode::Idle;
+            self.drive_cycles += 1;
+
+            return;
+        }
+
+        let lba = ((self.current_msf.amm as usize * 60 + self.current_msf.ass as usize) * 75
+            + self.current_msf.asect as usize)
+            - 150;
+
+        let track = self.get_track(lba);
+
+        let track_num = track.track_num;
+        let file_index = track.file_index;
+
+        let index1_offset = Self::get_track_offset(track);
+        let byte_offset = index1_offset + (lba - track.start_lba) * BYTES_PER_SECTOR;
+        let max_length = self.bin_files.last().unwrap().len();
+
+        self.subchannel_q.track = track_num as u8;
+        self.subchannel_q.index = 1;
+        self.subchannel_q.amm = self.current_msf.amm;
+        self.subchannel_q.ass = self.current_msf.ass;
+        self.subchannel_q.asect = self.current_msf.asect;
+        self.subchannel_q.mm = self.current_msf.amm;
+        self.subchannel_q.ss = self.current_msf.ass - 2;
+        self.subchannel_q.sect = self.current_msf.asect;
+
+        self.output_buffer
+            .copy_from_slice(&self.bin_files[file_index][byte_offset..byte_offset + 0x930]);
+
+        for chunk in self.output_buffer.chunks_exact(4) {
+            let left = i16::from_le_bytes([chunk[0], chunk[1]]);
+            let right = i16::from_le_bytes([chunk[2], chunk[3]]);
+
+            spu.cd_left_samples.push_back(left);
+            spu.cd_right_samples.push_back(right);
+        }
+
+        if self.rate != 0 {
+            let current_lba = self.get_pointer() / BYTES_PER_SECTOR;
+            let lba = (current_lba as isize + self.rate as isize).clamp(150, max_length as isize / BYTES_PER_SECTOR as isize) as usize;
+
+            self.current_msf.amm = (lba / (60 * 75)) as u8;
+            self.current_msf.ass = ((lba / 75) % 60) as u8;
+            self.current_msf.asect = (lba % 75) as u8;
+        } else {
+            self.current_msf.asect += 1;
+
+            if self.current_msf.asect >= 75 {
+                self.current_msf.asect -= 75;
+                self.current_msf.ass += 1;
+
+                if self.current_msf.ass >= 60 {
+                    self.current_msf.amm += 1;
+                    self.current_msf.ass = 0;
+
+                    if self.current_msf.amm == 74 {
+                        self.current_msf.amm = 0;
+                    }
+                }
+            }
+        }
+
+        if self.is_playing {
+            self.drive_cycles += self.get_drive_cycles();
+        }
+    }
+
     fn cd_read_sector(&mut self, spu: &mut SPU, interrupt_register: &mut InterruptRegister) {
         if !self.is_reading {
             self.drive_mode = DriveMode::Idle;
@@ -869,6 +1294,14 @@ impl CDRom {
                     CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]),
                     CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]),
                 )
+            } else if self.bin_files.len() > 0 {
+                // track 1 should always be the data track
+                let game_data = &self.bin_files[0];
+
+                (
+                    CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]),
+                    CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]),
+                )
             } else {
                 panic!("game data not specified");
             }
@@ -879,6 +1312,13 @@ impl CDRom {
                 (
                     CDHeader::from_buf(&game_bytes[pointer + 0xc..pointer + 0x10]),
                     CDSubheader::from_buf(&game_bytes[pointer + 0x10..pointer + 0x14]),
+                )
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
+
+                (
+                    CDHeader::from_buf(&game_data[pointer + 0xc..pointer + 0x10]),
+                    CDSubheader::from_buf(&game_data[pointer + 0x10..pointer + 0x14]),
                 )
             } else {
                 panic!("game data not specified")
@@ -959,20 +1399,31 @@ impl CDRom {
         }
 
         let mut audio_sector = [0; 0x914];
+        let pointer = self.get_pointer() + 24;
 
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(game_data) = &self.game_data {
-            let pointer = self.get_pointer() + 24;
-            audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914])
-        } else {
-            panic!("game data not specified");
+        {
+            if let Some(game_data) = &self.game_data {
+                audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914]);
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
+
+                audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914]);
+            } else {
+                panic!("game data not specified");
+            }
         }
         #[cfg(target_arch = "wasm32")]
-        if let Some(game_bytes) = &self.game_bytes {
-            let pointer = self.get_pointer() + 24;
-            audio_sector.copy_from_slice(&game_bytes[pointer..pointer + 0x914])
-        } else {
-            panic!("game data not specified");
+        {
+            if let Some(game_bytes) = &self.game_bytes {
+                audio_sector.copy_from_slice(&game_bytes[pointer..pointer + 0x914])
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
+
+                audio_sector.copy_from_slice(&game_data[pointer..pointer + 0x914]);
+            } else {
+                panic!("game data not specified");
+            }
         }
 
         for i in 0..0x12 {
@@ -1089,23 +1540,35 @@ impl CDRom {
     }
 
     fn read_data(&mut self, interrupt_register: &mut InterruptRegister) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(game_data) = &self.game_data {
-            let pointer = self.get_pointer();
+        let pointer = self.get_pointer();
 
-            self.output_buffer
-                .copy_from_slice(&game_data[pointer..pointer + 0x930]);
-        } else {
-            panic!("game data not specified");
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Some(game_data) = &self.game_data {
+                self.output_buffer
+                    .copy_from_slice(&game_data[pointer..pointer + 0x930]);
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
+
+                self.output_buffer
+                    .copy_from_slice(&game_data[pointer..pointer + 0x930]);
+            } else {
+                panic!("game data not specified");
+            }
         }
         #[cfg(target_arch = "wasm32")]
-        if let Some(game_bytes) = &self.game_bytes {
-            let pointer = self.get_pointer();
+        {
+            if let Some(game_bytes) = &self.game_bytes {
+                self.output_buffer
+                    .copy_from_slice(&game_bytes[pointer..pointer + 0x930]);
+            } else if self.bin_files.len() > 0 {
+                let game_data = &self.bin_files[0];
 
-            self.output_buffer
-                .copy_from_slice(&game_bytes[pointer..pointer + 0x930]);
-        } else {
-            panic!("game data not specified");
+                self.output_buffer
+                    .copy_from_slice(&game_data[pointer..pointer + 0x930]);
+            } else {
+                panic!("game data not specified");
+            }
         }
 
         let mut val = 1 << 1; // bit 1 is always set to 1, "motor on"
@@ -1258,16 +1721,26 @@ impl CDRom {
 
     fn read_id(&mut self) {
         if self.irqs == 0 {
-            self.irq_latch = 0x2;
+            if !self.is_audio_cd {
+                self.irq_latch = 0x2;
 
-            let bytes = "SCEA".as_bytes();
+                let bytes = "SCEA".as_bytes();
 
-            self.controller_response_fifo.push_back(0x2);
-            self.controller_response_fifo.push_back(0x0);
-            self.controller_response_fifo.push_back(0x20);
-            self.controller_response_fifo.push_back(0x0);
-            for byte in bytes {
-                self.controller_response_fifo.push_back(*byte);
+                self.controller_response_fifo.push_back(0x2);
+                self.controller_response_fifo.push_back(0x0);
+                self.controller_response_fifo.push_back(0x20);
+                self.controller_response_fifo.push_back(0x0);
+                for byte in bytes {
+                    self.controller_response_fifo.push_back(*byte);
+                }
+            } else {
+                self.irq_latch = 0x5;
+
+                self.controller_response_fifo.push_back(0xa);
+                self.controller_response_fifo.push_back(0x90);
+                for _ in 0..6 {
+                    self.controller_response_fifo.push_back(0x0);
+                }
             }
 
             self.controller_mode = ControllerMode::ClearResponseFifo;

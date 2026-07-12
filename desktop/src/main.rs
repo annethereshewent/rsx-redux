@@ -30,17 +30,32 @@ fn main() {
         .to_str()
         .unwrap_or_default();
 
-    let mut cpu = if file_extension == "exe" {
-        let exe_bytes = fs::read(&args[1]).unwrap();
-        CPU::new(Some(exe_bytes), "".to_string())
-    } else {
-        let file = File::open(file_path).unwrap();
-        let game_data = unsafe { Mmap::map(&file).unwrap() };
+    let mut cpu = match file_extension {
+        "exe" => {
+            let exe_bytes = fs::read(&args[1]).unwrap();
+            CPU::new(Some(exe_bytes), "".to_string())
+        }
+        "bin" => {
+            let file = File::open(file_path).unwrap();
+            let game_data = unsafe { Mmap::map(&file).unwrap() };
 
-        let mut cpu = CPU::new(None, args[1].to_string());
-        cpu.bus.cdrom.load_game_desktop(game_data);
+            let mut cpu = CPU::new(None, args[1].to_string());
+            cpu.bus.cdrom.load_game_desktop(game_data);
 
-        cpu
+            cpu
+        }
+        "cue" => {
+            let cue_contents = fs::read_to_string(&args[1]).unwrap();
+
+            let base_path = file_path.parent().unwrap();
+
+            let mut cpu = CPU::new(None, args[1].to_string());
+
+            cpu.bus.cdrom.parse_cue(base_path.to_path_buf(), cue_contents);
+
+            cpu
+        }
+        _ => panic!("uknnown file type received: {file_extension}")
     };
 
     cpu.bus.load_bios(bios);
