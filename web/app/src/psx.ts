@@ -484,19 +484,12 @@ export class Psx {
     async parseCueFile(files: File[]) {
         let cueFileContents = ""
 
-        console.log("what?")
-        console.log(files[1])
-
         for (const file of files) {
-            console.log("hello!!!!!")
-            console.log(file.name)
             if (/\.cue$/.test(file.name)) {
                 cueFileContents = await file.text()
             } else if (/\.bin$/.test(file.name)) {
                 const data = await file.arrayBuffer()
                 const binaryBytes = new Uint8Array(data)
-
-                console.log(file.name)
 
                 this.emulator!.add_bin_file(file.name, binaryBytes)
             }
