@@ -18,7 +18,6 @@ macro_rules! console_log {
 #[wasm_bindgen]
 pub struct PsxWebEmulator {
     cpu: CPU,
-    memory_bytes: Vec<u8>,
     renderer: Renderer,
     canvas_id: String,
 }
@@ -31,7 +30,6 @@ impl PsxWebEmulator {
 
         Self {
             cpu: CPU::new(None, "".to_string()),
-            memory_bytes: Vec::new(),
             renderer: Renderer::new(canvas_id),
             canvas_id: canvas_id.to_string(),
         }
@@ -104,16 +102,16 @@ impl PsxWebEmulator {
     }
 
     pub fn set_memory_card(&mut self, memory_bytes: &[u8]) {
-        self.memory_bytes = memory_bytes.to_vec();
-
         self.cpu
             .bus
             .peripherals
             .memory_card
-            .set_memory_bytes(self.memory_bytes.clone());
+            .set_memory_bytes(memory_bytes.to_vec());
     }
 
     pub fn load_state(&mut self, data: &[u8]) {
+        let memory_bytes = self.cpu.bus.peripherals.memory_card.get_memory_bytes().unwrap();
+
         if let Some(game_data) = self.cpu.bus.cdrom.game_bytes.clone() {
             self.cpu.load_save_state(data);
 
@@ -143,7 +141,7 @@ impl PsxWebEmulator {
             .bus
             .peripherals
             .memory_card
-            .set_memory_bytes(self.memory_bytes.clone());
+            .set_memory_bytes(memory_bytes);
     }
 
     pub fn save_state(&mut self) -> Vec<u8> {
