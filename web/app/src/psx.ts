@@ -37,6 +37,8 @@ export class Psx {
     private cloudService = new CloudService()
     private memoryCardLoaded = false
 
+    private saveDebounce: any = -1
+
     constructor() {
         document.addEventListener("click", (e) => {
             const el = (e.target as HTMLElement).closest('[data-action]')
@@ -592,10 +594,12 @@ export class Psx {
         })
     }
 
-    reset() {
+    async reset() {
         if (this.emulator != null) {
             cancelAnimationFrame(this.frameNumber)
             this.emulator.reset()
+
+            await this.loadMemoryCard()
 
             this.frameNumber = requestAnimationFrame((time) => this.runFrame(time))
         }
@@ -653,17 +657,21 @@ export class Psx {
 
     }
 
-    async checkSaveStatus() {
+    checkSaveStatus() {
         const memoryCardData = this.emulator!.get_memory_bytes() as Uint8Array<ArrayBuffer>
 
         if (memoryCardData != null) {
-            this.memoryCardData = memoryCardData
-            if (this.cloudService.loggedIn) {
-                await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
-            } else {
-                await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
-            }
-            document.getElementById('mem-card-status')!.textContent = "Saves found"
+            clearTimeout(this.saveDebounce)
+            this.saveDebounce = setTimeout(async () => {
+                this.memoryCardData = memoryCardData
+                if (this.cloudService.loggedIn) {
+                    await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
+                } else {
+                    await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+                }
+                document.getElementById('mem-card-status')!.textContent = "Saves found"
+                this.saveDebounce = -1
+            }, 250)
         }
     }
 
