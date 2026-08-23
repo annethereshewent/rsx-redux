@@ -667,14 +667,17 @@ export class Psx {
                 if (!this.isSaving) {
                     this.isSaving = true
                     this.memoryCardData = memoryCardData
-                    if (this.cloudService.loggedIn) {
-                        await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
-                    } else {
-                        await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+                    try {
+                        if (this.cloudService.loggedIn) {
+                            await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
+                        } else {
+                            await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+                        }
+                    } finally {
+                        document.getElementById('mem-card-status')!.textContent = "Saves found"
+                        this.saveDebounce = -1
+                        this.isSaving = false
                     }
-                    document.getElementById('mem-card-status')!.textContent = "Saves found"
-                    this.saveDebounce = -1
-                    this.isSaving = false
                 }
             }, 250)
         }
