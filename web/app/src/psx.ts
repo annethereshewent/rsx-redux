@@ -37,6 +37,7 @@ export class Psx {
     private cloudService = new CloudService()
     private memoryCardLoaded = false
 
+    private isSaving = false
     private saveDebounce: any = -1
 
     constructor() {
@@ -663,14 +664,18 @@ export class Psx {
         if (memoryCardData != null) {
             clearTimeout(this.saveDebounce)
             this.saveDebounce = setTimeout(async () => {
-                this.memoryCardData = memoryCardData
-                if (this.cloudService.loggedIn) {
-                    await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
-                } else {
-                    await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+                if (!this.isSaving) {
+                    this.isSaving = true
+                    this.memoryCardData = memoryCardData
+                    if (this.cloudService.loggedIn) {
+                        await this.cloudService.uploadCard(this.memoryCard, this.memoryCardData)
+                    } else {
+                        await this.rsxDb.saveMemoryCard(this.memoryCard, this.memoryCardData)
+                    }
+                    document.getElementById('mem-card-status')!.textContent = "Saves found"
+                    this.saveDebounce = -1
+                    this.isSaving = false
                 }
-                document.getElementById('mem-card-status')!.textContent = "Saves found"
-                this.saveDebounce = -1
             }, 250)
         }
     }
