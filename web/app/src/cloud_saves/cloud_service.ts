@@ -300,12 +300,7 @@ export class CloudService {
     async uploadCard(cardName: string, bytes: Uint8Array) {
         const json = await this.getCardInfo(cardName)
 
-        // this is a hack to get it to change the underlying array buffer
-        // (so it doesn't save a bunch of junk from memory unrelated to save)
-
-        const payload = new Uint8Array(Array.from(bytes))
-
-        const buffer = payload.buffer
+        const buffer = bytes.buffer
 
         let resultFile: any
         if (json != null && json.files != null) {
@@ -318,9 +313,9 @@ export class CloudService {
                     headers: {
                         Authorization: `Bearer ${this.accessToken}`,
                         "Content-Type": "application/octet-stream",
-                        "Content-Length": `${payload.length}`
+                        "Content-Length": `${bytes.length}`
                     },
-                    body: buffer
+                    body: buffer as ArrayBuffer
                 }))
                 // there's no need for renaming the file since it's already been uploaded
                 return
@@ -331,9 +326,9 @@ export class CloudService {
                     headers: {
                         Authorization: `Bearer ${this.accessToken}`,
                         "Content-Type": "application/octet-stream",
-                        "Content-Length": `${payload.length}`
+                        "Content-Length": `${bytes.length}`
                     },
-                    body: buffer
+                    body: buffer as ArrayBuffer
                 }))
             }
         }
