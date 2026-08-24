@@ -1,8 +1,8 @@
 #[cfg(target_arch = "wasm32")]
 use std::{collections::HashMap, mem};
+use std::{collections::VecDeque, ops::Deref};
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs::File, path::PathBuf};
-use std::{collections::VecDeque, ops::Deref};
 
 #[cfg(not(target_arch = "wasm32"))]
 use memmap2::Mmap;
@@ -619,7 +619,8 @@ impl CDRom {
 
     #[cfg(target_arch = "wasm32")]
     pub fn add_bin_file(&mut self, filename: &str, contents: &[u8]) {
-        self.bin_files_map.insert(filename.to_string(), contents.to_vec());
+        self.bin_files_map
+            .insert(filename.to_string(), contents.to_vec());
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -635,10 +636,14 @@ impl CDRom {
         self.bin_files = bin_files;
     }
 
-    fn parse_cue_inner<T, F>(&mut self, cue_contents: String, mut callback: F) -> (Vec<Track>, Vec<T>)
+    fn parse_cue_inner<T, F>(
+        &mut self,
+        cue_contents: String,
+        mut callback: F,
+    ) -> (Vec<Track>, Vec<T>)
     where
         T: Deref<Target = [u8]>,
-        F: FnMut(String) -> T
+        F: FnMut(String) -> T,
     {
         let lines: Vec<_> = cue_contents.split("\n").collect();
 
@@ -1044,7 +1049,6 @@ impl CDRom {
 
         if let Some(track_num) = self.controller_param_fifo.pop_front() {
             if track_num != 0 {
-
                 let track_num = Self::bcd_to_u8(track_num);
 
                 let track = self
@@ -1247,7 +1251,9 @@ impl CDRom {
 
         if self.rate != 0 {
             let current_lba = self.get_pointer() / BYTES_PER_SECTOR;
-            let lba = (current_lba as isize + self.rate as isize).clamp(150, max_length as isize / BYTES_PER_SECTOR as isize) as usize;
+            let lba = (current_lba as isize + self.rate as isize)
+                .clamp(150, max_length as isize / BYTES_PER_SECTOR as isize)
+                as usize;
 
             self.current_msf.amm = (lba / (60 * 75)) as u8;
             self.current_msf.ass = ((lba / 75) % 60) as u8;

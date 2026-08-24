@@ -24,6 +24,10 @@ pub const DMA_TICKS_REMAINING: usize = 100;
 pub const DMA_HALT_TICKS: usize = 100;
 pub const DMA_TICKS_PER_BLOCK: usize = 34;
 
+const DMA_LINKED_LIST_MAX_TICKS: usize = 1000;
+const DMA_LINKED_LIST_HEADER_READ_TICKS: usize = 8;
+const DMA_LINKED_LIST_BLOCK_SETUP_TICKS: usize = 5;
+
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct DmaChannel {
     pub base_address: u32,
@@ -32,6 +36,7 @@ pub struct DmaChannel {
     pub control: DmaChannelControlRegister,
     halted: bool,
     request: bool,
+    pub current_address: u32, // used for linked list transfers exclusively right now
 }
 
 impl Default for DmaChannel {
@@ -49,6 +54,7 @@ impl DmaChannel {
             control: DmaChannelControlRegister::from_bits_retain(0),
             halted: false,
             request: false,
+            current_address: 0,
         }
     }
 
@@ -85,7 +91,7 @@ impl DmaChannel {
         }
     }
 
-    pub fn start_gpu_transfer(&mut self, ram: &mut [u8], gpu: &mut GPU) -> u32 {
+    pub fn start_gpu_transfer(&mut self, ram: &mut [u8], gpu: &mut GPU) {
         if !self
             .control
             .contains(DmaChannelControlRegister::TRANSFER_DIR)
@@ -117,40 +123,6 @@ impl DmaChannel {
         } else {
             // from ram
             match self.control.sync_mode() {
-                SyncMode::LinkedList => {
-                    let mut current_address = self.base_address & 0x1ffffc;
-
-                    let mut total_word_count = 0;
-
-                    loop {
-                        let packet =
-                            unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
-                        let mut word_count = packet >> 24;
-                        total_word_count += word_count;
-
-                        while word_count > 0 {
-                            current_address += 4;
-
-                            let word = unsafe {
-                                *(&ram[current_address as usize] as *const u8 as *const u32)
-                            };
-
-                            word_count -= 1;
-
-                            gpu.process_gp0_commands(word);
-                        }
-
-                        current_address = packet & 0xffffff;
-
-                        if current_address == 0xffffff {
-                            break;
-                        }
-
-                        current_address &= !(0x3);
-                    }
-
-                    return total_word_count;
-                }
                 SyncMode::Manual => {
                     let mut current_address = self.base_address & 0x1fffff;
 
@@ -194,10 +166,9 @@ impl DmaChannel {
                         }
                     }
                 }
+                _ => unreachable!(),
             }
         }
-
-        0
     }
 
     pub fn start_cdrom_transfer(&mut self, ram: &mut [u8], cdrom: &mut CDRom) {
@@ -459,6 +430,59 @@ impl Dma {
         }
     }
 
+    pub fn process_linked_list(
+        &mut self,
+        ram: &mut [u8],
+        gpu: &mut GPU,
+        interrupt_register: &mut InterruptRegister,
+        scheduler: &mut Scheduler,
+    ) {
+        self.channels[DMA_GPU].halted = false;
+        let mut remaining_ticks = DMA_LINKED_LIST_MAX_TICKS;
+        while remaining_ticks > 0 {
+            let packet = unsafe {
+                *(&ram[self.channels[DMA_GPU].current_address as usize] as *const u8 as *const u32)
+            };
+            let mut word_count = packet >> 24;
+
+            let word_ticks = word_count as usize;
+
+            while word_count > 0 {
+                self.channels[DMA_GPU].current_address += 4;
+
+                let word = unsafe {
+                    *(&ram[self.channels[DMA_GPU].current_address as usize] as *const u8
+                        as *const u32)
+                };
+
+                word_count -= 1;
+
+                gpu.process_gp0_commands(word);
+            }
+
+            self.channels[DMA_GPU].current_address = packet & 0xffffff;
+
+            let tick_count = if word_ticks > 0 {
+                word_ticks + DMA_LINKED_LIST_BLOCK_SETUP_TICKS + DMA_LINKED_LIST_HEADER_READ_TICKS
+            } else {
+                DMA_LINKED_LIST_HEADER_READ_TICKS
+            };
+
+            remaining_ticks = remaining_ticks.saturating_sub(tick_count);
+
+            if self.channels[DMA_GPU].current_address == 0xffffff {
+                // terminate the transfer and return
+                self.finish_transfer(DMA_GPU, interrupt_register);
+                return;
+            }
+
+            self.channels[DMA_GPU].current_address &= !(0x3);
+        }
+
+        self.channels[DMA_GPU].halted = true;
+        scheduler.schedule(EventType::UnhaltDma(DMA_GPU), DMA_HALT_TICKS);
+    }
+
     pub fn read_registers(&self, address: usize) -> u32 {
         let channel = (address - 0x1f801080) / 0x10;
         let register = address & 0xf;
@@ -573,6 +597,8 @@ impl Dma {
         // as ff9 relies on this behavior for fmvs to work.
         let request = if [DMA_MDEC_IN, DMA_MDEC_OUT].contains(&channel) {
             dma_channel.request && !dma_channel.halted
+        } else if channel == DMA_GPU && dma_channel.control.sync_mode() == SyncMode::LinkedList {
+            !dma_channel.halted
         } else {
             true
         };
