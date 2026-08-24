@@ -400,6 +400,8 @@ impl Bus {
                             &mut self.interrupt_stat,
                             &mut self.scheduler,
                         );
+
+                        return;
                     }
                     SyncMode::Manual | SyncMode::Request => {
                         dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu)

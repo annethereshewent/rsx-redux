@@ -27,6 +27,7 @@ pub const DMA_TICKS_PER_BLOCK: usize = 34;
 const DMA_LINKED_LIST_MAX_TICKS: usize = 1000;
 const DMA_LINKED_LIST_HEADER_READ_TICKS: usize = 8;
 const DMA_LINKED_LIST_BLOCK_SETUP_TICKS: usize = 5;
+const DMA_HALT_LINKED_LIST_TICKS: usize = 5;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct DmaChannel {
@@ -480,7 +481,7 @@ impl Dma {
         }
 
         self.channels[DMA_GPU].halted = true;
-        scheduler.schedule(EventType::UnhaltDma(DMA_GPU), DMA_HALT_TICKS);
+        scheduler.schedule(EventType::UnhaltDma(DMA_GPU), DMA_HALT_LINKED_LIST_TICKS);
     }
 
     pub fn read_registers(&self, address: usize) -> u32 {
@@ -597,7 +598,7 @@ impl Dma {
         // as ff9 relies on this behavior for fmvs to work.
         let request = if [DMA_MDEC_IN, DMA_MDEC_OUT].contains(&channel) {
             dma_channel.request && !dma_channel.halted
-        } else if channel == DMA_GPU && dma_channel.control.sync_mode() == SyncMode::LinkedList {
+        } else if channel == DMA_GPU {
             !dma_channel.halted
         } else {
             true
