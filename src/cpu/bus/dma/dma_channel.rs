@@ -207,21 +207,32 @@ impl DmaChannel {
 
         assert_eq!(self.control.sync_mode(), SyncMode::Request);
 
-        if !self
-            .control
-            .contains(DmaChannelControlRegister::TRANSFER_DIR)
-        {
-            panic!("only transfers from ram to spu allowed");
-        }
-
         let num_words = self.get_num_words();
 
-        for _ in 0..num_words {
-            let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
+        if self.control.contains(DmaChannelControlRegister::TRANSFER_DIR) {
+            for _ in 0..num_words {
+                let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
 
-            spu.dma_write(word, interrupt_register);
+                spu.dma_write(word, interrupt_register);
 
-            current_address += 4;
+                if self.control.contains(DmaChannelControlRegister::DECREMENT) {
+                    current_address -= 4;
+                } else {
+                    current_address += 4;
+                }
+            }
+        } else {
+            for _ in 0..num_words {
+                let word = spu.dma_read();
+
+                unsafe { *(&mut ram[current_address as usize] as *mut u8 as *mut u32) = word };
+
+                if self.control.contains(DmaChannelControlRegister::DECREMENT) {
+                    current_address -= 4;
+                } else {
+                    current_address += 4;
+                }
+            }
         }
 
         spu.update_dma_request();

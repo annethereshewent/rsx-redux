@@ -241,6 +241,15 @@ impl SPU {
         self.voices[voice].read(channel)
     }
 
+    pub fn dma_read(&mut self) -> u32 {
+        let lower = self.sound_ram.read16(self.current_ram_address as usize);
+        let upper = self.sound_ram.read16(self.current_ram_address as usize + 2);
+
+        self.current_ram_address = (self.current_ram_address + 4) & 0x7_ffff;
+
+        lower as u32 | (upper as u32) << 16
+    }
+
     pub fn dma_write(&mut self, value: u32, interrupt_register: &mut InterruptRegister) {
         self.sound_ram
             .write16(self.current_ram_address as usize, value as u16);
