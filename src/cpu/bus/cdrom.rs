@@ -80,11 +80,11 @@ struct TrackIndex {
     msf: Msf,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
 enum CDMode {
     None,
-    Mode1,
-    Mode2,
+    Mode1 = 1,
+    Mode2 = 2,
 }
 
 impl CDMode {
@@ -161,6 +161,8 @@ struct CDSubheader {
     _form: Mode2Form,
     realtime: bool,
     coding_info: CodingInfo,
+    read_mode_byte: u8,
+    coding_info_byte: u8,
 }
 
 impl CDSubheader {
@@ -178,6 +180,8 @@ impl CDSubheader {
             panic!("unknown mode received")
         };
 
+        let read_mode_byte = bytes[2];
+
         let form = if (bytes[2] >> 5) == 0 {
             Mode2Form::Form1
         } else {
@@ -193,6 +197,8 @@ impl CDSubheader {
             _form: form,
             coding_info: CodingInfo::new(bytes[3]),
             realtime,
+            read_mode_byte,
+            coding_info_byte: bytes[3],
         }
     }
 
@@ -204,6 +210,8 @@ impl CDSubheader {
             _form: Mode2Form::Form1,
             coding_info: CodingInfo::new(0),
             realtime: false,
+            read_mode_byte: 0,
+            coding_info_byte: 0,
         }
     }
 }
@@ -1006,6 +1014,7 @@ impl CDRom {
             0xb | 0xc => self.stat(),
             0xd => self.setfilter(),
             0xe => self.set_mode(),
+            0x10 => self.getloc_l(),
             0x11 => self.getloc_p(),
             0x13 => self.gettn(),
             0x14 => self.gettd(),
@@ -1170,6 +1179,18 @@ impl CDRom {
             self.controller_response_fifo.push_back(0);
             self.controller_response_fifo.push_back(0);
         }
+    }
+
+    fn getloc_l(&mut self) {
+        self.controller_response_fifo.push_back(self.current_header.mm);
+        self.controller_response_fifo.push_back(self.current_header.ss);
+        self.controller_response_fifo.push_back(self.current_header.sect);
+        self.controller_response_fifo.push_back(self.current_header.mode as u8);
+
+        self.controller_response_fifo.push_back(self.subheader.file_num);
+        self.controller_response_fifo.push_back(self.subheader.channel_num);
+        self.controller_response_fifo.push_back(self.subheader.read_mode_byte);
+        self.controller_response_fifo.push_back(self.subheader.coding_info_byte);
     }
 
     fn getloc_p(&mut self) {
