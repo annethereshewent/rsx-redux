@@ -211,7 +211,10 @@ impl DmaChannel {
 
         let num_words = self.get_num_words();
 
-        if self.control.contains(DmaChannelControlRegister::TRANSFER_DIR) {
+        if self
+            .control
+            .contains(DmaChannelControlRegister::TRANSFER_DIR)
+        {
             for _ in 0..num_words {
                 let word = unsafe { *(&ram[current_address as usize] as *const u8 as *const u32) };
 

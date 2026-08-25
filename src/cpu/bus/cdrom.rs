@@ -1182,15 +1182,23 @@ impl CDRom {
     }
 
     fn getloc_l(&mut self) {
-        self.controller_response_fifo.push_back(self.current_header.mm);
-        self.controller_response_fifo.push_back(self.current_header.ss);
-        self.controller_response_fifo.push_back(self.current_header.sect);
-        self.controller_response_fifo.push_back(self.current_header.mode as u8);
+        self.controller_response_fifo
+            .push_back(self.current_header.mm);
+        self.controller_response_fifo
+            .push_back(self.current_header.ss);
+        self.controller_response_fifo
+            .push_back(self.current_header.sect);
+        self.controller_response_fifo
+            .push_back(self.current_header.mode as u8);
 
-        self.controller_response_fifo.push_back(self.subheader.file_num);
-        self.controller_response_fifo.push_back(self.subheader.channel_num);
-        self.controller_response_fifo.push_back(self.subheader.read_mode_byte);
-        self.controller_response_fifo.push_back(self.subheader.coding_info_byte);
+        self.controller_response_fifo
+            .push_back(self.subheader.file_num);
+        self.controller_response_fifo
+            .push_back(self.subheader.channel_num);
+        self.controller_response_fifo
+            .push_back(self.subheader.read_mode_byte);
+        self.controller_response_fifo
+            .push_back(self.subheader.coding_info_byte);
     }
 
     fn getloc_p(&mut self) {
