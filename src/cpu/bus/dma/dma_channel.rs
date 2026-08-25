@@ -27,6 +27,8 @@ pub const DMA_TICKS_PER_BLOCK: usize = 34;
 const DMA_LINKED_LIST_MAX_TICKS: usize = 1000;
 const DMA_LINKED_LIST_HEADER_READ_TICKS: usize = 8;
 const DMA_LINKED_LIST_BLOCK_SETUP_TICKS: usize = 5;
+// 5 cycles (or less) seems to be the sweet spot for linked list DMAs, any higher and we start to see all sorts of problems
+// TODO: figure out why larger numbers cause problems
 const DMA_HALT_LINKED_LIST_TICKS: usize = 5;
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
@@ -607,9 +609,11 @@ impl Dma {
 
         // Currently only mdec in and mdec out work with manual triggering of request transfers,
         // as ff9 relies on this behavior for fmvs to work.
-        let request = if [DMA_MDEC_IN, DMA_MDEC_OUT].contains(&channel) {
+        let dma_ready = if [DMA_MDEC_IN, DMA_MDEC_OUT].contains(&channel) {
             dma_channel.request && !dma_channel.halted
         } else if channel == DMA_GPU {
+            // Linked List transfers now happen in chunks, so this flag lets the dma
+            // know not to fire another GPU dma if it's already in flight
             !dma_channel.halted
         } else {
             true
@@ -619,7 +623,7 @@ impl Dma {
             .control
             .contains(DmaChannelControlRegister::START_TRANSFER)
             && !previous_enable
-            && request
+            && dma_ready
             && (self.dma_control.bits() >> shift) & 0x1 == 1
     }
 }
