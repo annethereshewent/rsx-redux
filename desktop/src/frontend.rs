@@ -444,7 +444,6 @@ impl Frontend {
                         } else {
                             let digital_mode = cpu.bus.peripherals.controller.digital_mode;
                             match keycode {
-                                #[cfg(feature = "debug")]
                                 Keycode::G => {
                                     cpu.debug_on = !cpu.debug_on;
                                     println!("setting debug on to {}", cpu.debug_on);

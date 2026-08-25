@@ -357,6 +357,14 @@ impl Bus {
                     &mut self.interrupt_stat,
                 );
             }
+            DMA_GPU => {
+                self.dma.process_linked_list(
+                    &mut self.main_ram,
+                    &mut self.gpu,
+                    &mut self.interrupt_stat,
+                    &mut self.scheduler,
+                );
+            }
             _ => println!(
                 "[WARN]: got dma channel {channel}, currently unimplemented unhalting behavior for that channel"
             ),
@@ -371,7 +379,7 @@ impl Bus {
 
             let dma_channel = &mut self.dma.channels[channel];
 
-            let mut num_words = dma_channel.get_num_words();
+            let num_words = dma_channel.get_num_words();
 
             let clocks = match channel {
                 0 | 1 | 2 | 6 => 1,
@@ -384,11 +392,19 @@ impl Bus {
             match channel {
                 DMA_GPU => match dma_channel.control.sync_mode() {
                     SyncMode::LinkedList => {
-                        num_words =
-                            dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu)
+                        self.dma.channels[DMA_GPU].current_address =
+                            self.dma.channels[DMA_GPU].base_address & 0x1ffffc;
+                        self.dma.process_linked_list(
+                            &mut self.main_ram,
+                            &mut self.gpu,
+                            &mut self.interrupt_stat,
+                            &mut self.scheduler,
+                        );
+
+                        return;
                     }
                     SyncMode::Manual | SyncMode::Request => {
-                        dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu);
+                        dma_channel.start_gpu_transfer(&mut self.main_ram, &mut self.gpu)
                     }
                 },
                 DMA_CDROM => dma_channel.start_cdrom_transfer(&mut self.main_ram, &mut self.cdrom),

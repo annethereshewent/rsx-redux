@@ -518,6 +518,7 @@ export class CloudService {
                         notification.style.opacity = `${opacity}`
 
                         if (opacity <= 0) {
+                            notification.style.display = 'none'
                             clearInterval(interval)
                         }
                     }, 100)
